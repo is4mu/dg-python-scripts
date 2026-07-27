@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "channel": "latest",
-  "generated_at": "2026-07-27T13:49:09+00:00",
+  "generated_at": "2026-07-27T13:54:46+00:00",
   "repo": "is4mu/dg-python-scripts",
   "packages": [
     {
@@ -64,14 +64,14 @@
     {
       "id": "manager",
       "name": "DG Script Manager",
-      "version": "0.3.6",
+      "version": "0.3.7",
       "min_flame": "2025",
       "depends": [
         "core"
       ],
       "category": "Utility",
       "summary": "Install, update, uninstall apps; changelog; channel switch",
-      "changelog": "0.3.6: Install platform Release assets (ffmpeg binaries)\n0.3.5: Seed/refresh core+manager inventory on open; Uninstall confirm defaults to No\n0.3.4: List order — Core/Manager pinned; then Update/New; then manifest order\n0.3.3: Menu order 0 + separator below under DGpy2\n0.3.2: Fix Update All (missing dgpy_sync.actionable)\n0.3.1: Fetch manifest via GitHub API (avoid raw CDN stale tip)\n0.3.0: Uninstall (apps only), changelog panel, channel selector, shared-path write warnings\n0.2.1: auto Rescan Python Hooks after install\n0.2.0: manifest sync Install/Update",
+      "changelog": "0.3.7: Treat missing Release assets as Update (vendor ffmpeg)\n0.3.6: Install platform Release assets (ffmpeg binaries)\n0.3.5: Seed/refresh core+manager inventory on open; Uninstall confirm defaults to No\n0.3.4: List order — Core/Manager pinned; then Update/New; then manifest order\n0.3.3: Menu order 0 + separator below under DGpy2\n0.3.2: Fix Update All (missing dgpy_sync.actionable)\n0.3.1: Fetch manifest via GitHub API (avoid raw CDN stale tip)\n0.3.0: Uninstall (apps only), changelog panel, channel selector, shared-path write warnings\n0.2.1: auto Rescan Python Hooks after install\n0.2.0: manifest sync Install/Update",
       "files": [
         {
           "path": "manager_hook.py",
@@ -80,7 +80,7 @@
         },
         {
           "path": "dgpy_manager_app.py",
-          "sha256": "86fe5b5cf6eeab584db77ad83600a9711a153d8eb860429f30dd08e0ebab7e57",
+          "sha256": "88e39589ef049ef21b3b9fcde2f26b6d6c4d925b531408be02245985b9c9ad85",
           "url": "https://raw.githubusercontent.com/is4mu/dg-python-scripts/main/dgpy/dgpy_manager_app.py"
         },
         {
@@ -95,7 +95,7 @@
         },
         {
           "path": "dgpy_sync.py",
-          "sha256": "25e6eedfd233c460a083fc9b12f023787c68d6d599110a7762dfc73effde60ff",
+          "sha256": "0310105f9a373a558adeea94d21143093ebffc16b37f70a2d44142ca32606e5b",
           "url": "https://raw.githubusercontent.com/is4mu/dg-python-scripts/main/dgpy/dgpy_sync.py"
         },
         {
@@ -525,18 +525,18 @@
     {
       "id": "ffmpeg_runtime",
       "name": "FFmpeg Runtime",
-      "version": "0.2.0",
+      "version": "0.2.1",
       "min_flame": "2025",
       "depends": [
         "core"
       ],
       "category": "Utility",
       "summary": "Shared ffmpeg/ffprobe resolve; Script Manager installs OS binaries",
-      "changelog": "0.2.0: Manifest assets — Manager downloads vendor ffmpeg/ffprobe\n0.1.0: Initial — resolve env/config/vendor/PATH; install_binary_pair with sha256",
+      "changelog": "0.2.1: Re-install marker — ensure vendor binaries after 0.2.0\n0.2.0: Manifest assets — Manager downloads vendor ffmpeg/ffprobe\n0.1.0: Initial — resolve env/config/vendor/PATH; install_binary_pair with sha256",
       "files": [
         {
           "path": "ffmpeg_runtime_resolve.py",
-          "sha256": "dbb2e689fa327e2c25fc08d9816a44ed71fb623ec21d54fc2cde916029f079d7",
+          "sha256": "d6e828c75de22c6935e2864a1c4ff4e3acc987205f46785b3bb7a7a1212c22de",
           "url": "https://raw.githubusercontent.com/is4mu/dg-python-scripts/main/dgpy/apps/ffmpeg_runtime/ffmpeg_runtime_resolve.py"
         }
       ],
@@ -574,7 +574,7 @@
     {
       "id": "ffmpeg_export",
       "name": "FFmpeg Export",
-      "version": "0.1.1",
+      "version": "0.1.2",
       "min_flame": "2025",
       "depends": [
         "core",
@@ -582,7 +582,7 @@
       ],
       "category": "Export",
       "summary": "DG2: Export — preset export via Flame intermediate + ffmpeg",
-      "changelog": "0.1.1: ProRes 422/Proxy presets (prores_ks); encoder availability check\n0.1.0: Initial — Media Panel dialog, folder structure, presets, ffmpeg job (PyExporter intermediate TBD on hardware)",
+      "changelog": "0.1.2: Clearer ffmpeg-missing guidance (Manager → Runtime assets)\n0.1.1: ProRes 422/Proxy presets (prores_ks); encoder availability check\n0.1.0: Initial — Media Panel dialog, folder structure, presets, ffmpeg job (PyExporter intermediate TBD on hardware)",
       "files": [
         {
           "path": "ffmpeg_export_hook.py",
@@ -591,7 +591,7 @@
         },
         {
           "path": "ffmpeg_export_dialog.py",
-          "sha256": "abd0711453f0764fe55f06cb016f514fd7373fe483022fa073c8071bbdae2a5e",
+          "sha256": "c28ce3cbb507ea0be0ad69dfe4301da006214706c2872df7d130b70ac070a9ac",
           "url": "https://raw.githubusercontent.com/is4mu/dg-python-scripts/main/dgpy/apps/ffmpeg_export/ffmpeg_export_dialog.py"
         },
         {

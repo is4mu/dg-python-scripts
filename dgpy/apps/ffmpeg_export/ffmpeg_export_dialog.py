@@ -358,7 +358,19 @@ class ExportDialog(QtWidgets.QDialog):
     def _update_runtime_warning(self) -> None:
         if not self._runtime.resolve_ffmpeg():
             self.runtime_label.setStyleSheet("color: #e88;")
-            self.runtime_label.setText("ffmpeg not found")
+            vendor = (
+                __import__("dgpy_paths").dgpy_root()
+                / "vendor"
+                / "ffmpeg"
+                / self._runtime.platform_id()
+                / "ffmpeg"
+            )
+            if not vendor.is_file():
+                self.runtime_label.setText(
+                    "ffmpeg not found — Script Manager → Update Manager, then FFmpeg Runtime"
+                )
+            else:
+                self.runtime_label.setText("ffmpeg not found")
         else:
             self.runtime_label.setStyleSheet("color: #aaa;")
             self.runtime_label.setText(self._runtime.status_line())
@@ -426,7 +438,12 @@ class ExportDialog(QtWidgets.QDialog):
             dgpy_gui.warning(
                 self,
                 "DG2: Export",
-                "ffmpeg not found.\nUse Browse ffmpeg… or install FFmpeg Runtime.",
+                "ffmpeg not found.\n\n"
+                "1. DGpy2 → Script Manager → Refresh\n"
+                "2. Update DG Script Manager (0.3.7+)\n"
+                "3. Update / Install FFmpeg Runtime "
+                "(downloads vendor/ffmpeg — may take a minute)\n"
+                "Or use Browse ffmpeg… for a local binary.",
             )
             return
 

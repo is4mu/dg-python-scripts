@@ -24,7 +24,7 @@ from urllib.request import urlretrieve
 
 import dgpy_paths
 
-__version__ = "0.2.0"
+__version__ = "0.2.1"
 
 _ENV_FFMPEG = "DGPY_FFMPEG"
 _ENV_FFPROBE = "DGPY_FFPROBE"

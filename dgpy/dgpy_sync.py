@@ -17,7 +17,7 @@ import dgpy_semver
 from dgpy_http import download_asset_to, download_to
 from dgpy_manifest import Manifest, ManifestPackage
 
-__version__ = "0.3.5"
+__version__ = "0.3.6"
 
 STATUS_NEW = "New"
 STATUS_UPDATE = "Update"
@@ -83,6 +83,21 @@ def _installed_version(root: Path, package_id: str) -> str | None:
     return None
 
 
+def _host_assets_missing(pkg: ManifestPackage, base: Path) -> bool:
+    """True if remote lists assets for this host but local files are absent."""
+    if not pkg.assets:
+        return False
+    host = dgpy_paths.host_platform_id()
+    matched = [a for a in pkg.assets if a.platform == host]
+    if not matched:
+        return False
+    for asset in matched:
+        target = base / asset.path.lstrip("/")
+        if not target.is_file():
+            return True
+    return False
+
+
 def compare(manifest: Manifest, root: Path | None = None) -> list[PackageRow]:
     base = root or dgpy_paths.dgpy_root()
     remote_map = manifest.by_id()
@@ -109,6 +124,9 @@ def compare(manifest: Manifest, root: Path | None = None) -> list[PackageRow]:
         elif dgpy_semver.eq(rpkg.version, local_ver):
             status = STATUS_UP_TO_DATE
             installed = local_ver
+            # e.g. ffmpeg_runtime installed by old Manager without binaries
+            if _host_assets_missing(rpkg, base):
+                status = STATUS_UPDATE
         else:
             # Local newer than remote
             status = STATUS_LOCAL_ONLY
@@ -201,6 +219,13 @@ def install_package(
             pkg.package_id,
             host,
         )
+    elif matched_assets:
+        logger.info(
+            "Package %s: %s asset(s) for platform %s",
+            pkg.package_id,
+            len(matched_assets),
+            host,
+        )
 
     with tempfile.TemporaryDirectory(prefix="dgpy_sync_") as tmp:
         tmp_path = Path(tmp)
@@ -273,12 +298,30 @@ def install_many(
     # Only install requested set, but ensure deps that are in the list come first.
     wanted = {p.package_id for p in packages}
     done: list[str] = []
+    install_fn = install_package
     for pkg in ordered:
         if pkg.package_id not in wanted:
             continue
-        install_package(pkg, root=root)
+        install_fn(pkg, root=root)
         done.append(pkg.package_id)
+        # Manager/core update on disk must be used for later packages in this
+        # same Flame session (otherwise assets[] is ignored by stale import).
+        if pkg.package_id in ("core", "manager"):
+            install_fn = _fresh_install_package()
     return done
+
+
+def _fresh_install_package():
+    """Load install_package from the on-disk dgpy_sync.py (post-Update)."""
+    import importlib.util
+
+    path = dgpy_paths.dgpy_root() / "dgpy_sync.py"
+    spec = importlib.util.spec_from_file_location("dgpy_sync_ondisk", path)
+    if spec is None or spec.loader is None:
+        return install_package
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod.install_package
 
 
 PROTECTED_PACKAGES = frozenset({"core", "manager"})
