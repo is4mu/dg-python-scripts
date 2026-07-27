@@ -15,20 +15,30 @@ from ffmpeg_export_paths import output_path_for
 from ffmpeg_export_presets import ExportPreset
 from ffmpeg_export_selection import ExportSource
 
-__version__ = "0.1.3"
+__version__ = "0.1.4"
 
-ProgressCb = Callable[[int, int, str], None]  # done, total, message
+ProgressCb = Callable[[int, int, str], None]
 CancelCb = Callable[[], bool]
 
 _MEDIA_EXT = {".mov", ".mxf", ".mp4", ".m4v", ".avi", ".mkv", ".mpg", ".mpeg"}
 
-# Prefer quality intermediates that ffmpeg can usually decode.
-_PREFERRED_PRESET_NAMES = (
-    "Final Cut Pro (Apple ProRes 422).xml",
-    "Final Cut Pro (Apple ProRes 422 HQ).xml",
-    "Cinedeck (Apple ProRes 422).xml",
-    "Avid Media Composer (QuickTime DNxHR HQ 8-bit).xml",
-    "QuickTime (8-bit Uncompressed).xml",
+_WARN_FLAGS = (
+    "warn_on_mixed_colour_space",
+    "warn_on_link_unsupported",
+    "warn_on_no_media",
+    "warn_on_pending_render",
+    "warn_on_reimport_unsupported",
+    "warn_on_unlinked",
+    "warn_on_unrendered",
+)
+
+# Relative to Autodesk Movie presets dir (get_presets_dir).
+_PREFERRED_RELATIVE = (
+    "QuickTime/QuickTime (8-bit Uncompressed).xml",
+    "Apple Final Cut Pro/Final Cut Pro (Apple ProRes 422).xml",
+    "Apple Final Cut Pro/Final Cut Pro (Apple ProRes 422 HQ).xml",
+    "Cinedeck/Cinedeck (Apple ProRes 422).xml",
+    "Avid Media Composer/Avid Media Composer (QuickTime DNxHR HQ 8-bit).xml",
 )
 
 
@@ -65,6 +75,81 @@ def load_export_config() -> dict:
     except (OSError, json.JSONDecodeError):
         return {}
     return data if isinstance(data, dict) else {}
+
+
+def _apply_exporter_quiet_flags(exporter) -> None:
+    """Disable Flame export confirmation dialogs that have API toggles."""
+    for name in _WARN_FLAGS:
+        if hasattr(exporter, name):
+            try:
+                setattr(exporter, name, False)
+            except Exception:  # noqa: BLE001
+                pass
+
+
+class _AutoContinueFlameDialogs:
+    """Click Continue on Flame modals that lack a Python suppress flag.
+
+    Example: "Export preset is from an old version".
+    Colour-space warnings should already be off via warn_on_mixed_colour_space.
+    """
+
+    _TITLE_HINTS = ("old version", "confirm operation", "export preset")
+    _BUTTON_HINTS = ("continue", "continue export", "ok", "yes")
+
+    def __init__(self) -> None:
+        self._timer = None
+
+    def start(self) -> None:
+        from PySide6 import QtCore, QtWidgets
+
+        app = QtWidgets.QApplication.instance()
+        if app is None:
+            return
+
+        def tick() -> None:
+            for widget in app.topLevelWidgets():
+                if not widget.isVisible():
+                    continue
+                title = (widget.windowTitle() or "").lower()
+                if any(h in title for h in self._TITLE_HINTS) or self._looks_like_export_warning(
+                    widget
+                ):
+                    self._click_continue(widget)
+
+        self._timer = QtCore.QTimer()
+        self._timer.setInterval(200)
+        self._timer.timeout.connect(tick)
+        self._timer.start()
+
+    def stop(self) -> None:
+        if self._timer is not None:
+            self._timer.stop()
+            self._timer = None
+
+    @staticmethod
+    def _looks_like_export_warning(widget) -> bool:
+        from PySide6 import QtWidgets
+
+        texts = [(label.text() or "").lower() for label in widget.findChildren(QtWidgets.QLabel)]
+        blob = " ".join(texts)
+        return (
+            "older version" in blob
+            or "colour space" in blob
+            or "color space" in blob
+            or "export preset" in blob
+        )
+
+    @classmethod
+    def _click_continue(cls, widget) -> None:
+        from PySide6 import QtWidgets
+
+        for btn in widget.findChildren(QtWidgets.QPushButton):
+            text = (btn.text() or "").strip().lower().replace("&", "")
+            if text in cls._BUTTON_HINTS or text.startswith("continue"):
+                if btn.isEnabled() and btn.isVisible():
+                    btn.click()
+                    return
 
 
 def _encoder_available(ffmpeg: Path, codec: str) -> bool:
@@ -142,30 +227,6 @@ def _movie_preset_roots() -> list[Path]:
     shared = Path("/opt/Autodesk/shared/export/presets/flame/movie_file")
     if shared.is_dir():
         roots.append(shared)
-
-    try:
-        import flame
-
-        exporter = flame.PyExporter
-        get_dir = getattr(exporter, "get_presets_base_dir", None)
-        if get_dir:
-            tokens = []
-            preset_base = getattr(exporter, "PresetBaseDir", None)
-            if preset_base is not None and hasattr(preset_base, "Project"):
-                tokens.append(preset_base.Project)
-            if hasattr(exporter, "Project"):
-                tokens.append(exporter.Project)
-            for token in tokens:
-                try:
-                    base = Path(str(get_dir(token)))
-                except Exception:  # noqa: BLE001
-                    continue
-                movie = base / "movie_file"
-                if movie.is_dir():
-                    roots.append(movie)
-                    break
-    except Exception:  # noqa: BLE001
-        pass
     return roots
 
 
@@ -179,26 +240,44 @@ def resolve_flame_movie_preset() -> Path:
             return path
         raise RuntimeError(f"Configured flame_movie_preset not found: {path}")
 
+    try:
+        import flame
+
+        preset_dir = Path(
+            flame.PyExporter.get_presets_dir(
+                flame.PyExporter.PresetVisibility.Autodesk,
+                flame.PyExporter.PresetType.Movie,
+            )
+        )
+        for rel in _PREFERRED_RELATIVE:
+            candidate = preset_dir / rel
+            if candidate.is_file():
+                return candidate
+        found = sorted(preset_dir.rglob("*.xml"))
+        if found:
+            return found[0]
+    except Exception:  # noqa: BLE001
+        pass
+
     roots = _movie_preset_roots()
     by_name: dict[str, Path] = {}
     for root in roots:
         for xml in root.rglob("*.xml"):
             by_name.setdefault(xml.name, xml)
-
-    for name in _PREFERRED_PRESET_NAMES:
+    for rel in _PREFERRED_RELATIVE:
+        name = Path(rel).name
         if name in by_name:
             return by_name[name]
-
-    # Any movie preset as last resort
     for root in roots:
         found = sorted(root.rglob("*.xml"))
         if found:
             return found[0]
 
     raise RuntimeError(
-        "No Flame Movie File export preset found under "
-        "/opt/Autodesk/presets/.../movie_file. "
-        "Set flame_movie_preset in dgpy/state/ffmpeg_export.json"
+        "No Flame Movie File export preset found. "
+        "In Flame Media Export, open a Movie preset, Continue past the "
+        "version warning, Save As to Shared/Project, then set "
+        "flame_movie_preset in dgpy/state/ffmpeg_export.json"
     )
 
 
@@ -210,9 +289,7 @@ def _pick_exported_media(out_dir: Path) -> Path:
     ]
     if not files:
         files = [
-            p
-            for p in out_dir.rglob("*")
-            if p.is_file() and not p.name.startswith(".")
+            p for p in out_dir.rglob("*") if p.is_file() and not p.name.startswith(".")
         ]
     if not files:
         raise RuntimeError(f"Flame export produced no files in {out_dir}")
@@ -220,12 +297,7 @@ def _pick_exported_media(out_dir: Path) -> Path:
 
 
 def export_intermediate_flame(clip, work_dir: Path, logger) -> Path:
-    """
-    Flame PyExporter → temp movie.
-
-    Real signature (Flame 2025):
-      exporter.export(sources, preset_path, output_directory, ...)
-    """
+    """Flame PyExporter → temp movie (sources, preset_xml, output_dir)."""
     import flame
 
     preset_path = resolve_flame_movie_preset()
@@ -241,6 +313,7 @@ def export_intermediate_flame(clip, work_dir: Path, logger) -> Path:
         exporter.export_between_marks = False
     if hasattr(exporter, "use_top_video_track"):
         exporter.use_top_video_track = True
+    _apply_exporter_quiet_flags(exporter)
 
     logger.info(
         "PyExporter.export sources=%s preset=%s out=%s",
@@ -249,26 +322,29 @@ def export_intermediate_flame(clip, work_dir: Path, logger) -> Path:
         out_dir,
     )
 
-    # sources: object* — try list first (common), then bare object
-    errors: list[str] = []
-    for sources in ([clip], clip):
-        try:
-            exporter.export(sources, str(preset_path), str(out_dir))
-            break
-        except TypeError as exc:
-            errors.append(str(exc))
-        except Exception as exc:  # noqa: BLE001
-            errors.append(str(exc))
-            logger.warning("PyExporter.export failed: %s", exc)
-    else:
-        raise RuntimeError(
-            "Flame intermediate export failed.\n"
-            f"Preset: {preset_path}\n"
-            + ("; ".join(errors[:2]) if errors else "Unknown error")
-        )
+    auto = _AutoContinueFlameDialogs()
+    auto.start()
+    try:
+        errors: list[str] = []
+        for sources in ([clip], clip):
+            try:
+                exporter.export(sources, str(preset_path), str(out_dir))
+                break
+            except TypeError as exc:
+                errors.append(str(exc))
+            except Exception as exc:  # noqa: BLE001
+                errors.append(str(exc))
+                logger.warning("PyExporter.export failed: %s", exc)
+        else:
+            raise RuntimeError(
+                "Flame intermediate export failed.\n"
+                f"Preset: {preset_path}\n"
+                + ("; ".join(errors[:2]) if errors else "Unknown error")
+            )
+    finally:
+        auto.stop()
 
     media = _pick_exported_media(out_dir)
-    # Stable path for ffmpeg
     dest = work_dir / f"intermediate{media.suffix.lower()}"
     if media.resolve() != dest.resolve():
         shutil.copy2(media, dest)
@@ -301,17 +377,15 @@ def run_export(
         )
 
     if conflict == "ask":
-        logger.warning("conflict=ask is not supported in worker; using suffix")
+        logger.warning("conflict=ask is not supported; using suffix")
         conflict = "suffix"
 
     if preset.video_codec and not _encoder_available(ff.path, preset.video_codec):
         raise RuntimeError(
             f"This ffmpeg build has no encoder '{preset.video_codec}'. "
-            "Install/Update FFmpeg Runtime from Script Manager, or pick another preset. "
-            "ProRes needs prores_ks in the ffmpeg build."
+            "Install/Update FFmpeg Runtime, or pick another preset."
         )
 
-    # Resolve preset early so failure is clear before the queue runs
     flame_preset = resolve_flame_movie_preset()
     logger.info("Using Flame intermediate preset: %s", flame_preset)
 
@@ -362,27 +436,18 @@ def run_export(
                 final_out.parent.mkdir(parents=True, exist_ok=True)
                 item_dir = tmp_root / f"{index:04d}"
                 item_dir.mkdir(parents=True, exist_ok=True)
-                intermediate = export_intermediate_flame(
-                    source.item, item_dir, logger
-                )
+                intermediate = export_intermediate_flame(source.item, item_dir, logger)
 
                 if preset.kind == "frames":
                     seq_pattern = final_out
                     seq_pattern.parent.mkdir(parents=True, exist_ok=True)
-                    cmd = build_ffmpeg_cmd(
-                        ff.path, intermediate, seq_pattern, preset
-                    )
+                    cmd = build_ffmpeg_cmd(ff.path, intermediate, seq_pattern, preset)
                 else:
-                    cmd = build_ffmpeg_cmd(
-                        ff.path, intermediate, final_out, preset
-                    )
+                    cmd = build_ffmpeg_cmd(ff.path, intermediate, final_out, preset)
 
                 logger.info("ffmpeg: %s", " ".join(cmd))
                 proc = subprocess.run(
-                    cmd,
-                    capture_output=True,
-                    text=True,
-                    check=False,
+                    cmd, capture_output=True, text=True, check=False
                 )
                 if proc.returncode != 0:
                     err = (proc.stderr or proc.stdout or "").strip()[-800:]
