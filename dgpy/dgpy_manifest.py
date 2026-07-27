@@ -10,7 +10,7 @@ from typing import Any
 import dgpy_config
 import dgpy_http
 
-__version__ = "0.3.1"
+__version__ = "0.3.2"
 
 
 @dataclass
@@ -18,6 +18,17 @@ class ManifestFile:
     path: str
     sha256: str
     url: str
+
+
+@dataclass
+class ManifestAsset:
+    """Platform-specific binary (not stored in git; Release URL)."""
+
+    platform: str
+    path: str  # relative to dgpy root, e.g. vendor/ffmpeg/darwin-arm64/ffmpeg
+    sha256: str
+    url: str
+    executable: bool = True
 
 
 @dataclass
@@ -31,6 +42,7 @@ class ManifestPackage:
     summary: str = ""
     changelog: str = ""
     files: list[ManifestFile] = field(default_factory=list)
+    assets: list[ManifestAsset] = field(default_factory=list)
 
 
 @dataclass
@@ -73,6 +85,16 @@ def parse_manifest(data: dict[str, Any]) -> Manifest:
             )
             for f in (raw.get("files") or [])
         ]
+        assets = [
+            ManifestAsset(
+                platform=str(a["platform"]),
+                path=str(a["path"]),
+                sha256=str(a["sha256"]).lower(),
+                url=str(a["url"]),
+                executable=bool(a.get("executable", True)),
+            )
+            for a in (raw.get("assets") or [])
+        ]
         packages.append(
             ManifestPackage(
                 package_id=str(raw["id"]),
@@ -84,6 +106,7 @@ def parse_manifest(data: dict[str, Any]) -> Manifest:
                 summary=str(raw.get("summary") or ""),
                 changelog=str(raw.get("changelog") or ""),
                 files=files,
+                assets=assets,
             )
         )
     return Manifest(

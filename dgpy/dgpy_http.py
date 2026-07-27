@@ -7,7 +7,7 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-__version__ = "0.3.2"
+__version__ = "0.3.3"
 
 _TIMEOUT_SEC = 30
 
@@ -50,3 +50,11 @@ def download_to(url: str, dest: Path, timeout: int = _TIMEOUT_SEC) -> None:
     data = fetch_bytes(url, timeout=timeout)
     dest.parent.mkdir(parents=True, exist_ok=True)
     dest.write_bytes(data)
+
+
+# Large Release assets (ffmpeg binaries) need a longer timeout.
+_ASSET_TIMEOUT_SEC = 600
+
+
+def download_asset_to(url: str, dest: Path, timeout: int = _ASSET_TIMEOUT_SEC) -> None:
+    download_to(url, dest, timeout=timeout)

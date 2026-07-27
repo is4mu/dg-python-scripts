@@ -3,15 +3,33 @@
 from __future__ import annotations
 
 import os
+import platform
 import sys
 from pathlib import Path
 
-__version__ = "0.3.12"
+__version__ = "0.3.13"
 
 
 def dgpy_root() -> Path:
     """Return the install root (.../dgpy)."""
     return Path(__file__).resolve().parent
+
+
+def host_platform_id() -> str:
+    """Vendor / asset platform key, e.g. linux-x86_64, darwin-arm64."""
+    system = platform.system().lower()
+    machine = platform.machine().lower()
+    if machine in ("amd64", "x86_64"):
+        arch = "x86_64"
+    elif machine in ("arm64", "aarch64"):
+        arch = "arm64"
+    else:
+        arch = machine
+    if system == "darwin":
+        return f"darwin-{arch}"
+    if system == "linux":
+        return f"linux-{arch}"
+    return f"{system}-{arch}"
 
 
 def ensure_dgpy_on_sys_path() -> Path:

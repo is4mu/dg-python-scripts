@@ -14,10 +14,10 @@ import dgpy_log
 import dgpy_manifest
 import dgpy_paths
 import dgpy_semver
-from dgpy_http import download_to
+from dgpy_http import download_asset_to, download_to
 from dgpy_manifest import Manifest, ManifestPackage
 
-__version__ = "0.3.4"
+__version__ = "0.3.5"
 
 STATUS_NEW = "New"
 STATUS_UPDATE = "Update"
@@ -182,19 +182,29 @@ def install_package(
     pkg: ManifestPackage,
     root: Path | None = None,
 ) -> None:
-    """Download, verify sha256, then replace files under install root."""
+    """Download, verify sha256, then replace files (and matching assets) under install root."""
     base = (root or dgpy_paths.dgpy_root()).resolve()
     live = dgpy_paths.dgpy_root().resolve()
     if base != live:
         raise RuntimeError(f"Refusing to install outside live dgpy root: {base}")
 
     logger = dgpy_log.get_logger()
-    if not pkg.files:
-        raise RuntimeError(f"Package {pkg.package_id} has no files")
+    if not pkg.files and not pkg.assets:
+        raise RuntimeError(f"Package {pkg.package_id} has no files or assets")
+
+    host = dgpy_paths.host_platform_id()
+    matched_assets = [a for a in pkg.assets if a.platform == host]
+    if pkg.assets and not matched_assets:
+        logger.warning(
+            "Package %s has assets but none for platform %s — "
+            "Python files only; binaries skipped",
+            pkg.package_id,
+            host,
+        )
 
     with tempfile.TemporaryDirectory(prefix="dgpy_sync_") as tmp:
         tmp_path = Path(tmp)
-        verified: list[tuple[Path, str]] = []  # temp file, relative dest path
+        verified: list[tuple[Path, str, bool]] = []  # tmp, rel, executable
 
         for f in pkg.files:
             # Apps go under apps/<id>/; core/manager files stay at dgpy root.
@@ -211,13 +221,34 @@ def install_package(
                 raise RuntimeError(
                     f"sha256 mismatch for {f.path}: got {digest}, want {f.sha256}"
                 )
-            verified.append((dest_tmp, rel))
+            verified.append((dest_tmp, rel, False))
+
+        for asset in matched_assets:
+            rel = asset.path.lstrip("/")
+            # Assets must stay under dgpy root (vendor/…); refuse path escape.
+            final_check = (base / rel).resolve()
+            if base not in final_check.parents and final_check != base:
+                raise RuntimeError(f"Refusing asset path outside dgpy root: {rel}")
+            dest_tmp = tmp_path / "assets" / rel
+            logger.info("Downloading asset %s (%s)", rel, asset.platform)
+            download_asset_to(asset.url, dest_tmp)
+            digest = _sha256_file(dest_tmp)
+            if digest.lower() != asset.sha256.lower():
+                raise RuntimeError(
+                    f"sha256 mismatch for asset {rel}: got {digest}, want {asset.sha256}"
+                )
+            verified.append((dest_tmp, rel, asset.executable))
 
         # All verified — replace
-        for dest_tmp, rel in verified:
+        for dest_tmp, rel, executable in verified:
             final = base / rel
             final.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(dest_tmp, final)
+            if executable:
+                try:
+                    final.chmod(final.stat().st_mode | 0o111)
+                except OSError:
+                    pass
             logger.info("Installed %s", rel)
 
     data = dgpy_local_inventory.load_installed(base)
@@ -226,6 +257,7 @@ def install_package(
         "name": pkg.name,
         "version": pkg.version,
         "files": [f.path for f in pkg.files],
+        "assets": [a.path for a in matched_assets],
         "installed_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
     }
     dgpy_local_inventory.save_installed(data, base)
@@ -283,6 +315,12 @@ def uninstall_package(package_id: str, root: Path | None = None) -> None:
             if target.is_file() and live in target.resolve().parents:
                 target.unlink()
                 logger.info("Removed %s", rel)
+
+    for asset_rel in [str(x) for x in (record.get("assets") or [])]:
+        target = (base / asset_rel).resolve()
+        if target.is_file() and (live == target or live in target.parents):
+            target.unlink()
+            logger.info("Removed asset %s", asset_rel)
 
     if package_id in packages:
         del packages[package_id]

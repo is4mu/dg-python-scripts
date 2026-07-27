@@ -14,7 +14,6 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-import platform
 import shutil
 import subprocess
 import tempfile
@@ -25,7 +24,7 @@ from urllib.request import urlretrieve
 
 import dgpy_paths
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 _ENV_FFMPEG = "DGPY_FFMPEG"
 _ENV_FFPROBE = "DGPY_FFPROBE"
@@ -41,19 +40,7 @@ class ResolvedBinary:
 
 def platform_id() -> str:
     """Return vendor folder name, e.g. linux-x86_64, darwin-arm64."""
-    system = platform.system().lower()
-    machine = platform.machine().lower()
-    if machine in ("amd64", "x86_64"):
-        arch = "x86_64"
-    elif machine in ("arm64", "aarch64"):
-        arch = "arm64"
-    else:
-        arch = machine
-    if system == "darwin":
-        return f"darwin-{arch}"
-    if system == "linux":
-        return f"linux-{arch}"
-    return f"{system}-{arch}"
+    return dgpy_paths.host_platform_id()
 
 
 def vendor_dir(root: Path | None = None) -> Path:

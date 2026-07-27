@@ -12,7 +12,7 @@ from ffmpeg_export_paths import output_path_for
 from ffmpeg_export_presets import ExportPreset
 from ffmpeg_export_selection import ExportSource
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 ProgressCb = Callable[[int, int, str], None]  # done, total, message
 CancelCb = Callable[[], bool]
@@ -39,6 +39,28 @@ def _ensure_runtime_import() -> None:
     runtime = dgpy_paths.dgpy_root() / "apps" / "ffmpeg_runtime"
     if runtime.is_dir() and str(runtime) not in sys.path:
         sys.path.insert(0, str(runtime))
+
+
+def _encoder_available(ffmpeg: Path, codec: str) -> bool:
+    if not codec:
+        return True
+    try:
+        proc = subprocess.run(
+            [str(ffmpeg), "-hide_banner", "-encoders"],
+            capture_output=True,
+            text=True,
+            timeout=15,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    text = (proc.stdout or "") + (proc.stderr or "")
+    # Lines look like: " V..... prores_ks            ..."
+    for line in text.splitlines():
+        parts = line.split()
+        if len(parts) >= 2 and parts[1] == codec:
+            return True
+    return False
 
 
 def build_ffmpeg_cmd(
@@ -154,6 +176,13 @@ def run_export(
         # QMessageBox must not run inside QThread; use suffix for safety.
         logger.warning("conflict=ask is not supported in worker; using suffix")
         conflict = "suffix"
+
+    if preset.video_codec and not _encoder_available(ff.path, preset.video_codec):
+        raise RuntimeError(
+            f"This ffmpeg build has no encoder '{preset.video_codec}'. "
+            "Install/Update FFmpeg Runtime from Script Manager, or pick another preset. "
+            "ProRes needs prores_ks in the ffmpeg build."
+        )
 
     enabled = [s for s in sources if s.enabled]
     total = len(enabled)

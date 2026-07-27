@@ -10,7 +10,7 @@ from typing import Any
 
 import dgpy_paths
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 
 @dataclass
@@ -88,6 +88,30 @@ def _builtins() -> list[ExportPreset]:
             crf=32,
             audio_bitrate="128k",
             summary="WebM · VP9 · Opus",
+        ),
+        ExportPreset(
+            id="editorial_prores_422",
+            label="Editorial — ProRes 422 (MOV)",
+            container="mov",
+            video_codec="prores_ks",
+            audio_codec="pcm_s16le",
+            audio_channels="source",
+            crf=None,
+            pix_fmt="yuv422p10le",
+            extra_ffmpeg=["-profile:v", "2"],
+            summary="MOV · ProRes 422 (ffmpeg prores_ks) · PCM",
+        ),
+        ExportPreset(
+            id="editorial_prores_proxy",
+            label="Editorial — ProRes Proxy (MOV)",
+            container="mov",
+            video_codec="prores_ks",
+            audio_codec="pcm_s16le",
+            audio_channels="source",
+            crf=None,
+            pix_fmt="yuv422p10le",
+            extra_ffmpeg=["-profile:v", "0"],
+            summary="MOV · ProRes Proxy (ffmpeg prores_ks) · PCM",
         ),
         ExportPreset(
             id="audio_wav",
