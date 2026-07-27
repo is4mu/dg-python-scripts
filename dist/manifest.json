@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "channel": "latest",
-  "generated_at": "2026-07-27T13:54:46+00:00",
+  "generated_at": "2026-07-27T13:59:33+00:00",
   "repo": "is4mu/dg-python-scripts",
   "packages": [
     {
@@ -574,7 +574,7 @@
     {
       "id": "ffmpeg_export",
       "name": "FFmpeg Export",
-      "version": "0.1.2",
+      "version": "0.1.3",
       "min_flame": "2025",
       "depends": [
         "core",
@@ -582,7 +582,7 @@
       ],
       "category": "Export",
       "summary": "DG2: Export — preset export via Flame intermediate + ffmpeg",
-      "changelog": "0.1.2: Clearer ffmpeg-missing guidance (Manager → Runtime assets)\n0.1.1: ProRes 422/Proxy presets (prores_ks); encoder availability check\n0.1.0: Initial — Media Panel dialog, folder structure, presets, ffmpeg job (PyExporter intermediate TBD on hardware)",
+      "changelog": "0.1.3: Fix PyExporter.export(sources, preset, out_dir); resolve Flame Movie preset; run on GUI thread\n0.1.2: Clearer ffmpeg-missing guidance (Manager → Runtime assets)\n0.1.1: ProRes 422/Proxy presets (prores_ks); encoder availability check\n0.1.0: Initial — Media Panel dialog, folder structure, presets, ffmpeg job (PyExporter intermediate TBD on hardware)",
       "files": [
         {
           "path": "ffmpeg_export_hook.py",
@@ -591,7 +591,7 @@
         },
         {
           "path": "ffmpeg_export_dialog.py",
-          "sha256": "c28ce3cbb507ea0be0ad69dfe4301da006214706c2872df7d130b70ac070a9ac",
+          "sha256": "b7cab203cbf25defe2511203fc8a6a843be5c7128ed0f58391c63863189dca22",
           "url": "https://raw.githubusercontent.com/is4mu/dg-python-scripts/main/dgpy/apps/ffmpeg_export/ffmpeg_export_dialog.py"
         },
         {
@@ -611,7 +611,7 @@
         },
         {
           "path": "ffmpeg_export_job.py",
-          "sha256": "d2c53fb1a1b494548edf9b378a290b79f8fcd31ce389bb913536c40d70ac0a28",
+          "sha256": "4f3614bec2575c133c28ca9203b9f9511b16e66bb5dfc4b8bbdf846930d4ba64",
           "url": "https://raw.githubusercontent.com/is4mu/dg-python-scripts/main/dgpy/apps/ffmpeg_export/ffmpeg_export_job.py"
         }
       ]

@@ -79,6 +79,7 @@ class ExportDialog(QtWidgets.QDialog):
         self._presets = all_presets()
         self._preset = self._load_session_preset()
         self._worker: _ExportWorker | None = None
+        self._cancel_flag = False
         self._modified = False
 
         _ensure_runtime()
@@ -457,20 +458,35 @@ class ExportDialog(QtWidgets.QDialog):
             "keep_structure": self.keep_check.isChecked(),
             "conflict": self.conflict_combo.currentData() or "suffix",
         }
+        # PyExporter must run on the Flame/GUI thread — do not use QThread here.
+        self._cancel_flag = False
         self.export_btn.setEnabled(False)
         self.cancel_btn.setEnabled(True)
         self.progress.setValue(0)
         self.status.setText("Starting…")
-        self._worker = _ExportWorker(kwargs, self)
-        self._worker.progress.connect(self._on_progress)
-        self._worker.finished_ok.connect(self._on_finished)
-        self._worker.failed.connect(self._on_failed)
-        self._worker.start()
+        QtWidgets.QApplication.processEvents()
+
+        try:
+            import ffmpeg_export_job
+
+            def progress(done, total, msg):
+                self._on_progress(done, total, msg)
+                QtWidgets.QApplication.processEvents()
+
+            result = ffmpeg_export_job.run_export(
+                **kwargs,
+                progress=progress,
+                should_cancel=lambda: self._cancel_flag,
+            )
+            self._on_finished(result)
+        except Exception as exc:  # noqa: BLE001
+            self._on_failed(str(exc))
 
     def _cancel_job(self) -> None:
-        if self._worker:
+        self._cancel_flag = True
+        if self._worker and self._worker.isRunning():
             self._worker.cancel()
-            self.status.setText("Cancelling…")
+        self.status.setText("Cancelling…")
 
     def _on_progress(self, done: int, total: int, msg: str) -> None:
         self.progress.setMaximum(max(total, 1))
