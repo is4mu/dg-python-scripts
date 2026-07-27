@@ -15,7 +15,7 @@ from ffmpeg_export_paths import output_path_for
 from ffmpeg_export_presets import ExportPreset
 from ffmpeg_export_selection import ExportSource
 
-__version__ = "0.1.4"
+__version__ = "0.1.5"
 
 ProgressCb = Callable[[int, int, str], None]
 CancelCb = Callable[[], bool]
@@ -32,13 +32,19 @@ _WARN_FLAGS = (
     "warn_on_unrendered",
 )
 
-# Relative to Autodesk Movie presets dir (get_presets_dir).
+# Intermediate (Flame → disk before ffmpeg). Ranking for mezzanine use:
+# 1) ProRes 422 HQ — 10-bit, resolution-from-source, ffmpeg-friendly, size OK
+# 2) ProRes 422 — slightly smaller/faster
+# 3) DNxHR HQX 10-bit QT — good Linux-friendly alternative
+# 4) Uncompressed 8-bit QT — Autodesk example, but **truncates to 8-bit** (last resort)
+# Avoid H.264/MP4/XAVC as mezzanine (double lossy encode).
 _PREFERRED_RELATIVE = (
-    "QuickTime/QuickTime (8-bit Uncompressed).xml",
-    "Apple Final Cut Pro/Final Cut Pro (Apple ProRes 422).xml",
     "Apple Final Cut Pro/Final Cut Pro (Apple ProRes 422 HQ).xml",
-    "Cinedeck/Cinedeck (Apple ProRes 422).xml",
+    "Apple Final Cut Pro/Final Cut Pro (Apple ProRes 422).xml",
+    "Avid Media Composer/Avid Media Composer (QuickTime DNxHR HQX 10-bit).xml",
     "Avid Media Composer/Avid Media Composer (QuickTime DNxHR HQ 8-bit).xml",
+    "Cinedeck/Cinedeck (Apple ProRes 422).xml",
+    "QuickTime/QuickTime (8-bit Uncompressed).xml",
 )
 
 
