@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from typing import Any
 
-__version__ = "0.1.1"
+__version__ = "0.1.2"
 
 # Temporary coexistence prefix. Flip to "DG:" when legacy is retired.
 MENU_PREFIX = "DG2:"
@@ -67,7 +67,7 @@ MEDIA_PANEL_GROUPS: dict[str, dict[str, Any]] = {
         "separator": "below",
     },
     "export": {
-        "hierarchy": [],
+        "hierarchy": _h("Export"),
         "order": 55,
     },
 }
@@ -132,8 +132,11 @@ MEDIA_PANEL_ACTIONS: dict[str, dict[str, Any]] = {
     # Sequence Render (root)
     "sequence_render.selection": {"group": "sequence_render", "order": 50},
     "sequence_render.reels_hotkey": {"group": "sequence_render", "order": 51},
-    # Export (root, Rename-style)
-    "export.root": {"group": "export", "order": 55},
+    # Export (PyExporter presets)
+    "export.master": {"group": "export", "order": 10},
+    "export.oa_master": {"group": "export", "order": 20},
+    "export.to_ma": {"group": "export", "order": 30},
+    "export.youtube": {"group": "export", "order": 40},
 }
 
 _FLAME_ACTION_KEYS = (

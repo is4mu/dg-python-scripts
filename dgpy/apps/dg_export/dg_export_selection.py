@@ -20,7 +20,7 @@ class ExportSource:
     item: Any
     name: str
     relative_dir: str  # "" or "Hero/Sub" (no leading/trailing slash)
-    root_label: str = ""  # selection root name when multiple roots
+    root_label: str = ""
     enabled: bool = True
     tree_parts: tuple[str, ...] = field(default_factory=tuple)
 
@@ -59,7 +59,6 @@ def _safe_list(value) -> list:
 
 
 def _child_containers(item: Any) -> list:
-    """Nested Folder / Reel / Library under a container."""
     out: list = []
     seen: set[int] = set()
 
@@ -130,9 +129,7 @@ def resolve_export_sources(selection, *, logger=None) -> list[ExportSource]:
     collected: list[ExportSource] = []
     seen_ids: set[int] = set()
 
-    container_roots = [
-        r for r in roots if dgpy_flame_types.is_media_container(r)
-    ]
+    container_roots = [r for r in roots if dgpy_flame_types.is_media_container(r)]
     multi_root = len(container_roots) > 1
 
     for item in roots:

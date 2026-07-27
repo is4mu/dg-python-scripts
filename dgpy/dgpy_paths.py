@@ -7,7 +7,7 @@ import platform
 import sys
 from pathlib import Path
 
-__version__ = "0.3.13"
+__version__ = "0.3.14"
 
 
 def dgpy_root() -> Path:
