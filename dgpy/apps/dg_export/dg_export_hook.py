@@ -1,7 +1,7 @@
 """
 Flame: DG2: Export (PyExporter).
 
-Media Panel: DG2: Export → Master / OA Master / to_MA / YouTube
+Media Panel: DG2: Export → <stem of each presets/*.xml>
 """
 
 from __future__ import annotations
@@ -98,7 +98,12 @@ def _run_preset(preset_id: str, selection=None) -> None:
     logger = dgpy_log.setup()
     preset = dg_export_presets.find_preset(preset_id)
     if preset is None:
-        dgpy_gui.warning(None, "DG Export", f"Unknown preset: {preset_id}")
+        dgpy_gui.warning(
+            None,
+            "DG Export",
+            f"Preset not found: {preset_id}\n\n"
+            f"Add XML under:\n{dg_export_presets.package_presets_dir()}",
+        )
         return
 
     items = _resolve_execute_selection(selection)
@@ -112,9 +117,6 @@ def _run_preset(preset_id: str, selection=None) -> None:
     except RuntimeError as exc:
         dgpy_gui.warning(None, "DG Export", str(exc))
         return
-
-    for note in dg_export_presets.try_install_package_presets_to_shared():
-        logger.info("%s", note)
 
     destination = _pick_destination()
     if destination is None:
@@ -163,15 +165,27 @@ def get_media_panel_custom_ui_actions():
     import dgpy_menu_layout
     import dg_export_presets
 
+    presets = dg_export_presets.list_presets()
+    if not presets:
+        return []
+
+    meta = dgpy_menu_layout.MEDIA_PANEL_GROUPS["export"]
     actions = []
-    for preset in dg_export_presets.PRESETS:
+    for index, preset in enumerate(presets):
         actions.append(
             {
-                "layout_key": f"export.{preset.id}",
                 "name": preset.label,
+                "order": index,
                 "isVisible": _scope_visible,
                 "execute": _make_execute(preset.id),
                 "minimumVersion": "2025",
             }
         )
-    return dgpy_menu_layout.build_media_panel(actions)
+    group = {
+        "hierarchy": list(meta.get("hierarchy") or []),
+        "order": int(meta.get("order", 55)),
+        "actions": actions,
+    }
+    if meta.get("separator"):
+        group["separator"] = meta["separator"]
+    return [group]

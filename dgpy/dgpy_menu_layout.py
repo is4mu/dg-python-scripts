@@ -132,11 +132,7 @@ MEDIA_PANEL_ACTIONS: dict[str, dict[str, Any]] = {
     # Sequence Render (root)
     "sequence_render.selection": {"group": "sequence_render", "order": 50},
     "sequence_render.reels_hotkey": {"group": "sequence_render", "order": 51},
-    # Export (PyExporter presets)
-    "export.master": {"group": "export", "order": 10},
-    "export.oa_master": {"group": "export", "order": 20},
-    "export.to_ma": {"group": "export", "order": 30},
-    "export.youtube": {"group": "export", "order": 40},
+    # Export (PyExporter — actions generated from presets/*.xml)
 }
 
 _FLAME_ACTION_KEYS = (
