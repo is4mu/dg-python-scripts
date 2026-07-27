@@ -1,22 +1,22 @@
 {
   "schema": 1,
   "channel": "latest",
-  "generated_at": "2026-07-27T12:36:57+00:00",
+  "generated_at": "2026-07-27T13:17:37+00:00",
   "repo": "is4mu/dg-python-scripts",
   "packages": [
     {
       "id": "core",
       "name": "DG Core",
-      "version": "0.3.11",
+      "version": "0.3.12",
       "min_flame": "2025",
       "depends": [],
       "category": "Utility",
       "summary": "Shared paths, log, config, gui, project dir resolve, menu layout",
-      "changelog": "0.3.11: menu layout — Cutdata Add/Create under Sequence\n0.3.10: Go To — separator above (via Resize All below) + below\n0.3.9: dgpy_menu_layout — central Media Panel order/separators\n0.3.8: Production logging: isVisible/mismatch at DEBUG; isVisible errors WARNING\n0.3.7: dgpy_flame_types — isinstance helpers; clips+sequences container resolve + probe log\n0.3.6: Align dgpy_paths.__version__ with package (Update marker)\n0.3.5: Fix duplicate log handlers after Rescan; project dir resolve logs at INFO\n0.3.4: dgpy_project — resolve project dir via PyExporter (no shell.log)\n0.3.3: Add dgpy_gui.error() (critical) alongside warning\n0.3.2: HTTP no-cache + GitHub Contents API Accept for manifest fetch\n0.3.1: dgpy_gui.confirm()\n0.3.0: writable check, detect user+shared duplicate dgpy\n0.2.1: path/config hardening for Linux",
+      "changelog": "0.3.12: menu layout — DG2: Export (order 55)\n0.3.11: menu layout — Cutdata Add/Create under Sequence\n0.3.10: Go To — separator above (via Resize All below) + below\n0.3.9: dgpy_menu_layout — central Media Panel order/separators\n0.3.8: Production logging: isVisible/mismatch at DEBUG; isVisible errors WARNING\n0.3.7: dgpy_flame_types — isinstance helpers; clips+sequences container resolve + probe log\n0.3.6: Align dgpy_paths.__version__ with package (Update marker)\n0.3.5: Fix duplicate log handlers after Rescan; project dir resolve logs at INFO\n0.3.4: dgpy_project — resolve project dir via PyExporter (no shell.log)\n0.3.3: Add dgpy_gui.error() (critical) alongside warning\n0.3.2: HTTP no-cache + GitHub Contents API Accept for manifest fetch\n0.3.1: dgpy_gui.confirm()\n0.3.0: writable check, detect user+shared duplicate dgpy\n0.2.1: path/config hardening for Linux",
       "files": [
         {
           "path": "dgpy_paths.py",
-          "sha256": "4b9d72f4598ecbe987fb892008b6e4cf2a44c5ea57e1061d1e703aa9df75cf5e",
+          "sha256": "285f4082d3054788b6d0a04ade80f79d1502ceafa02d7095855112ec0e50084a",
           "url": "https://raw.githubusercontent.com/is4mu/dg-python-scripts/main/dgpy/dgpy_paths.py"
         },
         {
@@ -56,7 +56,7 @@
         },
         {
           "path": "dgpy_menu_layout.py",
-          "sha256": "23cc0254555590c94237043acf09894864e61893aeb2694213d581016dd3779b",
+          "sha256": "cc483e3a30f754e3e2a08eec29959966c7d1fc45fd89ce2ae337360d5b1125c2",
           "url": "https://raw.githubusercontent.com/is4mu/dg-python-scripts/main/dgpy/dgpy_menu_layout.py"
         }
       ]
@@ -519,6 +519,70 @@
           "path": "archive_toc_clear.py",
           "sha256": "46ebdd45b2ebf3c7c3a1e2ba040bec758171cd3d335596b597c7a62da61eabd1",
           "url": "https://raw.githubusercontent.com/is4mu/dg-python-scripts/main/dgpy/apps/archive_toc/archive_toc_clear.py"
+        }
+      ]
+    },
+    {
+      "id": "ffmpeg_runtime",
+      "name": "FFmpeg Runtime",
+      "version": "0.1.0",
+      "min_flame": "2025",
+      "depends": [
+        "core"
+      ],
+      "category": "Utility",
+      "summary": "Shared ffmpeg/ffprobe resolve and vendor install helpers",
+      "changelog": "0.1.0: Initial — resolve env/config/vendor/PATH; install_binary_pair with sha256",
+      "files": [
+        {
+          "path": "ffmpeg_runtime_resolve.py",
+          "sha256": "606ccf51a7d5162f0f1743a15e1972123040b43b8910bf2d8ce562a651016d2c",
+          "url": "https://raw.githubusercontent.com/is4mu/dg-python-scripts/main/dgpy/apps/ffmpeg_runtime/ffmpeg_runtime_resolve.py"
+        }
+      ]
+    },
+    {
+      "id": "ffmpeg_export",
+      "name": "FFmpeg Export",
+      "version": "0.1.0",
+      "min_flame": "2025",
+      "depends": [
+        "core",
+        "ffmpeg_runtime"
+      ],
+      "category": "Export",
+      "summary": "DG2: Export — preset export via Flame intermediate + ffmpeg",
+      "changelog": "0.1.0: Initial — Media Panel dialog, folder structure, presets, ffmpeg job (PyExporter intermediate TBD on hardware)",
+      "files": [
+        {
+          "path": "ffmpeg_export_hook.py",
+          "sha256": "6c1f32d36bc5aeb240ee485355107c335e912e93a9ef865af6415b35423a67c8",
+          "url": "https://raw.githubusercontent.com/is4mu/dg-python-scripts/main/dgpy/apps/ffmpeg_export/ffmpeg_export_hook.py"
+        },
+        {
+          "path": "ffmpeg_export_dialog.py",
+          "sha256": "abd0711453f0764fe55f06cb016f514fd7373fe483022fa073c8071bbdae2a5e",
+          "url": "https://raw.githubusercontent.com/is4mu/dg-python-scripts/main/dgpy/apps/ffmpeg_export/ffmpeg_export_dialog.py"
+        },
+        {
+          "path": "ffmpeg_export_selection.py",
+          "sha256": "6f2ab2c4453e2a90b22df826b2adb78ec86c58d591f1412c799a695db8e59a94",
+          "url": "https://raw.githubusercontent.com/is4mu/dg-python-scripts/main/dgpy/apps/ffmpeg_export/ffmpeg_export_selection.py"
+        },
+        {
+          "path": "ffmpeg_export_presets.py",
+          "sha256": "60d57acd46b7bce38c36e0568b50d64c5f7b98947a6bee9812e2370e3668e26c",
+          "url": "https://raw.githubusercontent.com/is4mu/dg-python-scripts/main/dgpy/apps/ffmpeg_export/ffmpeg_export_presets.py"
+        },
+        {
+          "path": "ffmpeg_export_paths.py",
+          "sha256": "80f62f8443d85edd5a043ce83a57eae1c72be3f59a3fdf7cee9edb4d8f8ccbc5",
+          "url": "https://raw.githubusercontent.com/is4mu/dg-python-scripts/main/dgpy/apps/ffmpeg_export/ffmpeg_export_paths.py"
+        },
+        {
+          "path": "ffmpeg_export_job.py",
+          "sha256": "8591bbdd934f34814c51804898e6ce11dc81526f8c09e8c31f57ccd4740d1b7b",
+          "url": "https://raw.githubusercontent.com/is4mu/dg-python-scripts/main/dgpy/apps/ffmpeg_export/ffmpeg_export_job.py"
         }
       ]
     }
