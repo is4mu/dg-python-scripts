@@ -15,25 +15,63 @@ for _p in (_DGPY_ROOT, _APP_DIR):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
+__version__ = "0.3.1"
+
+_pending_selection: list | None = None
+
 
 def _as_list(selection) -> list:
-    if not selection:
-        return []
-    if isinstance(selection, (list, tuple)):
-        return list(selection)
-    return [selection]
+    import dgpy_flame_types
+
+    return dgpy_flame_types.as_list(selection)
 
 
 def _scope_visible(selection) -> bool:
+    global _pending_selection
+    import dgpy_flame_types
     import dgpy_log
     from action_tidy_selection import has_segments
 
     logger = dgpy_log.setup()
+    items = _as_list(selection)
+    _pending_selection = items
     try:
-        return has_segments(_as_list(selection), logger=logger)
+        visible = has_segments(items, logger=logger)
     except Exception as exc:  # noqa: BLE001
-        logger.warning("DG2: Segment isVisible error: %s", exc)
+        logger.warning(
+            "DG2: Segment isVisible error pending=%s: %s",
+            dgpy_flame_types.summarize(items),
+            exc,
+        )
         return False
+    logger.debug(
+        "DG2: Segment isVisible pending=%s visible=%s",
+        dgpy_flame_types.summarize(items),
+        visible,
+    )
+    return visible
+
+
+def _resolve_execute_selection(selection) -> list:
+    global _pending_selection
+    import dgpy_flame_types
+    import dgpy_log
+
+    logger = dgpy_log.setup()
+    execute_items = _as_list(selection)
+    pending = _pending_selection
+    _pending_selection = None
+    if pending:
+        if execute_items and dgpy_flame_types.summarize(
+            pending
+        ) != dgpy_flame_types.summarize(execute_items):
+            logger.debug(
+                "DG2: Segment using isVisible context %s (execute had %s)",
+                dgpy_flame_types.summarize(pending),
+                dgpy_flame_types.summarize(execute_items),
+            )
+        return pending
+    return execute_items
 
 
 def _summarize(result) -> str:
@@ -49,7 +87,8 @@ def _run_job(selection, *, title: str, confirm_msg: str, runner) -> None:
 
     logger = dgpy_log.setup()
     try:
-        segments = resolve_segments(_as_list(selection), logger=logger)
+        items = _resolve_execute_selection(selection)
+        segments = resolve_segments(items, logger=logger)
         if not segments:
             dgpy_gui.warning(
                 None,

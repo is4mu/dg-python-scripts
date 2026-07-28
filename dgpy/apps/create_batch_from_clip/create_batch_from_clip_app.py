@@ -8,7 +8,7 @@ from pathlib import Path
 import dgpy_flame_types
 import dgpy_log
 
-__version__ = "1.0.6"
+__version__ = "1.0.8"
 
 _BIT_DEPTH_FP_THRESHOLD = 16
 _DEFAULT_SCHEMATIC_REELS = 3
@@ -98,7 +98,7 @@ def _clip_name(clip) -> str:
     name = _attr_value(clip, "name", None)
     if name is None:
         return "clip"
-    text = str(name).strip()
+    text = str(name).strip().strip("'\"")
     return text or "clip"
 
 

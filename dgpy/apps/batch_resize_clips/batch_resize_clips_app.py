@@ -8,7 +8,7 @@ from pathlib import Path
 import dgpy_flame_types
 import dgpy_log
 
-__version__ = "1.0.1"
+__version__ = "1.0.3"
 
 _BIT_DEPTH_FP_THRESHOLD = 16
 _DEFAULT_SCHEMATIC_REELS = 3

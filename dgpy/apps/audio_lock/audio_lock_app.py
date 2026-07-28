@@ -5,7 +5,7 @@ from __future__ import annotations
 import dgpy_flame_types
 import dgpy_log
 
-__version__ = "1.0.1"
+__version__ = "1.0.2"
 
 
 def _attr(obj, name: str, default=None):

@@ -11,7 +11,7 @@ import dgpy_paths
 from dg_export_presets import ExportPresetDef, resolve_preset_xml
 from dg_export_selection import ExportSource
 
-__version__ = "0.1.0"
+__version__ = "0.1.7"
 
 ProgressCb = Callable[[int, int, str], None]
 
@@ -153,7 +153,7 @@ def _dir_has_media(path: Path) -> bool:
     for child in path.iterdir():
         if not child.is_file() or child.name.startswith("."):
             continue
-        if child.suffix.lower() in _MEDIA_EXT or child.suffix:
+        if child.suffix.lower() in _MEDIA_EXT:
             return True
     return False
 

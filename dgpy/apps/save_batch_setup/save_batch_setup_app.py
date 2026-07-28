@@ -12,7 +12,7 @@ import dgpy_gui
 import dgpy_log
 import dgpy_project
 
-__version__ = "1.1.2"
+__version__ = "1.1.4"
 
 
 def _batch_name(batch) -> str:

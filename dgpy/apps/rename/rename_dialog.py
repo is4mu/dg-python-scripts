@@ -10,7 +10,7 @@ from PySide6 import QtCore, QtWidgets
 import dgpy_gui
 import dgpy_log
 
-__version__ = "1.2.4"
+__version__ = "1.2.6"
 
 TOKEN_LIST = ("<name>", "<date>", "<index>")
 _DEFAULT_PATTERN = "<name>"

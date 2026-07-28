@@ -197,9 +197,15 @@ def _connect(batch, src, dst, logger, label: str) -> bool:
                 batch.connect_nodes(src, out_sock, dst, in_sock)
             return True
         except TypeError:
-            continue
+            try:
+                batch.connect_nodes(src, out_sock, dst)
+                return True
+            except Exception:  # noqa: BLE001
+                continue
         except Exception as exc:  # noqa: BLE001
-            logger.debug("Comp CG connect %s %s/%s: %s", label, out_sock, in_sock, exc)
+            logger.debug(
+                "Comp CG connect %s %s/%s: %s", label, out_sock, in_sock, exc
+            )
     logger.warning("Comp CG: connect failed (%s)", label)
     return False
 
