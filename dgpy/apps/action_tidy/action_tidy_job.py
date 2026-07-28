@@ -7,7 +7,7 @@ from pathlib import Path
 
 from action_tidy_selection import segment_label
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 TEMPLATE_CLEAN = "cleanup.action"
 TEMPLATE_FIT = "cleanup_fit.action"

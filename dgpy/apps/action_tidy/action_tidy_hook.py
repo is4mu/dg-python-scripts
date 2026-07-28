@@ -73,7 +73,7 @@ def _run(selection, *, template_id: str, title: str) -> None:
                 f"Done with errors.\n\nOK: {result.ok}  Failed: {result.failed}\n\n{detail}",
             )
         else:
-            dgpy_gui.information(
+            dgpy_gui.info(
                 None,
                 title,
                 f"Applied to {result.ok} segment(s).",
