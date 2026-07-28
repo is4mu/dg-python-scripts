@@ -6,7 +6,7 @@ import dgpy_flame_types
 import dgpy_gui
 import dgpy_log
 
-__version__ = "1.0.3"
+__version__ = "1.0.4"
 
 _INPUT_ATTR_CANDIDATES = (
     "input",
@@ -86,14 +86,15 @@ def has_mute_audio(selection, *, logger=None) -> bool:
     return False
 
 
-def _ensure_sequence_for_audio(obj, logger, label: str):
-    """Source PyClip: open_as_sequence so flame.delete(audio) persists.
+def _ensure_sequence_for_audio(obj, logger, label: str) -> tuple[object, bool]:
+    """Return (host, opened). Source PyClip needs open_as_sequence for delete.
 
     PySequence already editable. PySequence subclasses PyClip — detect via
-    is_sequence first.
+    is_sequence first. ``opened`` is True only when we called open_as_sequence
+    successfully (caller should Close Current Sequence afterward).
     """
     if dgpy_flame_types.is_sequence(obj):
-        return obj
+        return obj, False
 
     open_fn = getattr(obj, "open_as_sequence", None)
     if not callable(open_fn):
@@ -102,7 +103,7 @@ def _ensure_sequence_for_audio(obj, logger, label: str):
             label,
             dgpy_flame_types.item_label(obj),
         )
-        return obj
+        return obj, False
     try:
         opened = open_fn()
         if opened is not None:
@@ -112,7 +113,7 @@ def _ensure_sequence_for_audio(obj, logger, label: str):
                 dgpy_flame_types.item_label(obj),
                 dgpy_flame_types.item_label(opened),
             )
-            return opened
+            return opened, True
     except Exception as exc:  # noqa: BLE001
         logger.warning(
             "%s: open_as_sequence failed for %s: %s",
@@ -120,7 +121,24 @@ def _ensure_sequence_for_audio(obj, logger, label: str):
             dgpy_flame_types.item_label(obj),
             exc,
         )
-    return obj
+    return obj, False
+
+
+def _close_opened_sequence(logger, label: str) -> None:
+    """Close timeline tab opened by open_as_sequence (Clip Mgmt shortcut)."""
+    import flame
+
+    try:
+        ok = flame.execute_shortcut("Close Current Sequence")
+        if ok is False:
+            logger.warning(
+                "%s: Close Current Sequence returned False",
+                label,
+            )
+        else:
+            logger.debug("%s: Close Current Sequence", label)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("%s: Close Current Sequence failed: %s", label, exc)
 
 
 def _unlock(clip) -> None:
@@ -237,8 +255,9 @@ def _run_delete(
     deleted = 0
     failed = 0
     for clip in clips:
+        opened = False
         try:
-            host = _ensure_sequence_for_audio(clip, logger, label)
+            host, opened = _ensure_sequence_for_audio(clip, logger, label)
             victims = pick_tracks(host)
             d_ok, d_fail = _delete_tracks(host, victims, logger, label)
             deleted += d_ok
@@ -253,6 +272,9 @@ def _run_delete(
                 dgpy_flame_types.item_label(clip),
                 exc,
             )
+        finally:
+            if opened:
+                _close_opened_sequence(logger, label)
     logger.info("%s: deleted=%s failed=%s", label, deleted, failed)
 
 
