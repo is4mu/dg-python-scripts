@@ -1,3 +1,5 @@
 # Place Flame Media Export Movie preset XML files here.
 # Menu label = filename without .xml.
-# Shipped: Master.xml / OA Master.xml / to_MA.xml / YouTube.xml
+# Shipped: Master.xml / OA_Master.xml / to_MA.xml / YouTube.xml
+# No spaces in filenames (Script Manager download URLs).
+# Underscores in the stem → spaces in the menu (OA_Master → OA Master).

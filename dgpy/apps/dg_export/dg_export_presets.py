@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-__version__ = "0.1.1"
+__version__ = "0.1.4"
 
 
 @dataclass(frozen=True)
@@ -20,7 +20,11 @@ def package_presets_dir() -> Path:
 
 
 def list_presets() -> list[ExportPresetDef]:
-    """One menu entry per non-empty *.xml in presets/ (sorted by name)."""
+    """One menu entry per non-empty *.xml in presets/ (sorted by name).
+
+    Filenames must not contain spaces (Manager download URLs). Underscores in
+    the stem become spaces in the menu label (OA_Master.xml → "OA Master").
+    """
     root = package_presets_dir()
     if not root.is_dir():
         return []
@@ -31,7 +35,10 @@ def list_presets() -> list[ExportPresetDef]:
         stem = path.stem.strip()
         if not stem:
             continue
-        out.append(ExportPresetDef(id=stem, label=stem, path=path.resolve()))
+        if " " in path.name:
+            continue  # skip illegal names rather than break Install
+        label = stem.replace("_", " ")
+        out.append(ExportPresetDef(id=stem, label=label, path=path.resolve()))
     return out
 
 
