@@ -11,7 +11,7 @@ from pathlib import Path
 import dgpy_flame_types
 import dgpy_log
 
-__version__ = "1.0.1"
+__version__ = "1.0.2"
 
 _DEFAULT_SCHEMATIC_REELS = 3
 _DEFAULT_SHELF_REELS = 1
@@ -282,14 +282,25 @@ def apply_blending_to_setup(text: str, modes: list[str]) -> tuple[str, int]:
 
 
 def _patch_action_blending(action, clip_names: list[str], logger) -> bool:
-    modes = [mode_from_clip_name(n) for n in clip_names]
-    for name, mode in zip(clip_names, modes):
+    # Clip[0] → Action Back (background). Flame Mode is always Blend there;
+    # SurfaceSquare Blending fields exist only for add_media layers (clips[1:]).
+    if clip_names:
+        logger.info(
+            "Comp CG: %s → Back (Blend only; no Blending field)",
+            clip_names[0],
+        )
+    layer_names = clip_names[1:]
+    modes = [mode_from_clip_name(n) for n in layer_names]
+    for name, mode in zip(layer_names, modes):
         logger.info(
             "Comp CG: %s → %s (Blending %s)",
             name,
             mode,
             blending_int(mode),
         )
+    if not modes:
+        logger.info("Comp CG: no media layers to blend-patch")
+        return True
 
     save_fn, load_fn, save_name, load_name = _resolve_setup_io(action)
     if save_fn is None or load_fn is None:
@@ -335,7 +346,7 @@ def _patch_action_blending(action, clip_names: list[str], logger) -> bool:
         new_text, n = apply_blending_to_setup(text, modes)
         if n < len(modes):
             logger.warning(
-                "Comp CG: Blending fields %s < clips %s (partial apply)",
+                "Comp CG: Blending fields %s < media layers %s (partial apply)",
                 n,
                 len(modes),
             )
