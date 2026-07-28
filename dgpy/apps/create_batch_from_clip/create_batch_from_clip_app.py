@@ -3,50 +3,14 @@
 from __future__ import annotations
 
 import dgpy_batch_prefs
+import dgpy_flame_attr
 import dgpy_flame_types
 import dgpy_log
 
-__version__ = "1.0.9"
+__version__ = "1.0.10"
 
-_BIT_DEPTH_FP_THRESHOLD = 16
 # Schematic gap Clip → Render (Flame coords; ~2× legacy node unit)
 _RENDER_OFFSET_X = 300
-
-
-def _attr_value(obj, name: str, default=None):
-    if obj is None or not hasattr(obj, name):
-        return default
-    val = getattr(obj, name)
-    if val is not None and hasattr(val, "get_value"):
-        try:
-            return val.get_value()
-        except Exception:  # noqa: BLE001
-            pass
-    return val
-
-
-def _clip_name(clip) -> str:
-    name = _attr_value(clip, "name", None)
-    if name is None:
-        return "clip"
-    text = str(name).strip().strip("'\"")
-    return text or "clip"
-
-
-def _primary_segment(clip):
-    try:
-        versions = getattr(clip, "versions", None) or []
-        if not versions:
-            return None
-        tracks = getattr(versions[0], "tracks", None) or []
-        if not tracks:
-            return None
-        segments = getattr(tracks[0], "segments", None) or []
-        if not segments:
-            return None
-        return segments[0]
-    except Exception:  # noqa: BLE001
-        return None
 
 
 def _find_clip_node(batch, before_ids: set[int]):
@@ -63,32 +27,9 @@ def _find_clip_node(batch, before_ids: set[int]):
     return nodes[-1] if nodes else None
 
 
-def _try_set(obj, name: str, value, logger) -> None:
-    if value is None:
-        return
-    try:
-        setattr(obj, name, value)
-    except Exception as exc:  # noqa: BLE001
-        logger.debug("skip set %s: %s", name, exc)
-
-
-def _node_xy(node) -> tuple[int, int]:
-    x = _attr_value(node, "pos_x", 0)
-    y = _attr_value(node, "pos_y", 0)
-    try:
-        xi = int(x or 0)
-    except (TypeError, ValueError):
-        xi = 0
-    try:
-        yi = int(y or 0)
-    except (TypeError, ValueError):
-        yi = 0
-    return xi, yi
-
-
 def _place_render_right_of_clip(clip_node, render, logger) -> None:
     """Put Render to the right of Clip (pos_x may be PyAttribute)."""
-    cx, cy = _node_xy(clip_node)
+    cx, cy = dgpy_flame_attr.node_xy(clip_node)
     rx = cx + _RENDER_OFFSET_X
     try:
         render.pos_x = rx
@@ -105,18 +46,6 @@ def _place_render_right_of_clip(clip_node, render, logger) -> None:
         logger.warning(
             "Create Batch from Clip: could not set Render pos: %s", exc
         )
-
-
-def _bit_depth_string(clip) -> str | None:
-    raw = _attr_value(clip, "bit_depth", None)
-    if raw is None:
-        return None
-    try:
-        depth = int(raw)
-    except (TypeError, ValueError):
-        return str(raw)
-    suffix = " fp" if depth >= _BIT_DEPTH_FP_THRESHOLD else ""
-    return f"{depth}-bit{suffix}"
 
 
 def _connect_clip_to_render(batch, clip_node, render, logger) -> bool:
@@ -145,57 +74,8 @@ def _connect_clip_to_render(batch, clip_node, render, logger) -> bool:
     return False
 
 
-def _apply_render_metadata(
-    clip, clip_node, render, batch, shelf_name: str, logger
-) -> None:
-    duration = _attr_value(clip_node, "duration", None)
-    if duration is None:
-        duration = _attr_value(clip, "duration", None)
-
-    _try_set(render, "range_start", 1, logger)
-    if duration is not None:
-        _try_set(batch, "duration", duration, logger)
-        _try_set(render, "range_end", duration, logger)
-
-    _try_set(render, "frame_rate", _attr_value(clip, "frame_rate", None), logger)
-    _try_set(render, "bit_depth", _bit_depth_string(clip), logger)
-    _try_set(render, "format", "RGB-A", logger)
-    _try_set(render, "setup_mode", False, logger)
-    _try_set(render, "destination", ("Batch Reels", shelf_name), logger)
-
-    segment = _primary_segment(clip)
-    if segment is not None:
-        _try_set(
-            render, "shot_name", _attr_value(segment, "shot_name", None), logger
-        )
-        _try_set(
-            render, "tape_name", _attr_value(segment, "tape_name", None), logger
-        )
-        _try_set(
-            render,
-            "source_timecode",
-            _attr_value(segment, "source_in", None),
-            logger,
-        )
-        _try_set(
-            render,
-            "record_timecode",
-            _attr_value(segment, "record_in", None),
-            logger,
-        )
-
-    in_mark = _attr_value(clip, "in_mark", None)
-    out_mark = _attr_value(clip, "out_mark", None)
-    if in_mark is not None:
-        _try_set(render, "in_mark", in_mark, logger)
-    if out_mark is not None:
-        _try_set(render, "out_mark", out_mark, logger)
-
-    _try_set(render, "name", _clip_name(clip), logger)
-
-
 def _create_one_batch(flame, clip, nb_reels: int, shelves: list[str], logger) -> None:
-    name = _clip_name(clip)
+    name = dgpy_flame_attr.clip_name(clip)
     create = flame.batch.create_batch_group
     try:
         batch = create(name, nb_reels=nb_reels, shelf_reels=shelves)
@@ -220,7 +100,9 @@ def _create_one_batch(flame, clip, nb_reels: int, shelves: list[str], logger) ->
     render = batch.create_node("Render")
     _connect_clip_to_render(batch, clip_node, render, logger)
     shelf_name = shelves[0] if shelves else "Batch Renders"
-    _apply_render_metadata(clip, clip_node, render, batch, shelf_name, logger)
+    dgpy_flame_attr.apply_render_metadata(
+        clip, clip_node, render, batch, shelf_name, logger
+    )
     # After connect/metadata — Flame may leave Render on top of Clip
     _place_render_right_of_clip(clip_node, render, logger)
     try:
@@ -262,7 +144,7 @@ def create_batches_from_selection(selection) -> None:
             failed += 1
             logger.warning(
                 "Create Batch from Clip failed for %s: %s",
-                _clip_name(clip),
+                dgpy_flame_attr.clip_name(clip),
                 exc,
             )
     logger.info("Create Batch from Clip: ok %s (failed %s)", ok, failed)

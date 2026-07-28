@@ -12,7 +12,7 @@ import dgpy_manifest
 import dgpy_paths
 import dgpy_sync
 
-__version__ = "0.3.9"
+__version__ = "0.3.10"
 
 _WINDOW: QtWidgets.QWidget | None = None
 
@@ -389,13 +389,23 @@ class ManagerWindow(QtWidgets.QDialog):
                 dgpy_sync.partition_for_phased_install(packages)
             )
             root = self._cfg.resolved_install_root()
+            # dgpy_sync.py lives in manager — after writing it, later phases
+            # must call install_many(..., use_ondisk_installer=True).
+            sync_updated = False
 
             if core_pkgs:
                 self._logger.info("Install phase: core")
                 done.extend(dgpy_sync.install_many(core_pkgs, root=root))
             if manager_pkgs:
                 self._logger.info("Install phase: manager")
-                done.extend(dgpy_sync.install_many(manager_pkgs, root=root))
+                done.extend(
+                    dgpy_sync.install_many(
+                        manager_pkgs,
+                        root=root,
+                        use_ondisk_installer=bool(core_pkgs),
+                    )
+                )
+                sync_updated = True
 
             if core_pkgs or manager_pkgs:
                 self._logger.info("Install phase: Rescan (after platform)")
@@ -411,7 +421,13 @@ class ManagerWindow(QtWidgets.QDialog):
                     "Install phase: apps (%s)",
                     ", ".join(p.package_id for p in app_pkgs),
                 )
-                done.extend(dgpy_sync.install_many(app_pkgs, root=root))
+                done.extend(
+                    dgpy_sync.install_many(
+                        app_pkgs,
+                        root=root,
+                        use_ondisk_installer=sync_updated,
+                    )
+                )
                 self._logger.info("Install phase: Rescan (after apps)")
                 if self._rescan_hooks():
                     rescans.append("apps")

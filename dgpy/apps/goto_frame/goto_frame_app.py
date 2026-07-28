@@ -2,22 +2,11 @@
 
 from __future__ import annotations
 
+import dgpy_flame_attr
 import dgpy_flame_types
 import dgpy_log
 
-__version__ = "1.0.1"
-
-
-def _attr_value(obj, name: str, default=None):
-    if obj is None or not hasattr(obj, name):
-        return default
-    val = getattr(obj, name)
-    if val is not None and hasattr(val, "get_value"):
-        try:
-            return val.get_value()
-        except Exception:  # noqa: BLE001
-            pass
-    return val
+__version__ = "1.0.2"
 
 
 def _frame_number(time_obj) -> int | None:
@@ -145,8 +134,8 @@ def go_to_first_frame(selection, parent=None) -> None:
 
 def go_to_last_frame(selection, parent=None) -> None:
     def _resolve(clip):
-        out_mark = _frame_number(_attr_value(clip, "out_mark", None)) or 0
-        duration = _frame_number(_attr_value(clip, "duration", None)) or 0
+        out_mark = _frame_number(dgpy_flame_attr.attr_value(clip, "out_mark", None)) or 0
+        duration = _frame_number(dgpy_flame_attr.attr_value(clip, "duration", None)) or 0
         value = max(out_mark, duration)
         return value if value > 0 else None
 
@@ -155,14 +144,14 @@ def go_to_last_frame(selection, parent=None) -> None:
 
 def go_to_in_mark(selection, parent=None) -> None:
     def _resolve(clip):
-        return _attr_value(clip, "in_mark", None)
+        return dgpy_flame_attr.attr_value(clip, "in_mark", None)
 
     _run(selection, label="Go To In Mark", resolve_time=_resolve, parent=parent)
 
 
 def go_to_out_mark(selection, parent=None) -> None:
     def _resolve(clip):
-        return _attr_value(clip, "out_mark", None)
+        return dgpy_flame_attr.attr_value(clip, "out_mark", None)
 
     _run(selection, label="Go To Out Mark", resolve_time=_resolve, parent=parent)
 

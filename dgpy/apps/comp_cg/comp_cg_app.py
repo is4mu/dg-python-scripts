@@ -8,10 +8,11 @@ import tempfile
 from pathlib import Path
 
 import dgpy_batch_prefs
+import dgpy_flame_attr
 import dgpy_flame_types
 import dgpy_log
 
-__version__ = "1.0.3"
+__version__ = "1.0.4"
 
 _NODE_UNIT = 150
 _BATCH_NAME = "comp_cg"
@@ -37,26 +38,6 @@ _NAME_RULES: tuple[tuple[tuple[str, ...], str], ...] = (
 _SURFACE_BLENDING_RE = re.compile(r"^(\t\tBlending )\d+(\s*)$")
 
 
-def _attr_value(obj, name: str, default=None):
-    if obj is None or not hasattr(obj, name):
-        return default
-    val = getattr(obj, name)
-    if val is not None and hasattr(val, "get_value"):
-        try:
-            return val.get_value()
-        except Exception:  # noqa: BLE001
-            pass
-    return val
-
-
-def clip_name(clip) -> str:
-    name = _attr_value(clip, "name", None)
-    if name is None:
-        return "clip"
-    text = str(name).strip().strip("'\"")
-    return text or "clip"
-
-
 def mode_from_clip_name(name: str) -> str:
     folded = name.casefold()
     for tokens, mode in _NAME_RULES:
@@ -70,7 +51,7 @@ def blending_int(mode: str) -> int:
 
 
 def _sort_clips_by_name(clips: list) -> list:
-    return sorted(clips, key=lambda c: clip_name(c).casefold())
+    return sorted(clips, key=lambda c: dgpy_flame_attr.clip_name(c).casefold())
 
 
 def _set_xy(node, x: int, y: int, logger, label: str) -> None:
@@ -79,20 +60,6 @@ def _set_xy(node, x: int, y: int, logger, label: str) -> None:
         node.pos_y = int(y)
     except Exception as exc:  # noqa: BLE001
         logger.warning("Comp CG: could not set %s pos: %s", label, exc)
-
-
-def _node_xy(node) -> tuple[int, int]:
-    x = _attr_value(node, "pos_x", 0)
-    y = _attr_value(node, "pos_y", 0)
-    try:
-        xi = int(x or 0)
-    except (TypeError, ValueError):
-        xi = 0
-    try:
-        yi = int(y or 0)
-    except (TypeError, ValueError):
-        yi = 0
-    return xi, yi
 
 
 def _node_type(node) -> str:
@@ -318,7 +285,7 @@ def run_comp_cg(selection) -> None:
         return
 
     clips = _sort_clips_by_name(clips)
-    names = [clip_name(c) for c in clips]
+    names = [dgpy_flame_attr.clip_name(c) for c in clips]
     nb_reels = dgpy_batch_prefs.schematic_reel_count()
     shelves = dgpy_batch_prefs.shelf_reel_names()
     logger.info(
@@ -373,23 +340,23 @@ def run_comp_cg(selection) -> None:
 
     action = None
     for index, (clip, node) in enumerate(zip(clips, clip_nodes)):
-        nx, ny = _node_xy(node)
+        nx, ny = dgpy_flame_attr.node_xy(node)
         try:
             if index == 0:
                 action = batch.create_node("Action")
-                _connect(batch, node, action, logger, f"{clip_name(clip)}→Action")
+                _connect(batch, node, action, logger, f"{dgpy_flame_attr.clip_name(clip)}→Action")
                 _set_xy(action, nx + (_NODE_UNIT * 2), ny, logger, "Action")
             else:
                 if action is None:
-                    logger.warning("Comp CG: Action missing; skip %s", clip_name(clip))
+                    logger.warning("Comp CG: Action missing; skip %s", dgpy_flame_attr.clip_name(clip))
                     continue
                 media = action.add_media()
-                _connect(batch, node, media, logger, f"{clip_name(clip)}→Media")
+                _connect(batch, node, media, logger, f"{dgpy_flame_attr.clip_name(clip)}→Media")
                 _set_xy(media, nx + _NODE_UNIT, ny, logger, "Media")
         except Exception as exc:  # noqa: BLE001
             logger.warning(
                 "Comp CG: wire failed for %s: %s",
-                clip_name(clip),
+                dgpy_flame_attr.clip_name(clip),
                 exc,
             )
 

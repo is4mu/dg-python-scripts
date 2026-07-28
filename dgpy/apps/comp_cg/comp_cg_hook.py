@@ -15,7 +15,7 @@ for _p in (_DGPY_ROOT, _APP_DIR):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
-__version__ = "1.0.3"
+__version__ = "1.0.4"
 
 _pending_selection: list | None = None
 

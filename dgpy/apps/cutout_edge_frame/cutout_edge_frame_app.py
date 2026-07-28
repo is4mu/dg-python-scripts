@@ -2,26 +2,15 @@
 
 from __future__ import annotations
 
+import dgpy_flame_attr
 import dgpy_flame_types
 import dgpy_gui
 import dgpy_log
 
-__version__ = "1.0.7"
+__version__ = "1.0.8"
 
 _FIRST_CUT_FRAME = 2
 _DEFAULT_RANGE_START = 1
-
-
-def _attr_value(obj, name: str, default=None):
-    if obj is None or not hasattr(obj, name):
-        return default
-    val = getattr(obj, name)
-    if val is not None and hasattr(val, "get_value"):
-        try:
-            return val.get_value()
-        except Exception:  # noqa: BLE001
-            pass
-    return val
 
 
 def get_targets(selection, *, logger=None) -> list:
@@ -79,7 +68,7 @@ def _frame_number(time_obj) -> int | None:
 
 
 def _clip_duration_frame(clip) -> int | None:
-    dur = _attr_value(clip, "duration", None)
+    dur = dgpy_flame_attr.attr_value(clip, "duration", None)
     return _frame_number(dur)
 
 
@@ -91,14 +80,14 @@ def _segment_duration_frames(segment) -> int | None:
     - record_duration.frame → true length (1F → 1)
     - record_out - record_in → 1F → 0 (inclusive); N → N-1
     """
-    rec = _frame_number(_attr_value(segment, "record_duration", None))
+    rec = _frame_number(dgpy_flame_attr.attr_value(segment, "record_duration", None))
     if rec is not None and rec > 0:
         return rec
-    dur = _frame_number(_attr_value(segment, "duration", None))
+    dur = _frame_number(dgpy_flame_attr.attr_value(segment, "duration", None))
     if dur is not None and dur > 0:
         return dur
-    rin = _frame_number(_attr_value(segment, "record_in", None))
-    rout = _frame_number(_attr_value(segment, "record_out", None))
+    rin = _frame_number(dgpy_flame_attr.attr_value(segment, "record_in", None))
+    rout = _frame_number(dgpy_flame_attr.attr_value(segment, "record_out", None))
     if rin is not None and rout is not None:
         span = abs(rout - rin)
         # Inclusive 1F: in==out → span 0; longer: span == length - 1

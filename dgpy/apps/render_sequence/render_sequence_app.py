@@ -2,28 +2,17 @@
 
 from __future__ import annotations
 
+import dgpy_flame_attr
 import dgpy_flame_types
 import dgpy_log
 
-__version__ = "1.0.3"
+__version__ = "1.0.4"
 
 _SEQUENCES_REEL_TYPE = "Sequences"
 
 
-def _attr_value(obj, name: str, default=None):
-    if obj is None or not hasattr(obj, name):
-        return default
-    val = getattr(obj, name)
-    if val is not None and hasattr(val, "get_value"):
-        try:
-            return val.get_value()
-        except Exception:  # noqa: BLE001
-            pass
-    return val
-
-
 def _reel_type(reel) -> str:
-    raw = _attr_value(reel, "type", "")
+    raw = dgpy_flame_attr.attr_value(reel, "type", "")
     return str(raw or "")
 
 

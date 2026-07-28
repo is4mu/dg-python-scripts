@@ -17,7 +17,7 @@ import dgpy_semver
 from dgpy_http import download_asset_to, download_to
 from dgpy_manifest import Manifest, ManifestPackage
 
-__version__ = "0.3.9"
+__version__ = "0.3.10"
 
 STATUS_NEW = "New"
 STATUS_UPDATE = "Update"
@@ -292,13 +292,31 @@ def install_package(
 def install_many(
     packages: list[ManifestPackage],
     root: Path | None = None,
+    *,
+    use_ondisk_installer: bool = False,
 ) -> list[str]:
-    """Install packages in dependency order. Returns list of installed ids."""
+    """Install packages in dependency order. Returns list of installed ids.
+
+    When ``use_ondisk_installer`` is True (or after installing core/manager in
+    this call), ``install_package`` is loaded from on-disk ``dgpy_sync.py`` so
+    later packages see updated install logic (e.g. assets[]) in the same Flame
+    session. Phased Update All must pass ``use_ondisk_installer=True`` for the
+    Apps phase after Manager has been written to disk.
+    """
     ordered = _topo_sort(packages)
     # Only install requested set, but ensure deps that are in the list come first.
     wanted = {p.package_id for p in packages}
     done: list[str] = []
     install_fn = install_package
+    if use_ondisk_installer:
+        try:
+            install_fn = _fresh_install_package()
+        except Exception as exc:  # noqa: BLE001
+            dgpy_log.get_logger().warning(
+                "Could not load on-disk dgpy_sync before install (%s); "
+                "using in-session install_package",
+                exc,
+            )
     for pkg in ordered:
         if pkg.package_id not in wanted:
             continue

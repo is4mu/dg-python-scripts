@@ -3,74 +3,15 @@
 from __future__ import annotations
 
 import dgpy_batch_prefs
+import dgpy_flame_attr
 import dgpy_flame_types
 import dgpy_log
 
-__version__ = "1.0.4"
+__version__ = "1.0.5"
 
-_BIT_DEPTH_FP_THRESHOLD = 16
 _NODE_UNIT = 150
 _BATCH_NAME = "rsz"
 _MASTER_NAME = "rsz_master"
-
-
-def _attr_value(obj, name: str, default=None):
-    if obj is None or not hasattr(obj, name):
-        return default
-    val = getattr(obj, name)
-    if val is not None and hasattr(val, "get_value"):
-        try:
-            return val.get_value()
-        except Exception:  # noqa: BLE001
-            pass
-    return val
-
-
-def _clip_name(clip) -> str:
-    name = _attr_value(clip, "name", None)
-    if name is None:
-        return "clip"
-    text = str(name).strip().strip("'\"")
-    return text or "clip"
-
-
-def _primary_segment(clip):
-    try:
-        versions = getattr(clip, "versions", None) or []
-        if not versions:
-            return None
-        tracks = getattr(versions[0], "tracks", None) or []
-        if not tracks:
-            return None
-        segments = getattr(tracks[0], "segments", None) or []
-        if not segments:
-            return None
-        return segments[0]
-    except Exception:  # noqa: BLE001
-        return None
-
-
-def _try_set(obj, name: str, value, logger) -> None:
-    if value is None:
-        return
-    try:
-        setattr(obj, name, value)
-    except Exception as exc:  # noqa: BLE001
-        logger.debug("skip set %s: %s", name, exc)
-
-
-def _node_xy(node) -> tuple[int, int]:
-    x = _attr_value(node, "pos_x", 0)
-    y = _attr_value(node, "pos_y", 0)
-    try:
-        xi = int(x or 0)
-    except (TypeError, ValueError):
-        xi = 0
-    try:
-        yi = int(y or 0)
-    except (TypeError, ValueError):
-        yi = 0
-    return xi, yi
 
 
 def _set_xy(node, x: int, y: int, logger, label: str) -> None:
@@ -103,18 +44,6 @@ def _clip_nodes_after_copy(batch, before_ids: set[int]) -> list:
     return clips if clips else added
 
 
-def _bit_depth_string(clip) -> str | None:
-    raw = _attr_value(clip, "bit_depth", None)
-    if raw is None:
-        return None
-    try:
-        depth = int(raw)
-    except (TypeError, ValueError):
-        return str(raw)
-    suffix = " fp" if depth >= _BIT_DEPTH_FP_THRESHOLD else ""
-    return f"{depth}-bit{suffix}"
-
-
 def _connect(batch, src, dst, logger, label: str) -> bool:
     attempts = (
         ("Default", None),
@@ -141,55 +70,6 @@ def _connect(batch, src, dst, logger, label: str) -> bool:
     return False
 
 
-def _apply_render_metadata(
-    clip, clip_node, render, batch, shelf_name: str, logger
-) -> None:
-    duration = _attr_value(clip_node, "duration", None)
-    if duration is None:
-        duration = _attr_value(clip, "duration", None)
-
-    _try_set(render, "range_start", 1, logger)
-    if duration is not None:
-        _try_set(batch, "duration", duration, logger)
-        _try_set(render, "range_end", duration, logger)
-
-    _try_set(render, "frame_rate", _attr_value(clip, "frame_rate", None), logger)
-    _try_set(render, "bit_depth", _bit_depth_string(clip), logger)
-    _try_set(render, "format", "RGB-A", logger)
-    _try_set(render, "setup_mode", False, logger)
-    _try_set(render, "destination", ("Batch Reels", shelf_name), logger)
-
-    segment = _primary_segment(clip)
-    if segment is not None:
-        _try_set(
-            render, "shot_name", _attr_value(segment, "shot_name", None), logger
-        )
-        _try_set(
-            render, "tape_name", _attr_value(segment, "tape_name", None), logger
-        )
-        _try_set(
-            render,
-            "source_timecode",
-            _attr_value(segment, "source_in", None),
-            logger,
-        )
-        _try_set(
-            render,
-            "record_timecode",
-            _attr_value(segment, "record_in", None),
-            logger,
-        )
-
-    in_mark = _attr_value(clip, "in_mark", None)
-    out_mark = _attr_value(clip, "out_mark", None)
-    if in_mark is not None:
-        _try_set(render, "in_mark", in_mark, logger)
-    if out_mark is not None:
-        _try_set(render, "out_mark", out_mark, logger)
-
-    _try_set(render, "name", f"{_clip_name(clip)}_rsz", logger)
-
-
 def _wire_one(
     batch, clip, clip_node, rsz_master, shelf_name: str, logger
 ) -> None:
@@ -199,7 +79,7 @@ def _wire_one(
     except Exception as exc:  # noqa: BLE001
         logger.warning("Resize All Clips: mimic_link failed: %s", exc)
 
-    cx, cy = _node_xy(clip_node)
+    cx, cy = dgpy_flame_attr.node_xy(clip_node)
     rsz_x = cx + (_NODE_UNIT * 2)
     render_x = rsz_x + _NODE_UNIT
     _set_xy(rsz, rsz_x, cy, logger, "Resize")
@@ -209,7 +89,15 @@ def _wire_one(
     render = batch.create_node("Render")
     _connect(batch, rsz, render, logger, "Resize→Render")
     _set_xy(render, render_x, cy, logger, "Render")
-    _apply_render_metadata(clip, clip_node, render, batch, shelf_name, logger)
+    dgpy_flame_attr.apply_render_metadata(
+        clip,
+        clip_node,
+        render,
+        batch,
+        shelf_name,
+        logger,
+        render_name=f"{dgpy_flame_attr.clip_name(clip)}_rsz",
+    )
     # Re-place in case metadata/connect reset layout
     _set_xy(rsz, rsz_x, cy, logger, "Resize")
     _set_xy(render, render_x, cy, logger, "Render")
@@ -274,7 +162,7 @@ def resize_all_clips_from_selection(selection) -> None:
         )
 
     rsz_master = batch.create_node("Resize")
-    _try_set(rsz_master, "name", _MASTER_NAME, logger)
+    dgpy_flame_attr.try_set(rsz_master, "name", _MASTER_NAME, logger)
     _set_xy(rsz_master, 0, _NODE_UNIT, logger, "rsz_master")
 
     ok = 0
@@ -287,7 +175,7 @@ def resize_all_clips_from_selection(selection) -> None:
             failed += 1
             logger.warning(
                 "Resize All Clips failed for %s: %s",
-                _clip_name(clip),
+                dgpy_flame_attr.clip_name(clip),
                 exc,
             )
 

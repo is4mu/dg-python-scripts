@@ -2,23 +2,12 @@
 
 from __future__ import annotations
 
+import dgpy_flame_attr
 import dgpy_flame_types
 import dgpy_gui
 import dgpy_log
 
-__version__ = "1.0.4"
-
-
-def _attr_value(obj, name: str, default=None):
-    if obj is None or not hasattr(obj, name):
-        return default
-    val = getattr(obj, name)
-    if val is not None and hasattr(val, "get_value"):
-        try:
-            return val.get_value()
-        except Exception:  # noqa: BLE001
-            pass
-    return val
+__version__ = "1.0.5"
 
 
 def get_targets(selection, *, logger=None) -> list:
@@ -48,13 +37,13 @@ def get_targets(selection, *, logger=None) -> list:
 
 
 def _primary_track(clip):
-    return _attr_value(clip, "primary_track", None)
+    return dgpy_flame_attr.attr_value(clip, "primary_track", None)
 
 
 def _is_video_track(track) -> bool:
     """True unless clearly an audio track."""
-    typ = str(_attr_value(track, "type", "") or "")
-    name = str(_attr_value(track, "name", "") or "")
+    typ = str(dgpy_flame_attr.attr_value(track, "type", "") or "")
+    name = str(dgpy_flame_attr.attr_value(track, "name", "") or "")
     combined = f"{typ} {name}".lower()
     if "audio" in combined:
         return False
