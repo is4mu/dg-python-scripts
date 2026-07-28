@@ -15,14 +15,13 @@ for _p in (_DGPY_ROOT, _APP_DIR):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
-__version__ = "1.0.3"
+__version__ = "1.0.4"
 
 _pending_selection: list | None = None
 
 
 def _scope_visible(selection) -> bool:
     global _pending_selection
-    import batch_resize_clips_app as app
     import dgpy_flame_types
     import dgpy_log
 
@@ -30,7 +29,7 @@ def _scope_visible(selection) -> bool:
     items = dgpy_flame_types.as_list(selection)
     _pending_selection = items
     try:
-        clips = app.get_clips(items, logger=logger)
+        clips = dgpy_flame_types.get_clips(items, logger=logger)
     except Exception as exc:  # noqa: BLE001
         logger.warning(
             "DG2: Clip Resize All Clips isVisible error pending=%s: %s",

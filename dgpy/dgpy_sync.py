@@ -17,7 +17,7 @@ import dgpy_semver
 from dgpy_http import download_asset_to, download_to
 from dgpy_manifest import Manifest, ManifestPackage
 
-__version__ = "0.3.8"
+__version__ = "0.3.9"
 
 STATUS_NEW = "New"
 STATUS_UPDATE = "Update"
@@ -346,6 +346,22 @@ def _fresh_install_package():
 
 
 PROTECTED_PACKAGES = frozenset({"core", "manager"})
+
+
+def partition_for_phased_install(
+    packages: list[ManifestPackage],
+) -> tuple[list[ManifestPackage], list[ManifestPackage], list[ManifestPackage]]:
+    """Split into (core, manager, apps) for Core→Manager→Rescan→Apps.
+
+    Each of core/manager is either empty or a single-element list.
+    Apps keep relative order from the input list (caller may topo-sort via
+    install_many).
+    """
+    by_id = {p.package_id: p for p in packages}
+    core = [by_id["core"]] if "core" in by_id else []
+    manager = [by_id["manager"]] if "manager" in by_id else []
+    apps = [p for p in packages if p.package_id not in PROTECTED_PACKAGES]
+    return core, manager, apps
 
 
 def uninstall_package(package_id: str, root: Path | None = None) -> None:

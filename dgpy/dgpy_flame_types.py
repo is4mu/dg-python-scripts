@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-__version__ = "0.1.1"
+__version__ = "0.1.2"
 
 
 def as_list(selection) -> list:
@@ -176,7 +176,7 @@ def clips_from_container(
     return out
 
 
-def get_clips(selection) -> list:
+def get_clips(selection, *, logger=None) -> list:
     """Resolve clips/sequences from selection (direct or container children)."""
     clips: list = []
     for item in as_list(selection):
@@ -184,7 +184,7 @@ def get_clips(selection) -> list:
             clips.append(item)
             continue
         if is_media_container(item):
-            clips.extend(clips_from_container(item))
+            clips.extend(clips_from_container(item, logger=logger))
     return clips
 
 

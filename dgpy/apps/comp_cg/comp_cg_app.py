@@ -2,19 +2,17 @@
 
 from __future__ import annotations
 
-import json
 import re
 import shutil
 import tempfile
 from pathlib import Path
 
+import dgpy_batch_prefs
 import dgpy_flame_types
 import dgpy_log
 
-__version__ = "1.0.2"
+__version__ = "1.0.3"
 
-_DEFAULT_SCHEMATIC_REELS = 3
-_DEFAULT_SHELF_REELS = 1
 _NODE_UNIT = 150
 _BATCH_NAME = "comp_cg"
 
@@ -37,71 +35,6 @@ _NAME_RULES: tuple[tuple[tuple[str, ...], str], ...] = (
 )
 
 _SURFACE_BLENDING_RE = re.compile(r"^(\t\tBlending )\d+(\s*)$")
-
-
-def get_clips(selection, *, logger=None) -> list:
-    """PyClip/PySequence, or Reel/Folder/Library via .clips+.sequences."""
-    out: list = []
-    for item in dgpy_flame_types.as_list(selection):
-        if dgpy_flame_types.is_clip(item) or dgpy_flame_types.is_sequence(item):
-            out.append(item)
-            continue
-        if dgpy_flame_types.is_media_container(item):
-            out.extend(
-                dgpy_flame_types.clips_from_container(item, logger=logger)
-            )
-    return out
-
-
-def _editdesk_reels_pref_paths() -> list[Path]:
-    home = Path.home()
-    return [
-        home
-        / "Library/Preferences/Autodesk/flame/status/EditdeskReelsCurrent.json",
-        home / "flame/status/EditdeskReelsCurrent.json",
-    ]
-
-
-def _read_editdesk_setting(name: str, default: int) -> int:
-    for path in _editdesk_reels_pref_paths():
-        if not path.is_file():
-            continue
-        try:
-            data = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            continue
-        for row in data.get("Settings") or []:
-            if not isinstance(row, dict):
-                continue
-            if row.get("name") != name:
-                continue
-            try:
-                value = int(row.get("value"))
-            except (TypeError, ValueError):
-                return default
-            return value if value > 0 else default
-    return default
-
-
-def schematic_reel_count() -> int:
-    return _read_editdesk_setting(
-        "DefaultBatchGroupReelsNumber", _DEFAULT_SCHEMATIC_REELS
-    )
-
-
-def shelf_reel_count() -> int:
-    return _read_editdesk_setting(
-        "DefaultBatchRenderGroupReelsNumber", _DEFAULT_SHELF_REELS
-    )
-
-
-def shelf_reel_names(count: int | None = None) -> list[str]:
-    n = shelf_reel_count() if count is None else count
-    if n <= 0:
-        n = _DEFAULT_SHELF_REELS
-    if n == 1:
-        return ["Batch Renders"]
-    return ["Batch Renders"] + [f"Batch Renders {i}" for i in range(2, n + 1)]
 
 
 def _attr_value(obj, name: str, default=None):
@@ -379,15 +312,15 @@ def run_comp_cg(selection) -> None:
     import flame
 
     logger = dgpy_log.setup()
-    clips = get_clips(selection, logger=logger)
+    clips = dgpy_flame_types.get_clips(selection, logger=logger)
     if len(clips) < 2:
         logger.info("Comp CG: need 2+ clips (got %s)", len(clips))
         return
 
     clips = _sort_clips_by_name(clips)
     names = [clip_name(c) for c in clips]
-    nb_reels = schematic_reel_count()
-    shelves = shelf_reel_names()
+    nb_reels = dgpy_batch_prefs.schematic_reel_count()
+    shelves = dgpy_batch_prefs.shelf_reel_names()
     logger.info(
         "Comp CG: clips=%s nb_reels=%s names=%s",
         len(clips),
