@@ -22,8 +22,9 @@ def package_presets_dir() -> Path:
 def list_presets() -> list[ExportPresetDef]:
     """One menu entry per non-empty *.xml in presets/ (sorted by name).
 
-    Filenames must not contain spaces (Manager download URLs). Underscores in
-    the stem become spaces in the menu label (OA_Master.xml → "OA Master").
+    Filenames must not contain spaces (Manager download URLs).
+    Hyphens in the stem become spaces in the menu label
+    (OA-Master.xml → \"OA Master\"). Underscores stay (to_MA.xml → \"to_MA\").
     """
     root = package_presets_dir()
     if not root.is_dir():
@@ -37,7 +38,7 @@ def list_presets() -> list[ExportPresetDef]:
             continue
         if " " in path.name:
             continue  # skip illegal names rather than break Install
-        label = stem.replace("_", " ")
+        label = stem.replace("-", " ")
         out.append(ExportPresetDef(id=stem, label=label, path=path.resolve()))
     return out
 
