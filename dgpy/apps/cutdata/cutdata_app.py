@@ -6,7 +6,7 @@ import dgpy_flame_types
 import dgpy_gui
 import dgpy_log
 
-__version__ = "1.0.4"
+__version__ = "1.0.5"
 
 CUTDATA_REEL_NAME = "Cutdata"
 MARKER_TIME_OFFSET = -1
@@ -240,8 +240,19 @@ def add_markers_for_cutdata(selection, parent=None) -> None:
 def _delete_all_audio(clip, logger, label: str) -> tuple[int, int]:
     import flame
 
-    tracks = list(getattr(clip, "audio_tracks", None) or [])
+    raw = getattr(clip, "audio_tracks", None)
+    if raw is not None and hasattr(raw, "get_value"):
+        try:
+            raw = raw.get_value()
+        except Exception:  # noqa: BLE001
+            pass
+    tracks = list(raw or [])
     if not tracks:
+        logger.info(
+            "%s: no audio_tracks on %s",
+            label,
+            dgpy_flame_types.item_label(clip),
+        )
         return 0, 0
     for track in tracks:
         for ch in list(getattr(track, "channels", None) or []):
@@ -262,7 +273,18 @@ def _delete_all_audio(clip, logger, label: str) -> tuple[int, int]:
 
 
 def _select_only(clip, logger, label: str) -> None:
+    """Clear Timeline/Media selection, then select only this clip/sequence.
+
+    Hard Commit Selection in Timeline uses the *timeline* selection. If
+    segments remain selected, Flame hard-commits those segments instead of
+    the sequence — Deselect first (legacy cutout pattern).
+    """
     import flame
+
+    try:
+        flame.execute_shortcut("Deselect")
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("%s: Deselect shortcut failed: %s", label, exc)
 
     try:
         flame.media_panel.selected_entries = [clip]
@@ -273,10 +295,16 @@ def _select_only(clip, logger, label: str) -> None:
             dgpy_flame_types.item_label(clip),
             exc,
         )
-        try:
-            clip.selected = True
-        except Exception:  # noqa: BLE001
-            pass
+
+    try:
+        clip.selected = True
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "%s: clip.selected failed for %s: %s",
+            label,
+            dgpy_flame_types.item_label(clip),
+            exc,
+        )
 
 
 def _run_shortcut(name: str, logger, label: str) -> bool:
