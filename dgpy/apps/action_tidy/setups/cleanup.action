@@ -2,7 +2,7 @@ Module Action
 Program Flame
 Version 2025.2.7
 FileVersion 4.000000
-CreationDate Tue Jul 28 12:12:12 2026
+CreationDate Tue Jul 28 12:47:21 2026
 
 FrameWidth 1920
 FrameHeight 1080
@@ -13,7 +13,7 @@ FrameColourSpace "Unknown"
 
 	MinFrame 1
 	CurrentFrame 1
-	MaxFrames 40
+	MaxFrames 100
 	AnimRefFrame 1
 	ShadingMode no
 	WireframeMode no
@@ -161,7 +161,7 @@ MotionBlurTopChannel
 		SchematicTransparency 0
 		AxisIconScale 100
 		ClipInfo 0
-		SubMenu AXIS_MENU
+		SubMenu OUTPUT_MENU
 		ColourClamping no
 		ClampDivide no
 		SceneLinear no
@@ -200,7 +200,7 @@ MotionBlurTopChannel
 # node database
 #
 ConcreteFileVersion 2
-CreationDate Tue Jul 28 12:12:12 2026
+CreationDate Tue Jul 28 12:47:21 2026
 
 
 WorldScale 1
@@ -697,56 +697,12 @@ Node Axis
 			End
 		Channel position/x
 			Extrapolation constant
-			Value 626.300171
-			Size 2
-			KeyVersion 2
-			Key 0
-				Frame 1
-				Value 626.300171
-				RHandle_dX 6.66666651
-				RHandle_dY 0
-				LHandle_dX -6.66666651
-				LHandle_dY 0
-				CurveMode hermite
-				CurveOrder linear
-				End
-			Key 1
-				Frame 21
-				Value 646.300781
-				RHandle_dX 6.66666651
-				RHandle_dY 0
-				LHandle_dX -6.66666651
-				LHandle_dY 0
-				CurveMode hermite
-				CurveOrder linear
-				End
+			Value 0
 			Uncollapsed
 			End
 		Channel position/y
 			Extrapolation constant
-			Value -313.800507
-			Size 2
-			KeyVersion 2
-			Key 0
-				Frame 1
-				Value -313.800507
-				RHandle_dX 6.66666651
-				RHandle_dY 0
-				LHandle_dX -6.66666651
-				LHandle_dY 0
-				CurveMode hermite
-				CurveOrder linear
-				End
-			Key 1
-				Frame 21
-				Value -203.800323
-				RHandle_dX 6.66666651
-				RHandle_dY 0
-				LHandle_dX -6.66666651
-				LHandle_dY 0
-				CurveMode hermite
-				CurveOrder linear
-				End
+			Value 0
 			Uncollapsed
 			End
 		Channel position/z
@@ -771,22 +727,22 @@ Node Axis
 			End
 		Channel rotation/z
 			Extrapolation constant
-			Value -24
+			Value 0
 			Uncollapsed
 			End
 		Channel scaling/x
 			Extrapolation constant
-			Value 80
+			Value 100
 			Uncollapsed
 			End
 		Channel scaling/y
 			Extrapolation constant
-			Value 80
+			Value 100
 			Uncollapsed
 			End
 		Channel scaling/z
 			Extrapolation constant
-			Value 80
+			Value 100
 			Uncollapsed
 			End
 		Channel shearing/x
@@ -1328,7 +1284,7 @@ NumberOfOutputs 1
 	ChnOptFlags 0
 	ChnOptFlags 0
 	Index 0
-		Uuid 		"e91aa552-1c35-4ca7-bb4d-46fca3684ece"
+		Uuid 		"dd3a790f-f5a3-4027-967a-6476e489fe62"
 		Name 		"Output"
 		Active yes
 		CompleteScene yes
@@ -1378,14 +1334,13 @@ NumberOfOutputs 1
 		ShadingMode yes
 		AccumMode 1
 	End
-UIFocus 4
 End
 
 #
 # layers
 #
 ActionLayerFileVersion 2
-CreationDate Tue Jul 28 12:12:12 2026
+CreationDate Tue Jul 28 12:47:21 2026
 
 LayerCount 2
 
@@ -1412,7 +1367,7 @@ Layer 0
 	End
 Layer 1
 	FrontMode 1
-	MatteMode 0
+	MatteMode 1
 	ProxyMode yes
 	FrameMode AS_INPUT
 	ResWidth 1920
@@ -1421,7 +1376,7 @@ Layer 1
 	ResAspect 1.77777779
 	ResScanMode SCAN_FORMAT_FRAME
 	ImageDataType 4
-	FrontConnectedToMatte yes
+	FrontConnectedToMatte no
 	FrontClipName 	"(None)"
 	FrontClipUID 0 0 0
 	MatteClipName 	"(None)"
@@ -1437,7 +1392,7 @@ LayerEnd
 # multitracks
 #
 ActionMTFileVersion 2
-CreationDate Tue Jul 28 12:12:12 2026
+CreationDate Tue Jul 28 12:47:21 2026
 
 
 Layer 0
@@ -1450,16 +1405,22 @@ MultiTrackEnd
 # drawing order
 #
 DrawingOrderFileVersion 1.0
-CreationDate Tue Jul 28 12:12:12 2026
+CreationDate Tue Jul 28 12:47:21 2026
 
 LookupTableFrame 0
 	LookupTableGroup 0
 		LookupTableNPath 2
-			OutputsSize 0
+			OutputsSize 1
+				OutputIndex 0
+				ObjectColor 0
+				End
 			End
 	LookupTableGroup 1
 		LookupTableNPath 1
-			OutputsSize 0
+			OutputsSize 1
+				OutputIndex 0
+				ObjectColor 0
+				End
 			End
 	LookupTableGroup 2
 		LookupTableNPath 3
@@ -1467,11 +1428,17 @@ LookupTableFrame 0
 			End
 	LookupTableGroup 3
 		LookupTableNPath 4
-			OutputsSize 0
+			OutputsSize 1
+				OutputIndex 0
+				ObjectColor 0
+				End
 			End
 	LookupTableGroup 4
 		LookupTableNPath 5
-			OutputsSize 0
+			OutputsSize 1
+				OutputIndex 0
+				ObjectColor 0
+				End
 			End
 	LookupTableGroup 5
 		LookupTableNPath 0

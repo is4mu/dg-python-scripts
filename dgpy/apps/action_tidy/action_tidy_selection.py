@@ -1,4 +1,4 @@
-"""Resolve Timeline / Media Panel selection to segments (primary-track aware)."""
+"""Resolve Timeline / Media Panel selection to segments (primary-version aware)."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ from typing import Any
 
 import dgpy_flame_types
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 
 def _attr(obj: Any, name: str, default=None):
@@ -46,6 +46,43 @@ def is_track(item: Any) -> bool:
         return False
 
 
+def is_gap_segment(seg: Any) -> bool:
+    """
+    Skip blank / Gap timeline segments.
+
+    Prefer type/name == Gap; also treat missing source_width/height like legacy.
+    """
+    for attr in ("type", "segment_type", "name"):
+        val = _attr(seg, attr, None)
+        if val is None:
+            continue
+        text = str(val).strip().lower()
+        if text == "gap" or text.startswith("gap"):
+            return True
+
+    typ = type(seg).__name__.lower()
+    if "gap" in typ:
+        return True
+
+    has_w = hasattr(seg, "source_width")
+    has_h = hasattr(seg, "source_height")
+    if has_w and has_h:
+        try:
+            w = _attr(seg, "source_width", None)
+            h = _attr(seg, "source_height", None)
+            if w is None or h is None:
+                return True
+            if int(w) <= 0 or int(h) <= 0:
+                return True
+        except Exception:  # noqa: BLE001
+            return True
+    else:
+        # Legacy: no source_* attrs → skip (typical Gap)
+        return True
+
+    return False
+
+
 def _primary_track(clip) -> Any:
     return _attr(clip, "primary_track", None)
 
@@ -54,16 +91,31 @@ def _segments_on_track(track) -> list:
     return list(getattr(track, "segments", None) or [])
 
 
-def _segments_from_clip(clip) -> list:
+def _primary_version(clip) -> Any:
     primary = _primary_track(clip)
     if primary is not None:
-        return _segments_on_track(primary)
-    # Fallback: first version, first video-ish track with segments
-    for version in list(getattr(clip, "versions", None) or []):
+        parent = getattr(primary, "parent", None)
+        if parent is not None:
+            return parent
+    return None
+
+
+def _segments_from_clip(clip) -> list:
+    """All segments on all tracks of the version that owns primary_track."""
+    version = _primary_version(clip)
+    if version is not None:
+        out: list = []
         for track in list(getattr(version, "tracks", None) or []):
-            segs = _segments_on_track(track)
-            if segs:
-                return segs
+            out.extend(_segments_on_track(track))
+        return out
+
+    # Fallback: first version that has any segments
+    for version in list(getattr(clip, "versions", None) or []):
+        out = []
+        for track in list(getattr(version, "tracks", None) or []):
+            out.extend(_segments_on_track(track))
+        if out:
+            return out
     return []
 
 
@@ -73,18 +125,18 @@ def _clips_from_reel(reel, *, logger=None) -> list:
 
 def resolve_segments(selection, *, logger=None) -> list:
     """
-    Build unique segment list:
+    Build unique non-Gap segment list:
 
-    - PySegment → itself
+    - PySegment → itself (if not Gap)
     - PyTrack → its segments
-    - Clip / Sequence → all segments on primary track
-    - Reel → clips/sequences in reel → primary-track segments each
+    - Clip / Sequence → all segments on primary version tracks
+    - Reel → clips/sequences → same
     """
     out: list = []
     seen: set[int] = set()
 
     def add_seg(seg) -> None:
-        if seg is None:
+        if seg is None or is_gap_segment(seg):
             return
         oid = id(seg)
         if oid in seen:

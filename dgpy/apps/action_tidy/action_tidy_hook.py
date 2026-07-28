@@ -2,6 +2,7 @@
 Flame: DG2: Segment — Clean Up Action / Clean Up Action (Fit).
 
 Media Panel + Timeline. Template reset via TimelineFX Action load_setup.
+Existing Action: merge Axis Specifics into template before load.
 """
 
 from __future__ import annotations
@@ -50,7 +51,8 @@ def _run(selection, *, template_id: str, title: str) -> None:
                 None,
                 title,
                 "No segments found.\n\n"
-                "Select segments, or a clip/sequence/reel with a primary track.",
+                "Select segments, or a clip/sequence/reel "
+                "(Gaps are skipped).",
             )
             return
 
@@ -59,7 +61,8 @@ def _run(selection, *, template_id: str, title: str) -> None:
             None,
             title,
             f"Apply «{title}» to {n} segment(s)?\n\n"
-            "Existing Action Timeline FX will be replaced by the studio template.",
+            "• No Action → studio template as-is\n"
+            "• Existing Action → clean schematic, keep axis transform",
         )
         if not ok:
             return
@@ -111,9 +114,9 @@ def _action_entries() -> list[dict]:
 
 
 def _timeline_group() -> list[dict]:
+    # Same shape as Color timeline menus — no group "name" (avoids DG2: Segment×2).
     return [
         {
-            "name": "DG2: Segment",
             "hierarchy": ["DG2: Segment"],
             "order": 43,
             "actions": [
