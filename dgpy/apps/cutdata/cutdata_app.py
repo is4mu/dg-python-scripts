@@ -6,7 +6,7 @@ import dgpy_flame_types
 import dgpy_gui
 import dgpy_log
 
-__version__ = "1.0.6"
+__version__ = "1.0.7"
 
 CUTDATA_REEL_NAME = "Cutdata"
 MARKER_TIME_OFFSET = -1
@@ -20,10 +20,29 @@ def _attr(obj, name: str, default=None):
     val = getattr(obj, name)
     if val is not None and hasattr(val, "get_value"):
         try:
-            return val.get_value()
+            unwrapped = val.get_value()
+            if unwrapped is not None:
+                return unwrapped
         except Exception:  # noqa: BLE001
             pass
-    return val
+    return val if val is not None else default
+
+
+def _list_attr(obj, name: str) -> list:
+    if obj is None or not hasattr(obj, name):
+        return []
+    raw = getattr(obj, name)
+    if raw is not None and hasattr(raw, "get_value"):
+        try:
+            unwrapped = raw.get_value()
+            if unwrapped is not None:
+                raw = unwrapped
+        except Exception:  # noqa: BLE001
+            pass
+    try:
+        return list(raw or [])
+    except TypeError:
+        return []
 
 
 def _name(obj) -> str:
@@ -57,13 +76,7 @@ def get_targets(selection, *, logger=None) -> list:
 
 
 def _has_markers(obj) -> bool:
-    markers = getattr(obj, "markers", None)
-    if not markers:
-        return False
-    try:
-        return len(list(markers)) > 0
-    except TypeError:
-        return bool(markers)
+    return bool(_list_attr(obj, "markers"))
 
 
 def _is_in_cutdata_reel(obj) -> bool:
@@ -97,6 +110,39 @@ def _ensure_timeline_tab(logger) -> None:
 
 def _primary_track(clip):
     return _attr(clip, "primary_track", None)
+
+
+def _versions(clip) -> list:
+    return _list_attr(clip, "versions")
+
+
+def _as_timeline_sequence(clip, logger, label: str):
+    """
+    Open clip in Timeline for shortcut ops.
+
+    ``open_as_sequence()`` returns the live PySequence and may invalidate
+    the previous reference — always use the return value.
+    """
+    open_fn = getattr(clip, "open_as_sequence", None)
+    if open_fn is None:
+        return clip
+    try:
+        opened = open_fn()
+        if opened is not None:
+            logger.info(
+                "%s: open_as_sequence → %s (use returned object)",
+                label,
+                dgpy_flame_types.item_label(opened),
+            )
+            return opened
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "%s: open_as_sequence failed for %s: %s",
+            label,
+            dgpy_flame_types.item_label(clip),
+            exc,
+        )
+    return clip
 
 
 def _marker_time_from_transition(transition):
@@ -240,13 +286,7 @@ def add_markers_for_cutdata(selection, parent=None) -> None:
 def _delete_all_audio(clip, logger, label: str) -> tuple[int, int]:
     import flame
 
-    raw = getattr(clip, "audio_tracks", None)
-    if raw is not None and hasattr(raw, "get_value"):
-        try:
-            raw = raw.get_value()
-        except Exception:  # noqa: BLE001
-            pass
-    tracks = list(raw or [])
+    tracks = _list_attr(clip, "audio_tracks")
     if not tracks:
         logger.info(
             "%s: no audio_tracks on %s",
@@ -255,7 +295,7 @@ def _delete_all_audio(clip, logger, label: str) -> tuple[int, int]:
         )
         return 0, 0
     for track in tracks:
-        for ch in list(getattr(track, "channels", None) or []):
+        for ch in _list_attr(track, "channels"):
             try:
                 ch.locked = False
             except Exception:  # noqa: BLE001
@@ -327,10 +367,19 @@ def _primary_version(clip):
     primary = _primary_track(clip)
     if primary is not None:
         parent = getattr(primary, "parent", None)
+        if parent is not None and hasattr(parent, "get_value"):
+            try:
+                unwrapped = parent.get_value()
+                if unwrapped is not None:
+                    parent = unwrapped
+            except Exception:  # noqa: BLE001
+                pass
         if parent is not None:
             return parent
-    versions = list(getattr(clip, "versions", None) or [])
-    return versions[0] if versions else None
+    versions = _versions(clip)
+    if versions:
+        return versions[0]
+    return None
 
 
 def _select_track_for_commit(track, logger, label: str) -> None:
@@ -340,8 +389,7 @@ def _select_track_for_commit(track, logger, label: str) -> None:
     except Exception as exc:  # noqa: BLE001
         logger.warning("%s: track.selected failed: %s", label, exc)
 
-    segs = list(getattr(track, "segments", None) or [])
-    for seg in segs:
+    for seg in _list_attr(track, "segments"):
         try:
             seg.selected = True
         except Exception:  # noqa: BLE001
@@ -352,13 +400,10 @@ def _hard_commit_sequence(clip, logger, label: str) -> bool:
     """
     Add top empty V via create_track(-1), select it, Hard Commit.
 
-    Selecting the new top track makes Hard Commit Selection bake the
-    whole sequence (studio workaround). Extra track is removed by
-    Only Primary afterward.
+    Caller must pass a live sequence from ``_as_timeline_sequence``.
     """
     import flame
 
-    _open_as_sequence(clip, logger, label)
     _deselect(logger, label)
 
     try:
@@ -373,9 +418,12 @@ def _hard_commit_sequence(clip, logger, label: str) -> bool:
     version = _primary_version(clip)
     if version is None:
         logger.warning(
-            "%s: no version for create_track on %s",
+            "%s: no version for create_track on %s "
+            "(versions=%s primary_track=%s)",
             label,
             dgpy_flame_types.item_label(clip),
+            len(_versions(clip)),
+            _primary_track(clip) is not None,
         )
         return False
 
@@ -431,7 +479,7 @@ def _run_shortcut(name: str, logger, label: str) -> bool:
 def _delete_markers(clip, logger, label: str) -> int:
     import flame
 
-    markers = list(getattr(clip, "markers", None) or [])
+    markers = _list_attr(clip, "markers")
     deleted = 0
     for marker in markers:
         try:
@@ -456,8 +504,8 @@ def _is_video_track(track) -> bool:
 def _all_version_tracks(clip) -> list:
     out: list = []
     seen: set[int] = set()
-    for version in list(getattr(clip, "versions", None) or []):
-        for track in list(getattr(version, "tracks", None) or []):
+    for version in _versions(clip):
+        for track in _list_attr(version, "tracks"):
             tid = id(track)
             if tid in seen:
                 continue
@@ -545,7 +593,7 @@ def _unwrap_location(marker):
 def _snapshot_marker_locations(clip) -> list:
     """PyTime locations, ascending by frame (timeline order). Caller deletes markers."""
     items: list[tuple[int, object]] = []
-    for marker in list(getattr(clip, "markers", None) or []):
+    for marker in _list_attr(clip, "markers"):
         loc = _unwrap_location(marker)
         if loc is None:
             continue
@@ -592,29 +640,38 @@ def create_cutdata_from_markers(selection, parent=None) -> None:
     deleted_src = 0
 
     for clip in list(clips):
-        if not list(getattr(clip, "markers", None) or []):
+        if not _list_attr(clip, "markers"):
             continue
         processed += 1
 
-        if _hard_commit_sequence(clip, logger, label):
+        # Timeline shortcuts need the sequence open; use the returned object.
+        seq = _as_timeline_sequence(clip, logger, label)
+
+        if _hard_commit_sequence(seq, logger, label):
             hard_ok += 1
         else:
             hard_fail += 1
+            logger.warning(
+                "%s: skip remaining steps for %s (hard-commit failed)",
+                label,
+                dgpy_flame_types.item_label(seq),
+            )
+            continue
 
-        t_ok, t_fail = _keep_primary_only(clip, logger, label)
+        t_ok, t_fail = _keep_primary_only(seq, logger, label)
         tracks_deleted += t_ok
         tracks_failed += t_fail
 
-        a_ok, a_fail = _delete_all_audio(clip, logger, label)
+        a_ok, a_fail = _delete_all_audio(seq, logger, label)
         audio_deleted += a_ok
         audio_failed += a_fail
 
-        locations = _snapshot_marker_locations(clip)
+        locations = _snapshot_marker_locations(seq)
         if not locations:
             logger.warning(
                 "%s: no marker locations after bake on %s",
                 label,
-                dgpy_flame_types.item_label(clip),
+                dgpy_flame_types.item_label(seq),
             )
             continue
 
@@ -622,27 +679,26 @@ def create_cutdata_from_markers(selection, parent=None) -> None:
         logger.info(
             "%s: %s marker locations frames=%s",
             label,
-            dgpy_flame_types.item_label(clip),
+            dgpy_flame_types.item_label(seq),
             frame_log,
         )
 
-        markers_cleared += _delete_markers(clip, logger, label)
+        markers_cleared += _delete_markers(seq, logger, label)
 
         for loc in locations:
             frame = _frame_number(loc)
             try:
-                _select_only(clip, logger, label)
-                # Prefer raw PyTime (legacy). Fallback: PyTime(frame, fps).
+                _select_only(seq, logger, label)
                 try:
-                    clip.current_time = loc
+                    seq.current_time = loc
                 except Exception:
-                    fps = _attr(clip, "frame_rate", None)
+                    fps = _attr(seq, "frame_rate", None)
                     if frame is None:
                         raise
                     if fps is not None:
-                        clip.current_time = flame.PyTime(frame, fps)
+                        seq.current_time = flame.PyTime(frame, fps)
                     else:
-                        clip.current_time = flame.PyTime(frame)
+                        seq.current_time = flame.PyTime(frame)
                 if not _run_shortcut(SHORTCUT_CREATE_SUBCLIP, logger, label):
                     subclip_fail += 1
                     continue
@@ -654,13 +710,13 @@ def create_cutdata_from_markers(selection, parent=None) -> None:
                 )
 
         try:
-            flame.delete(clip)
+            flame.delete(seq)
             deleted_src += 1
         except Exception as exc:  # noqa: BLE001
             logger.warning(
                 "%s: failed to delete original %s: %s",
                 label,
-                dgpy_flame_types.item_label(clip),
+                dgpy_flame_types.item_label(seq),
                 exc,
             )
 
