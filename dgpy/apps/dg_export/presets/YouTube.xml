@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<preset version="14">
+ <type>movie</type>
+ <comment>DG Export — YouTube · MP4 H.264 High 4:2:0 · source size/fps · bitrate by resolution (YouTube Help / Autodesk Streaming Service) · AAC stereo 384 kbps</comment>
+ <movie>
+  <fileType>MP4</fileType>
+  <namePattern>&lt;name&gt;</namePattern>
+  <yuvHeadroom>0</yuvHeadroom>
+  <yuvColourSpace>PCS_709</yuvColourSpace>
+  <colorSyncCompat>False</colorSyncCompat>
+ </movie>
+ <video>
+  <fileType>MP4</fileType>
+  <codec>33622232</codec>
+  <codecProfile>
+   <rootPath>/opt/Autodesk/mediaconverter/</rootPath>
+   <targetVersion>2025</targetVersion>
+   <pathSuffix>/profiles/.33622232/streaming.cdxprof</pathSuffix>
+  </codecProfile>
+  <namePattern>&lt;name&gt;</namePattern>
+  <includeAlpha>False</includeAlpha>
+  <overwriteWithVersions>False</overwriteWithVersions>
+  <resize>
+   <resizeType>fit</resizeType>
+   <resizeFilter>lanczos</resizeFilter>
+   <width>0</width>
+   <height>0</height>
+   <bitsPerChannel>8</bitsPerChannel>
+   <numChannels>3</numChannels>
+   <pixelRatio>1</pixelRatio>
+   <ResSelectorMode>3</ResSelectorMode>
+   <scanFormat>P</scanFormat>
+   <floatingPoint>False</floatingPoint>
+   <bigEndian>False</bigEndian>
+  </resize>
+ </video>
+ <audio>
+  <fileType>MP4</fileType>
+  <codec>4027062490</codec>
+  <codecProfile>
+   <rootPath>/opt/Autodesk/mediaconverter/</rootPath>
+   <targetVersion>2025</targetVersion>
+   <pathSuffix>/profiles/.4027062490/streaming.cdxprof</pathSuffix>
+  </codecProfile>
+  <namePattern>&lt;name&gt;</namePattern>
+  <mixdown>To2</mixdown>
+  <sampleRate>-1</sampleRate>
+  <language>en</language>
+  <content />
+  <channelMapping />
+ </audio>
+ <name>
+  <framePadding>8</framePadding>
+  <startFrame>1</startFrame>
+  <frameIndex>0</frameIndex>
+ </name>
+</preset>

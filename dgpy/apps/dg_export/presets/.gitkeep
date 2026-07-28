@@ -1,2 +1,3 @@
-# Drop Flame Media Export Movie preset XML files here.
-# Menu label = filename without .xml (e.g. Master.xml → Master).
+# Place Flame Media Export Movie preset XML files here.
+# Menu label = filename without .xml.
+# Shipped: Master.xml / OA Master.xml / to_MA.xml / YouTube.xml

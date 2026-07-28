@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<preset version="11">
+ <type>movie</type>
+ <comment>DG Export — to_MA · ProRes 422 LT · dated name · stereo mixdown</comment>
+ <movie>
+  <fileType>QuickTime</fileType>
+  <namePattern>&lt;name&gt;_&lt;MM&gt;&lt;DD&gt;_&lt;hh&gt;&lt;mm&gt;</namePattern>
+  <yuvHeadroom>0</yuvHeadroom>
+  <yuvColourSpace>PCS_UNKNOWN</yuvColourSpace>
+  <colorSyncCompat>False</colorSyncCompat>
+ </movie>
+ <video>
+  <fileType>QuickTime</fileType>
+  <codec>67250176</codec>
+  <codecProfile>
+   <rootPath>/opt/Autodesk/mediaconverter/</rootPath>
+   <targetVersion>2023.3.2</targetVersion>
+   <pathSuffix>/profiles/.67250176/default.cdxprof</pathSuffix>
+  </codecProfile>
+  <namePattern>&lt;name&gt;_&lt;MM&gt;&lt;DD&gt;_&lt;hh&gt;&lt;mm&gt;</namePattern>
+  <includeAlpha>False</includeAlpha>
+  <overwriteWithVersions>False</overwriteWithVersions>
+  <resize>
+   <resizeType>fit</resizeType>
+   <resizeFilter>lanczos</resizeFilter>
+   <width>0</width>
+   <height>0</height>
+   <bitsPerChannel>10</bitsPerChannel>
+   <numChannels>3</numChannels>
+   <floatingPoint>False</floatingPoint>
+   <bigEndian>True</bigEndian>
+   <pixelRatio>1</pixelRatio>
+   <scanFormat>P</scanFormat>
+  </resize>
+ </video>
+ <audio>
+  <fileType>QuickTime</fileType>
+  <codec>4026732546</codec>
+  <codecProfile>
+   <rootPath>/opt/Autodesk/mediaconverter/</rootPath>
+   <targetVersion>2023.3.2</targetVersion>
+   <pathSuffix>/profiles/.4026732546/16-bit (LE).cdxprof</pathSuffix>
+  </codecProfile>
+  <namePattern>&lt;name&gt;_&lt;MM&gt;&lt;DD&gt;_&lt;hh&gt;&lt;mm&gt;</namePattern>
+  <mixdown>To2</mixdown>
+  <sampleRate>-1</sampleRate>
+  <bitRate>128</bitRate>
+  <bitDepth>-1</bitDepth>
+  <language>en</language>
+  <content />
+  <channelMapping />
+ </audio>
+ <name>
+  <framePadding>8</framePadding>
+  <startFrame>1</startFrame>
+  <frameIndex>0</frameIndex>
+ </name>
+</preset>

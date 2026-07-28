@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<preset version="11">
+ <type>movie</type>
+ <comment>DG Export — Master · ProRes 422 HQ · source resolution · PCM 24-bit</comment>
+ <movie>
+  <fileType>QuickTime</fileType>
+  <namePattern>&lt;name&gt;</namePattern>
+  <yuvHeadroom>0</yuvHeadroom>
+  <yuvColourSpace>PCS_UNKNOWN</yuvColourSpace>
+  <colorSyncCompat>False</colorSyncCompat>
+ </movie>
+ <video>
+  <fileType>QuickTime</fileType>
+  <codec>67381248</codec>
+  <codecProfile>
+   <rootPath>/opt/Autodesk/mediaconverter/</rootPath>
+   <targetVersion>2020.3</targetVersion>
+   <pathSuffix>/profiles/.67381248/VBR.cdxprof</pathSuffix>
+  </codecProfile>
+  <namePattern>&lt;name&gt;</namePattern>
+  <includeAlpha>False</includeAlpha>
+  <overwriteWithVersions>False</overwriteWithVersions>
+  <resize>
+   <resizeType>fit</resizeType>
+   <resizeFilter>lanczos</resizeFilter>
+   <width>0</width>
+   <height>0</height>
+   <bitsPerChannel>10</bitsPerChannel>
+   <numChannels>3</numChannels>
+   <floatingPoint>False</floatingPoint>
+   <bigEndian>True</bigEndian>
+   <pixelRatio>1</pixelRatio>
+   <scanFormat />
+  </resize>
+ </video>
+ <audio>
+  <fileType>QuickTime</fileType>
+  <codec>4026732546</codec>
+  <codecProfile>
+   <rootPath>/opt/Autodesk/mediaconverter/</rootPath>
+   <targetVersion>2022.2</targetVersion>
+   <pathSuffix>/profiles/.4026732546/24-bit (LE).cdxprof</pathSuffix>
+  </codecProfile>
+  <namePattern>&lt;name&gt;</namePattern>
+  <mixdown>No</mixdown>
+  <sampleRate>-1</sampleRate>
+  <bitRate>128</bitRate>
+  <bitDepth>-1</bitDepth>
+  <language>en</language>
+  <content />
+  <channelMapping />
+ </audio>
+ <name>
+  <framePadding>8</framePadding>
+  <startFrame>1</startFrame>
+  <frameIndex>0</frameIndex>
+ </name>
+</preset>
