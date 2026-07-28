@@ -11,7 +11,7 @@ from pathlib import Path
 import dgpy_flame_types
 import dgpy_log
 
-__version__ = "1.0.0"
+__version__ = "1.0.1"
 
 _DEFAULT_SCHEMATIC_REELS = 3
 _DEFAULT_SHELF_REELS = 1
@@ -205,22 +205,53 @@ def _connect(batch, src, dst, logger, label: str) -> bool:
 
 
 def find_saved_action_file(save_root: Path) -> Path | None:
+    """Locate Batch save_node_setup or TimelineFX save_setup output."""
+    if save_root.is_file() and save_root.stat().st_size > 0:
+        return save_root
     candidates = [
+        save_root / "comp_cg.action",
+        save_root / "comp_cg.action_node",
         save_root / "_action.action",
         save_root / "temp.action" / "_action.action",
     ]
     for path in candidates:
         if path.is_file() and path.stat().st_size > 0:
             return path
-    if save_root.is_file() and save_root.suffix == ".action":
-        return save_root
     if save_root.is_dir():
-        for path in sorted(save_root.rglob("*.action")):
+        patterns = ("*.action", "*.action_node")
+        found: list[Path] = []
+        for pattern in patterns:
+            found.extend(save_root.rglob(pattern))
+        for path in sorted(found, key=lambda p: p.name.lower()):
             if path.name.startswith("."):
+                continue
+            # Skip our patched output if present
+            if path.name == "comp_cg_blended.action":
                 continue
             if path.stat().st_size > 0:
                 return path
     return None
+
+
+def _resolve_setup_io(action) -> tuple[object | None, object | None, str, str]:
+    """Batch Action → save_node_setup; TimelineFX Action → save_setup."""
+    save_fn = None
+    save_name = ""
+    for name in ("save_node_setup", "save_setup"):
+        fn = getattr(action, name, None)
+        if callable(fn):
+            save_fn = fn
+            save_name = name
+            break
+    load_fn = None
+    load_name = ""
+    for name in ("load_node_setup", "load_setup"):
+        fn = getattr(action, name, None)
+        if callable(fn):
+            load_fn = fn
+            load_name = name
+            break
+    return save_fn, load_fn, save_name, load_name
 
 
 def apply_blending_to_setup(text: str, modes: list[str]) -> tuple[str, int]:
@@ -260,12 +291,45 @@ def _patch_action_blending(action, clip_names: list[str], logger) -> bool:
             blending_int(mode),
         )
 
+    save_fn, load_fn, save_name, load_name = _resolve_setup_io(action)
+    if save_fn is None or load_fn is None:
+        logger.warning(
+            "Comp CG: Action has no callable setup IO "
+            "(tried save_node_setup/save_setup, "
+            "load_node_setup/load_setup); save=%r load=%r",
+            getattr(action, "save_node_setup", "∅"),
+            getattr(action, "load_node_setup", "∅"),
+        )
+        return False
+
     save_root = Path(tempfile.mkdtemp(prefix="dgpy_comp_cg_"))
     try:
-        action.save_setup(str(save_root))
+        # Batch save_node_setup expects a file path (extension optional).
+        # TimelineFX save_setup often writes a directory + _action.action.
+        setup_stem = save_root / "comp_cg"
+        logger.info("Comp CG: %s → %s", save_name, setup_stem)
+        try:
+            save_fn(str(setup_stem))
+        except TypeError:
+            save_fn(str(save_root))
         saved = find_saved_action_file(save_root)
+        if saved is None and setup_stem.is_file():
+            saved = setup_stem
         if saved is None:
-            logger.warning("Comp CG: save_setup produced no .action under %s", save_root)
+            # Common Flame extensions when stem has no suffix
+            for suffix in (".action", ".action_node"):
+                cand = Path(str(setup_stem) + suffix)
+                if cand.is_file() and cand.stat().st_size > 0:
+                    saved = cand
+                    break
+        if saved is None:
+            listing = sorted(p.name for p in save_root.iterdir()) if save_root.is_dir() else []
+            logger.warning(
+                "Comp CG: %s produced no setup file under %s (listing=%s)",
+                save_name,
+                save_root,
+                listing,
+            )
             return False
         text = saved.read_text(encoding="utf-8", errors="replace")
         new_text, n = apply_blending_to_setup(text, modes)
@@ -276,15 +340,19 @@ def _patch_action_blending(action, clip_names: list[str], logger) -> bool:
                 len(modes),
             )
         if n == 0:
-            logger.warning("Comp CG: no SurfaceSquare Blending lines found")
+            logger.warning(
+                "Comp CG: no SurfaceSquare Blending lines in %s",
+                saved.name,
+            )
             return False
         out = save_root / "comp_cg_blended.action"
         out.write_text(new_text, encoding="utf-8")
-        action.load_setup(str(out))
-        logger.info("Comp CG: load_setup blending ok fields=%s", n)
+        logger.info("Comp CG: %s ← %s (fields=%s)", load_name, out.name, n)
+        load_fn(str(out))
+        logger.info("Comp CG: blend patch ok via %s/%s", save_name, load_name)
         return True
     except Exception as exc:  # noqa: BLE001
-        logger.warning("Comp CG: blend patch failed: %s", exc)
+        logger.exception("Comp CG: blend patch failed: %s", exc)
         return False
     finally:
         shutil.rmtree(save_root, ignore_errors=True)
