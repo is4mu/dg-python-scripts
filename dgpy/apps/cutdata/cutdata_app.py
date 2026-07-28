@@ -6,7 +6,7 @@ import dgpy_flame_types
 import dgpy_gui
 import dgpy_log
 
-__version__ = "1.0.5"
+__version__ = "1.0.6"
 
 CUTDATA_REEL_NAME = "Cutdata"
 MARKER_TIME_OFFSET = -1
@@ -272,19 +272,20 @@ def _delete_all_audio(clip, logger, label: str) -> tuple[int, int]:
     return ok, failed
 
 
-def _select_only(clip, logger, label: str) -> None:
-    """Clear Timeline/Media selection, then select only this clip/sequence.
-
-    Hard Commit Selection in Timeline uses the *timeline* selection. If
-    segments remain selected, Flame hard-commits those segments instead of
-    the sequence — Deselect first (legacy cutout pattern).
-    """
+def _deselect(logger, label: str) -> None:
     import flame
 
     try:
         flame.execute_shortcut("Deselect")
     except Exception as exc:  # noqa: BLE001
         logger.warning("%s: Deselect shortcut failed: %s", label, exc)
+
+
+def _select_only(clip, logger, label: str) -> None:
+    """Clear selection, then select only this clip/sequence (for Subclip etc.)."""
+    import flame
+
+    _deselect(logger, label)
 
     try:
         flame.media_panel.selected_entries = [clip]
@@ -305,6 +306,109 @@ def _select_only(clip, logger, label: str) -> None:
             dgpy_flame_types.item_label(clip),
             exc,
         )
+
+
+def _open_as_sequence(clip, logger, label: str) -> None:
+    open_fn = getattr(clip, "open_as_sequence", None)
+    if open_fn is None:
+        return
+    try:
+        open_fn()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "%s: open_as_sequence failed for %s: %s",
+            label,
+            dgpy_flame_types.item_label(clip),
+            exc,
+        )
+
+
+def _primary_version(clip):
+    primary = _primary_track(clip)
+    if primary is not None:
+        parent = getattr(primary, "parent", None)
+        if parent is not None:
+            return parent
+    versions = list(getattr(clip, "versions", None) or [])
+    return versions[0] if versions else None
+
+
+def _select_track_for_commit(track, logger, label: str) -> None:
+    """Select the bake layer (track and/or its segments) for Hard Commit."""
+    try:
+        track.selected = True
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("%s: track.selected failed: %s", label, exc)
+
+    segs = list(getattr(track, "segments", None) or [])
+    for seg in segs:
+        try:
+            seg.selected = True
+        except Exception:  # noqa: BLE001
+            pass
+
+
+def _hard_commit_sequence(clip, logger, label: str) -> bool:
+    """
+    Add top empty V via create_track(-1), select it, Hard Commit.
+
+    Selecting the new top track makes Hard Commit Selection bake the
+    whole sequence (studio workaround). Extra track is removed by
+    Only Primary afterward.
+    """
+    import flame
+
+    _open_as_sequence(clip, logger, label)
+    _deselect(logger, label)
+
+    try:
+        flame.media_panel.selected_entries = [clip]
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        clip.selected = True
+    except Exception:  # noqa: BLE001
+        pass
+
+    version = _primary_version(clip)
+    if version is None:
+        logger.warning(
+            "%s: no version for create_track on %s",
+            label,
+            dgpy_flame_types.item_label(clip),
+        )
+        return False
+
+    create = getattr(version, "create_track", None)
+    if create is None:
+        logger.warning("%s: PyVersion.create_track unavailable", label)
+        return False
+
+    try:
+        # track_index=-1 appends at the top (Flame 2025 API).
+        new_track = create(track_index=-1)
+    except TypeError:
+        try:
+            new_track = create(-1)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("%s: create_track failed: %s", label, exc)
+            return False
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("%s: create_track failed: %s", label, exc)
+        return False
+
+    if new_track is None:
+        logger.warning("%s: create_track returned None", label)
+        return False
+
+    _deselect(logger, label)
+    _select_track_for_commit(new_track, logger, label)
+    logger.info(
+        "%s: hard-commit via top track on %s",
+        label,
+        dgpy_flame_types.item_label(clip),
+    )
+    return _run_shortcut(SHORTCUT_HARD_COMMIT, logger, label)
 
 
 def _run_shortcut(name: str, logger, label: str) -> bool:
@@ -492,8 +596,7 @@ def create_cutdata_from_markers(selection, parent=None) -> None:
             continue
         processed += 1
 
-        _select_only(clip, logger, label)
-        if _run_shortcut(SHORTCUT_HARD_COMMIT, logger, label):
+        if _hard_commit_sequence(clip, logger, label):
             hard_ok += 1
         else:
             hard_fail += 1
