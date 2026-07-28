@@ -12,7 +12,7 @@ import dgpy_manifest
 import dgpy_paths
 import dgpy_sync
 
-__version__ = "0.3.7"
+__version__ = "0.3.8"
 
 _WINDOW: QtWidgets.QWidget | None = None
 

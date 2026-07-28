@@ -17,7 +17,7 @@ import dgpy_semver
 from dgpy_http import download_asset_to, download_to
 from dgpy_manifest import Manifest, ManifestPackage
 
-__version__ = "0.3.6"
+__version__ = "0.3.8"
 
 STATUS_NEW = "New"
 STATUS_UPDATE = "Update"
@@ -307,20 +307,41 @@ def install_many(
         # Manager/core update on disk must be used for later packages in this
         # same Flame session (otherwise assets[] is ignored by stale import).
         if pkg.package_id in ("core", "manager"):
-            install_fn = _fresh_install_package()
+            try:
+                install_fn = _fresh_install_package()
+            except Exception as exc:  # noqa: BLE001
+                dgpy_log.get_logger().warning(
+                    "Could not reload on-disk dgpy_sync after %s (%s); "
+                    "continuing with in-session install_package",
+                    pkg.package_id,
+                    exc,
+                )
     return done
 
 
 def _fresh_install_package():
-    """Load install_package from the on-disk dgpy_sync.py (post-Update)."""
-    import importlib.util
+    """Load install_package from the on-disk dgpy_sync.py (post-Update).
 
+    Must register the module in ``sys.modules`` *before* ``exec_module``.
+    Otherwise ``@dataclass`` (PEP 563 annotations) looks up
+    ``sys.modules[cls.__module__]`` and raises
+    ``AttributeError: 'NoneType' object has no attribute '__dict__'``.
+    """
+    import importlib.util
+    import sys
+
+    name = "dgpy_sync_ondisk"
     path = dgpy_paths.dgpy_root() / "dgpy_sync.py"
-    spec = importlib.util.spec_from_file_location("dgpy_sync_ondisk", path)
+    spec = importlib.util.spec_from_file_location(name, path)
     if spec is None or spec.loader is None:
         return install_package
     mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
+    sys.modules[name] = mod
+    try:
+        spec.loader.exec_module(mod)
+    except Exception:
+        sys.modules.pop(name, None)
+        raise
     return mod.install_package
 
 
