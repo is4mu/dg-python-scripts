@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from typing import Any
 
-__version__ = "0.1.2"
+__version__ = "0.1.3"
 
 # Temporary coexistence prefix. Flip to "DG:" when legacy is retired.
 MENU_PREFIX = "DG2:"
@@ -56,6 +56,10 @@ MEDIA_PANEL_GROUPS: dict[str, dict[str, Any]] = {
         "hierarchy": _h("Clip", "Go To"),
         "order": 41,
         "separator": "below",
+    },
+    "segment": {
+        "hierarchy": _h("Segment"),
+        "order": 43,
     },
     "sequence": {
         "hierarchy": _h("Sequence"),
@@ -108,6 +112,9 @@ MEDIA_PANEL_ACTIONS: dict[str, dict[str, Any]] = {
     "clip.goto.in_mark": {"group": "clip.goto", "order": 30},
     "clip.goto.out_mark": {"group": "clip.goto", "order": 40},
     "clip.goto.custom": {"group": "clip.goto", "order": 50},
+    # Segment (Timeline FX Action tidy)
+    "segment.cleanup": {"group": "segment", "order": 10},
+    "segment.cleanup_fit": {"group": "segment", "order": 20},
     # Sequence (legacy: cutdata → markers → cutout → keep tracks)
     "sequence.cutdata_add_markers": {"group": "sequence", "order": 10},
     "sequence.cutdata_from_markers": {
