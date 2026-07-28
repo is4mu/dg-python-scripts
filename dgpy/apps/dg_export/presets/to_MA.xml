@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<preset version="11">
+<preset version="14">
  <type>movie</type>
- <comment>DG Export — to_MA · ProRes 422 LT · dated name · stereo mixdown</comment>
+ <comment>DG Export — to MA · ProRes 422 LT · dated name · stereo mixdown</comment>
  <movie>
   <fileType>QuickTime</fileType>
   <namePattern>&lt;name&gt;_&lt;MM&gt;&lt;DD&gt;_&lt;hh&gt;&lt;mm&gt;</namePattern>
@@ -14,7 +14,7 @@
   <codec>67250176</codec>
   <codecProfile>
    <rootPath>/opt/Autodesk/mediaconverter/</rootPath>
-   <targetVersion>2023.3.2</targetVersion>
+   <targetVersion>2025.2.7</targetVersion>
    <pathSuffix>/profiles/.67250176/default.cdxprof</pathSuffix>
   </codecProfile>
   <namePattern>&lt;name&gt;_&lt;MM&gt;&lt;DD&gt;_&lt;hh&gt;&lt;mm&gt;</namePattern>
@@ -31,6 +31,10 @@
    <bigEndian>True</bigEndian>
    <pixelRatio>1</pixelRatio>
    <scanFormat>P</scanFormat>
+   <ResSelectorMode>3</ResSelectorMode>
+   <ResAdaptativeMode>0</ResAdaptativeMode>
+   <ResScalingMode>1</ResScalingMode>
+   <ResScalingValue>50</ResScalingValue>
   </resize>
  </video>
  <audio>
@@ -38,7 +42,7 @@
   <codec>4026732546</codec>
   <codecProfile>
    <rootPath>/opt/Autodesk/mediaconverter/</rootPath>
-   <targetVersion>2023.3.2</targetVersion>
+   <targetVersion>2025.2.7</targetVersion>
    <pathSuffix>/profiles/.4026732546/16-bit (LE).cdxprof</pathSuffix>
   </codecProfile>
   <namePattern>&lt;name&gt;_&lt;MM&gt;&lt;DD&gt;_&lt;hh&gt;&lt;mm&gt;</namePattern>
@@ -50,9 +54,15 @@
   <content />
   <channelMapping />
  </audio>
- <name>
-  <framePadding>8</framePadding>
-  <startFrame>1</startFrame>
-  <frameIndex>0</frameIndex>
- </name>
+ <subtitle>
+  <namePattern>&lt;subtitles name&gt;</namePattern>
+  <ReExportColour>False</ReExportColour>
+  <ReExportAlignment>1</ReExportAlignment>
+  <charFormatting>True</charFormatting>
+  <colourMode>NoColour</colourMode>
+  <alignmentMode>NoAlignment</alignmentMode>
+  <alignment>BottomCentre</alignment>
+  <alignmentType>an</alignmentType>
+  <timecodeMode>SameAsClip</timecodeMode>
+ </subtitle>
 </preset>

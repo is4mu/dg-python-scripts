@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<preset version="11">
+<preset version="14">
  <type>movie</type>
  <comment>DG Export — OA Master · ProRes 422 HQ · Rec.709 / headroom · PCM 24-bit</comment>
  <movie>
@@ -23,7 +23,7 @@
   <lutState>
    <Setup>
     <Base>
-     <Version>19</Version>
+     <Version>21.020000</Version>
      <Note />
      <Expanded>False</Expanded>
      <ScrollBar>0</ScrollBar>
@@ -165,6 +165,10 @@
    <bigEndian>True</bigEndian>
    <pixelRatio>1</pixelRatio>
    <scanFormat />
+   <ResSelectorMode>3</ResSelectorMode>
+   <ResAdaptativeMode>0</ResAdaptativeMode>
+   <ResScalingMode>1</ResScalingMode>
+   <ResScalingValue>50</ResScalingValue>
   </resize>
  </video>
  <audio>
@@ -172,7 +176,7 @@
   <codec>4026732546</codec>
   <codecProfile>
    <rootPath>/opt/Autodesk/mediaconverter/</rootPath>
-   <targetVersion>2022.3.1</targetVersion>
+   <targetVersion>2025.2.7</targetVersion>
    <pathSuffix>/profiles/.4026732546/24-bit (LE).cdxprof</pathSuffix>
   </codecProfile>
   <namePattern>&lt;name&gt;</namePattern>
@@ -184,9 +188,15 @@
   <content />
   <channelMapping />
  </audio>
- <name>
-  <framePadding>8</framePadding>
-  <startFrame>1</startFrame>
-  <frameIndex>0</frameIndex>
- </name>
+ <subtitle>
+  <namePattern>&lt;subtitles name&gt;</namePattern>
+  <ReExportColour>False</ReExportColour>
+  <ReExportAlignment>1</ReExportAlignment>
+  <charFormatting>True</charFormatting>
+  <colourMode>NoColour</colourMode>
+  <alignmentMode>NoAlignment</alignmentMode>
+  <alignment>BottomCentre</alignment>
+  <alignmentType>an</alignmentType>
+  <timecodeMode>SameAsClip</timecodeMode>
+ </subtitle>
 </preset>

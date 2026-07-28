@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-__version__ = "0.1.5"
+__version__ = "0.1.6"
 
 
 @dataclass(frozen=True)
