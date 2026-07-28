@@ -6,7 +6,7 @@ import dgpy_flame_types
 import dgpy_gui
 import dgpy_log
 
-__version__ = "1.0.2"
+__version__ = "1.0.3"
 
 _INPUT_ATTR_CANDIDATES = (
     "input",
@@ -86,6 +86,43 @@ def has_mute_audio(selection, *, logger=None) -> bool:
     return False
 
 
+def _ensure_sequence_for_audio(obj, logger, label: str):
+    """Source PyClip: open_as_sequence so flame.delete(audio) persists.
+
+    PySequence already editable. PySequence subclasses PyClip — detect via
+    is_sequence first.
+    """
+    if dgpy_flame_types.is_sequence(obj):
+        return obj
+
+    open_fn = getattr(obj, "open_as_sequence", None)
+    if not callable(open_fn):
+        logger.warning(
+            "%s: no open_as_sequence on %s — delete may be no-op",
+            label,
+            dgpy_flame_types.item_label(obj),
+        )
+        return obj
+    try:
+        opened = open_fn()
+        if opened is not None:
+            logger.info(
+                "%s: open_as_sequence %s → %s (audio edit)",
+                label,
+                dgpy_flame_types.item_label(obj),
+                dgpy_flame_types.item_label(opened),
+            )
+            return opened
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "%s: open_as_sequence failed for %s: %s",
+            label,
+            dgpy_flame_types.item_label(obj),
+            exc,
+        )
+    return obj
+
+
 def _unlock(clip) -> None:
     for track in _tracks(clip):
         for ch in _channels(track):
@@ -103,13 +140,23 @@ def _delete_tracks(clip, tracks: list, logger, label: str) -> tuple[int, int]:
     _unlock(clip)
     ok = 0
     failed = 0
-    for track in tracks:
+    # Highest index first — safer if Flame mutates the track list live.
+    for track in reversed(list(tracks)):
         try:
             flame.delete(track)
             ok += 1
         except Exception as exc:  # noqa: BLE001
             failed += 1
             logger.warning("%s: delete failed: %s", label, exc)
+    remaining = len(_tracks(clip))
+    if ok and remaining:
+        logger.warning(
+            "%s: deleted=%s but %s audio_tracks remain on %s",
+            label,
+            ok,
+            remaining,
+            dgpy_flame_types.item_label(clip),
+        )
     return ok, failed
 
 
@@ -121,10 +168,13 @@ def _try_remap_inputs_to_12(clip, logger, label: str) -> None:
     track = tracks[0]
     channels = _channels(track)
     if not channels:
-        logger.info("%s: no channels to remap on %s", label, dgpy_flame_types.item_label(clip))
+        logger.info(
+            "%s: no channels to remap on %s",
+            label,
+            dgpy_flame_types.item_label(clip),
+        )
         return
 
-    # Probe once for diagnostics (DEBUG — noisy for production Terminal)
     sample = channels[0]
     names = [n for n in dir(sample) if not n.startswith("_")]
     logger.debug(
@@ -133,7 +183,7 @@ def _try_remap_inputs_to_12(clip, logger, label: str) -> None:
         names[:40],
     )
 
-    targets = list(range(1, len(channels) + 1))  # 1, 2, ...
+    targets = list(range(1, len(channels) + 1))
     wrote = 0
     for ch, want in zip(channels, targets):
         for attr in _INPUT_ATTR_CANDIDATES:
@@ -142,16 +192,10 @@ def _try_remap_inputs_to_12(clip, logger, label: str) -> None:
             try:
                 setattr(ch, attr, want)
                 wrote += 1
-                logger.debug(
-                    "%s: set %s=%s on channel",
-                    label,
-                    attr,
-                    want,
-                )
+                logger.debug("%s: set %s=%s on channel", label, attr, want)
                 break
             except Exception as exc:  # noqa: BLE001
                 logger.debug("%s: cannot set %s: %s", label, attr, exc)
-        # Also try track-level once
     for attr in _INPUT_ATTR_CANDIDATES:
         if not hasattr(track, attr):
             continue
@@ -194,12 +238,13 @@ def _run_delete(
     failed = 0
     for clip in clips:
         try:
-            victims = pick_tracks(clip)
-            d_ok, d_fail = _delete_tracks(clip, victims, logger, label)
+            host = _ensure_sequence_for_audio(clip, logger, label)
+            victims = pick_tracks(host)
+            d_ok, d_fail = _delete_tracks(host, victims, logger, label)
             deleted += d_ok
             failed += d_fail
             if after_clip is not None:
-                after_clip(clip, logger, label)
+                after_clip(host, logger, label)
         except Exception as exc:  # noqa: BLE001
             failed += 1
             logger.warning(
