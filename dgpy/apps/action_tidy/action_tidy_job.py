@@ -1,4 +1,4 @@
-"""Apply Clean Up Action templates via TimelineFX load_setup (+ optional merge)."""
+"""Apply Clean Up / Toggle Fit / Strip Expressions via TimelineFX load_setup."""
 
 from __future__ import annotations
 
@@ -6,10 +6,14 @@ import shutil
 import tempfile
 from pathlib import Path
 
-from action_tidy_merge import find_saved_action_file, merge_template_with_saved
+from action_tidy_merge import (
+    find_saved_action_file,
+    merge_template_with_saved,
+    patch_saved_setup,
+)
 from action_tidy_selection import segment_label
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 
 TEMPLATE_CLEAN = "cleanup.action"
 TEMPLATE_FIT = "cleanup_fit.action"
@@ -88,10 +92,7 @@ class JobResult:
         self.messages: list[str] = []
 
 
-def _apply_existing(
-    segment, action, kind: TemplateKind, *, temp_dir: Path, logger
-) -> None:
-    tmpl = template_path(kind)
+def _save_action_text(action, temp_dir: Path) -> Path:
     save_root = temp_dir / "temp.action"
     if save_root.exists():
         shutil.rmtree(save_root, ignore_errors=True)
@@ -99,6 +100,14 @@ def _apply_existing(
     saved = find_saved_action_file(save_root)
     if saved is None:
         raise RuntimeError(f"save_setup produced no .action under {save_root}")
+    return saved
+
+
+def _apply_existing(
+    segment, action, kind: TemplateKind, *, temp_dir: Path, logger
+) -> None:
+    tmpl = template_path(kind)
+    saved = _save_action_text(action, temp_dir)
     out = temp_dir / f"merged_{kind.id}.action"
     merge_template_with_saved(tmpl, saved, out)
     logger.info(
@@ -161,3 +170,56 @@ def run_cleanup(segments: list, *, template_id: str) -> JobResult:
     finally:
         shutil.rmtree(temp_dir, ignore_errors=True)
     return result
+
+
+def _run_patch(segments: list, *, mode: str, prefix: str) -> JobResult:
+    import dgpy_log
+
+    logger = dgpy_log.setup()
+    result = JobResult()
+    temp_dir = Path(tempfile.mkdtemp(prefix=prefix))
+    try:
+        for segment in segments:
+            label = segment_label(segment)
+            action = _get_existing_action(segment)
+            if action is None:
+                result.skipped += 1
+                result.messages.append(f"SKIP {label}: no Action")
+                continue
+            try:
+                saved = _save_action_text(action, temp_dir)
+                out = temp_dir / f"{mode}.action"
+                _, count = patch_saved_setup(saved, out, mode=mode)
+                if count <= 0:
+                    result.skipped += 1
+                    result.messages.append(f"SKIP {label}: no matching Expression")
+                    continue
+                logger.info(
+                    "load_setup(%s) segment=%s changes=%s out=%s",
+                    mode,
+                    label,
+                    count,
+                    out,
+                )
+                action.load_setup(str(out))
+                result.ok += 1
+                result.messages.append(f"OK: {label} ({count})")
+            except Exception as exc:  # noqa: BLE001
+                result.failed += 1
+                result.messages.append(f"FAIL {label}: {exc}")
+                logger.exception("%s failed for %s", mode, label)
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+    return result
+
+
+def run_toggle_fit(segments: list) -> JobResult:
+    return _run_patch(
+        segments, mode="toggle_fit", prefix="dgpy_action_tidy_toggle_"
+    )
+
+
+def run_strip_expressions(segments: list) -> JobResult:
+    return _run_patch(
+        segments, mode="strip_expr", prefix="dgpy_action_tidy_strip_"
+    )

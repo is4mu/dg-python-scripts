@@ -1,8 +1,7 @@
 """
-Flame: DG2: Segment — Clean Up Action / Clean Up Action (Fit).
+Flame: DG2: Segment — Clean Up / Toggle Fit / Strip Expressions.
 
-Media Panel + Timeline. Template reset via TimelineFX Action load_setup.
-Existing Action: merge Axis Specifics into template before load.
+Media Panel + Timeline.
 """
 
 from __future__ import annotations
@@ -33,14 +32,19 @@ def _scope_visible(selection) -> bool:
     try:
         return has_segments(_as_list(selection), logger=logger)
     except Exception as exc:  # noqa: BLE001
-        logger.warning("Clean Up Action isVisible error: %s", exc)
+        logger.warning("DG2: Segment isVisible error: %s", exc)
         return False
 
 
-def _run(selection, *, template_id: str, title: str) -> None:
+def _summarize(result) -> str:
+    return (
+        f"OK: {result.ok}  Failed: {result.failed}  Skipped: {result.skipped}"
+    )
+
+
+def _run_job(selection, *, title: str, confirm_msg: str, runner) -> None:
     import dgpy_gui
     import dgpy_log
-    from action_tidy_job import run_cleanup
     from action_tidy_selection import resolve_segments
 
     logger = dgpy_log.setup()
@@ -60,38 +64,84 @@ def _run(selection, *, template_id: str, title: str) -> None:
         ok = dgpy_gui.confirm(
             None,
             title,
-            f"Apply «{title}» to {n} segment(s)?\n\n"
-            "• No Action → studio template as-is\n"
-            "• Existing Action → clean schematic, keep axis transform",
+            f"{confirm_msg}\n\nSegments: {n}",
         )
         if not ok:
             return
 
-        result = run_cleanup(segments, template_id=template_id)
+        result = runner(segments)
+        summary = _summarize(result)
         if result.failed:
             detail = "\n".join(result.messages[-12:])
             dgpy_gui.warning(
                 None,
                 title,
-                f"Done with errors.\n\nOK: {result.ok}  Failed: {result.failed}\n\n{detail}",
+                f"Done with errors.\n\n{summary}\n\n{detail}",
             )
         else:
-            dgpy_gui.info(
-                None,
-                title,
-                f"Applied to {result.ok} segment(s).",
-            )
+            dgpy_gui.info(None, title, f"{summary}")
     except Exception as exc:  # noqa: BLE001
         logger.exception("%s failed", title)
         dgpy_gui.warning(None, title, f"Failed:\n{exc}")
 
 
 def _execute_clean(selection=None):
-    _run(selection, template_id="clean", title="Clean Up Action")
+    from action_tidy_job import run_cleanup
+
+    _run_job(
+        selection,
+        title="Clean Up Action",
+        confirm_msg=(
+            "Apply «Clean Up Action»?\n\n"
+            "• No Action → studio template as-is\n"
+            "• Existing Action → clean schematic, keep axis transform"
+        ),
+        runner=lambda segs: run_cleanup(segs, template_id="clean"),
+    )
 
 
 def _execute_fit(selection=None):
-    _run(selection, template_id="fit", title="Clean Up Action (Fit)")
+    from action_tidy_job import run_cleanup
+
+    _run_job(
+        selection,
+        title="Clean Up Action (Fit)",
+        confirm_msg=(
+            "Apply «Clean Up Action (Fit)»?\n\n"
+            "• No Action → studio template as-is\n"
+            "• Existing Action → clean schematic, keep axis transform"
+        ),
+        runner=lambda segs: run_cleanup(segs, template_id="fit"),
+    )
+
+
+def _execute_toggle(selection=None):
+    from action_tidy_job import run_toggle_fit
+
+    _run_job(
+        selection,
+        title="Toggle Fit Method",
+        confirm_msg=(
+            "Toggle fill↔contain on axis_rsz Expression only "
+            "(max ↔ min)?\n\n"
+            "Segments without Action or Expression are skipped."
+        ),
+        runner=run_toggle_fit,
+    )
+
+
+def _execute_strip(selection=None):
+    from action_tidy_job import run_strip_expressions
+
+    _run_job(
+        selection,
+        title="Strip Expressions",
+        confirm_msg=(
+            "Remove Expression lines inside axis_rsz?\n\n"
+            "Segments without Action or Expression are skipped."
+        ),
+        runner=run_strip_expressions,
+    )
 
 
 def _action_entries() -> list[dict]:
@@ -110,31 +160,63 @@ def _action_entries() -> list[dict]:
             "execute": _execute_fit,
             "minimumVersion": "2025",
         },
+        {
+            "layout_key": "segment.toggle_fit",
+            "name": "Toggle Fit Method",
+            "isVisible": _scope_visible,
+            "execute": _execute_toggle,
+            "minimumVersion": "2025",
+        },
+        {
+            "layout_key": "segment.strip_expr",
+            "name": "Strip Expressions",
+            "isVisible": _scope_visible,
+            "execute": _execute_strip,
+            "minimumVersion": "2025",
+        },
+    ]
+
+
+def _timeline_actions() -> list[dict]:
+    return [
+        {
+            "name": "Clean Up Action",
+            "order": 10,
+            "isVisible": _scope_visible,
+            "execute": _execute_clean,
+            "minimumVersion": "2025",
+        },
+        {
+            "name": "Clean Up Action (Fit)",
+            "order": 20,
+            "separator": "below",
+            "isVisible": _scope_visible,
+            "execute": _execute_fit,
+            "minimumVersion": "2025",
+        },
+        {
+            "name": "Toggle Fit Method",
+            "order": 30,
+            "isVisible": _scope_visible,
+            "execute": _execute_toggle,
+            "minimumVersion": "2025",
+        },
+        {
+            "name": "Strip Expressions",
+            "order": 40,
+            "isVisible": _scope_visible,
+            "execute": _execute_strip,
+            "minimumVersion": "2025",
+        },
     ]
 
 
 def _timeline_group() -> list[dict]:
-    # Same shape as Color timeline menus — no group "name" (avoids DG2: Segment×2).
     return [
         {
             "hierarchy": ["DG2: Segment"],
             "order": 43,
-            "actions": [
-                {
-                    "name": "Clean Up Action",
-                    "order": 10,
-                    "isVisible": _scope_visible,
-                    "execute": _execute_clean,
-                    "minimumVersion": "2025",
-                },
-                {
-                    "name": "Clean Up Action (Fit)",
-                    "order": 20,
-                    "isVisible": _scope_visible,
-                    "execute": _execute_fit,
-                    "minimumVersion": "2025",
-                },
-            ],
+            "actions": _timeline_actions(),
         }
     ]
 

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 
 
 def extract_axis_specifics_with_surface_square(file_path: Path | str) -> str | None:
@@ -167,3 +167,102 @@ def merge_template_with_saved(
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(merged, encoding="utf-8")
     return output_path
+
+
+def _iter_named_axis_ranges(lines: list[str], axis_name: str):
+    """Yield (node_start, node_end_inclusive) for Node Axis with Name axis_name."""
+    i = 0
+    while i < len(lines):
+        if not lines[i].strip().startswith("Node Axis"):
+            i += 1
+            continue
+        node_start = i
+        found_name = False
+        node_depth = 1
+        j = i + 1
+        while j < len(lines):
+            stripped = lines[j].strip()
+            if stripped.startswith("Name "):
+                name_value = stripped.split(" ", 1)[1].strip()
+                if name_value == axis_name:
+                    found_name = True
+            elif stripped.startswith("Node "):
+                node_depth += 1
+            elif stripped == "End":
+                end_indent = len(lines[j]) - len(lines[j].lstrip())
+                if end_indent == 0:
+                    node_depth -= 1
+                    if node_depth == 0:
+                        if found_name:
+                            yield node_start, j
+                        i = j
+                        break
+            j += 1
+        else:
+            break
+        i += 1
+
+
+def _swap_max_min_in_expression_line(line: str) -> str:
+    if "Expression" not in line:
+        return line
+    if "max(" not in line and "min(" not in line:
+        return line
+    text = line.replace("max(", "__TEMP_MAX__")
+    text = text.replace("min(", "max(")
+    text = text.replace("__TEMP_MAX__", "min(")
+    return text
+
+
+def toggle_axis_rsz_fit_expressions(content: str) -> tuple[str, int]:
+    """
+    Swap max(↔min( only on Expression lines inside Name axis_rsz.
+    Returns (new_content, number_of_lines_changed).
+    """
+    lines = content.splitlines(True)
+    changed = 0
+    for start, end in _iter_named_axis_ranges(lines, "axis_rsz"):
+        for i in range(start, end + 1):
+            if "Expression" not in lines[i]:
+                continue
+            new_line = _swap_max_min_in_expression_line(lines[i])
+            if new_line != lines[i]:
+                lines[i] = new_line
+                changed += 1
+    return "".join(lines), changed
+
+
+def strip_axis_rsz_expressions(content: str) -> tuple[str, int]:
+    """
+    Drop lines containing Expression inside Name axis_rsz blocks.
+    Returns (new_content, number_of_lines_removed).
+    """
+    lines = content.splitlines(True)
+    drop: set[int] = set()
+    for start, end in _iter_named_axis_ranges(lines, "axis_rsz"):
+        for i in range(start, end + 1):
+            if "Expression" in lines[i]:
+                drop.add(i)
+    if not drop:
+        return content, 0
+    out = [line for i, line in enumerate(lines) if i not in drop]
+    return "".join(out), len(drop)
+
+
+def patch_saved_setup(
+    saved_action_file: Path,
+    output_path: Path,
+    *,
+    mode: str,
+) -> tuple[Path, int]:
+    """mode: 'toggle_fit' | 'strip_expr'. Returns (output_path, change_count)."""
+    content = saved_action_file.read_text(encoding="utf-8", errors="replace")
+    if mode == "toggle_fit":
+        new_content, count = toggle_axis_rsz_fit_expressions(content)
+    elif mode == "strip_expr":
+        new_content, count = strip_axis_rsz_expressions(content)
+    else:
+        raise ValueError(f"Unknown patch mode: {mode}")
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(new_content, encoding="utf-8")
+    return output_path, count
