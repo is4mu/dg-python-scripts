@@ -6,7 +6,7 @@ import dgpy_flame_types
 import dgpy_gui
 import dgpy_log
 
-__version__ = "1.0.4"
+__version__ = "1.0.5"
 
 _INPUT_ATTR_CANDIDATES = (
     "input",
@@ -251,6 +251,10 @@ def _run_delete(
     if not dgpy_gui.confirm(parent, label, confirm_msg.format(n=len(clips))):
         logger.info("%s: cancelled (%s)", label, len(clips))
         return
+
+    import dgpy_flame_util
+
+    dgpy_flame_util.ensure_timeline_tab(logger=logger, label=label)
 
     deleted = 0
     failed = 0

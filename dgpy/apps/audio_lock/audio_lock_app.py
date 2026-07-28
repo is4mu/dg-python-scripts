@@ -5,7 +5,7 @@ from __future__ import annotations
 import dgpy_flame_types
 import dgpy_log
 
-__version__ = "1.0.2"
+__version__ = "1.0.3"
 
 
 def _attr(obj, name: str, default=None):
@@ -72,7 +72,10 @@ def has_locked_audio(selection, *, logger=None) -> bool:
 
 
 def _set_locked(clips: list, locked: bool, label: str) -> None:
+    import dgpy_flame_util
+
     logger = dgpy_log.setup()
+    dgpy_flame_util.ensure_timeline_tab(logger=logger, label=label)
     ok = 0
     failed = 0
     for clip in clips:

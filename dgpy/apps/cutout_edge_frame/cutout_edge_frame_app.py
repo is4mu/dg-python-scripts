@@ -6,7 +6,7 @@ import dgpy_flame_types
 import dgpy_gui
 import dgpy_log
 
-__version__ = "1.0.6"
+__version__ = "1.0.7"
 
 _FIRST_CUT_FRAME = 2
 _DEFAULT_RANGE_START = 1
@@ -135,14 +135,11 @@ def _edge_segments(clip, *, first: bool) -> list:
 
 
 def _ensure_timeline_tab(logger) -> None:
-    import flame
+    import dgpy_flame_util
 
-    try:
-        flame.set_current_tab("Timeline")
-    except Exception as exc:  # noqa: BLE001
-        logger.warning(
-            "Cutout Edge Frame: set_current_tab Timeline failed: %s", exc
-        )
+    dgpy_flame_util.ensure_timeline_tab(
+        logger=logger, label="Cutout Edge Frame"
+    )
 
 
 def _cut_frame_for(clip, *, first: bool, logger, label: str) -> int | None:

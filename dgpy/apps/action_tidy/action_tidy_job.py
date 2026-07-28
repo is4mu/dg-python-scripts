@@ -13,7 +13,7 @@ from action_tidy_merge import (
 )
 from action_tidy_selection import segment_label
 
-__version__ = "0.3.1"
+__version__ = "0.3.2"
 
 TEMPLATE_CLEAN = "cleanup.action"
 TEMPLATE_FIT = "cleanup_fit.action"
@@ -146,9 +146,11 @@ def apply_template(segment, kind: TemplateKind, *, temp_dir: Path, logger) -> No
 
 
 def run_cleanup(segments: list, *, template_id: str) -> JobResult:
+    import dgpy_flame_util
     import dgpy_log
 
     logger = dgpy_log.setup()
+    dgpy_flame_util.ensure_timeline_tab(logger=logger, label="Action Tidy")
     kind = find_template(template_id)
     if kind is None:
         raise RuntimeError(f"Unknown template: {template_id}")
@@ -173,9 +175,11 @@ def run_cleanup(segments: list, *, template_id: str) -> JobResult:
 
 
 def _run_patch(segments: list, *, mode: str, prefix: str) -> JobResult:
+    import dgpy_flame_util
     import dgpy_log
 
     logger = dgpy_log.setup()
+    dgpy_flame_util.ensure_timeline_tab(logger=logger, label="Action Tidy")
     result = JobResult()
     temp_dir = Path(tempfile.mkdtemp(prefix=prefix))
     try:

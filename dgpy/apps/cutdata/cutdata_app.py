@@ -6,7 +6,7 @@ import dgpy_flame_types
 import dgpy_gui
 import dgpy_log
 
-__version__ = "1.0.7"
+__version__ = "1.0.8"
 
 CUTDATA_REEL_NAME = "Cutdata"
 MARKER_TIME_OFFSET = -1
@@ -100,12 +100,9 @@ def has_create_targets(selection, *, logger=None) -> bool:
 
 
 def _ensure_timeline_tab(logger) -> None:
-    import flame
+    import dgpy_flame_util
 
-    try:
-        flame.set_current_tab("Timeline")
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("Cutdata: set_current_tab Timeline failed: %s", exc)
+    dgpy_flame_util.ensure_timeline_tab(logger=logger, label="Cutdata")
 
 
 def _primary_track(clip):
@@ -246,6 +243,8 @@ def add_markers_for_cutdata(selection, parent=None) -> None:
             f"Failed to get or create the {CUTDATA_REEL_NAME} reel.",
         )
         return
+
+    _ensure_timeline_tab(logger)
 
     try:
         copied = flame.media_panel.copy(clips, cutdata_reel)

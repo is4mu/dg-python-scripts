@@ -5,7 +5,7 @@ from __future__ import annotations
 import dgpy_flame_types
 import dgpy_log
 
-__version__ = "1.0.2"
+__version__ = "1.0.3"
 
 
 def get_targets(selection, *, logger=None) -> list:
@@ -62,6 +62,10 @@ def delete_all_markers(selection, parent=None) -> None:
     if not clips:
         logger.info("%s: nothing selected", label)
         return
+
+    import dgpy_flame_util
+
+    dgpy_flame_util.ensure_timeline_tab(logger=logger, label=label)
 
     clip_ok = 0
     deleted = 0

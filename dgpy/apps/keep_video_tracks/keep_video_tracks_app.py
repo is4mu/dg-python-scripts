@@ -6,7 +6,7 @@ import dgpy_flame_types
 import dgpy_gui
 import dgpy_log
 
-__version__ = "1.0.3"
+__version__ = "1.0.4"
 
 
 def _attr_value(obj, name: str, default=None):
@@ -119,14 +119,11 @@ def _video_tracks_except(clip, keep) -> list:
 
 
 def _ensure_timeline_tab(logger) -> None:
-    import flame
+    import dgpy_flame_util
 
-    try:
-        flame.set_current_tab("Timeline")
-    except Exception as exc:  # noqa: BLE001
-        logger.warning(
-            "Keep Video Tracks: set_current_tab Timeline failed: %s", exc
-        )
+    dgpy_flame_util.ensure_timeline_tab(
+        logger=logger, label="Keep Video Tracks"
+    )
 
 
 def _delete_tracks(tracks: list, logger, label: str) -> tuple[int, int]:
@@ -250,6 +247,8 @@ def set_top_as_primary(selection, parent=None) -> None:
     if not clips:
         logger.info("%s: nothing selected", label)
         return
+
+    _ensure_timeline_tab(logger)
 
     ok = 0
     failed = 0
