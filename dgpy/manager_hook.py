@@ -5,6 +5,9 @@ Menu (migration): DGpy2 → DG Script Manager
 
 Note: Flame loads every .py under the hook path as a top-level module by
 *filename*. Library modules must use unique basenames (no package __init__.py).
+
+Silent auto-update is scheduled from get_main_menu_custom_ui_actions (once),
+not app_initialized (stock hook.py owns that name on Flame 2025).
 """
 
 from __future__ import annotations
@@ -23,14 +26,14 @@ def _open_manager(selection=None):
     dgpy_manager_app.open_manager(selection)
 
 
-def app_initialized(project_name):
-    """Also register via manager_hook so startup runs even if dgpy_startup is skipped."""
-    import dgpy_startup
-
-    dgpy_startup.app_initialized(project_name)
-
-
 def get_main_menu_custom_ui_actions():
+    try:
+        import dgpy_startup
+
+        dgpy_startup.schedule_from_main_menu()
+    except Exception:  # noqa: BLE001
+        pass
+
     return [
         {
             "hierarchy": ["DGpy2"],

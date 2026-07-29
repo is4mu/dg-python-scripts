@@ -1,7 +1,7 @@
-"""Flame app_initialized: silent Update All for studio auto-update.
+"""Silent Update All after main-menu build (distributable; no stock hook.py).
 
-Hook basename must be unique (Flame loads every .py by filename).
-Defer with flame.schedule_idle_event (not QTimer) — see Autodesk watch_folder.py.
+Do NOT define app_initialized here — Flame keeps only stock
+/opt/Autodesk/.flamefamily_2025/python/hook.py for that name.
 """
 
 from __future__ import annotations
@@ -13,11 +13,10 @@ _DGPY_ROOT = os.path.dirname(os.path.abspath(__file__))
 if _DGPY_ROOT not in sys.path:
     sys.path.insert(0, _DGPY_ROOT)
 
-__version__ = "0.3.12"
+__version__ = "0.3.13"
 
 _RAN_THIS_SESSION = False
 _SCHEDULED = False
-# Seconds — matches Autodesk python_utilities/examples/watch_folder.py
 _IDLE_DELAY_SEC = 1
 
 
@@ -89,8 +88,8 @@ def _run_quiet_update() -> None:
         logger.exception("startup auto-update: failed: %s", exc)
 
 
-def app_initialized(project_name: str) -> None:
-    """Called after project Start. Schedules silent Update All on idle."""
+def schedule_from_main_menu() -> None:
+    """Call from get_main_menu_custom_ui_actions (once per session)."""
     global _SCHEDULED
     import dgpy_log
     import dgpy_paths
@@ -98,18 +97,12 @@ def app_initialized(project_name: str) -> None:
     dgpy_paths.ensure_dgpy_on_sys_path()
     logger = dgpy_log.setup()
     if _SCHEDULED:
-        logger.info(
-            "app_initialized(%r): startup auto-update already scheduled",
-            project_name,
-        )
         return
     _SCHEDULED = True
     logger.info(
-        "app_initialized(%r): schedule startup auto-update (idle %ss)",
-        project_name,
+        "startup auto-update: schedule from main menu (idle %ss)",
         _IDLE_DELAY_SEC,
     )
-
     try:
         import flame  # type: ignore
 
