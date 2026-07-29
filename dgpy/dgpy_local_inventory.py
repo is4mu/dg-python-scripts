@@ -8,7 +8,7 @@ from pathlib import Path
 
 import dgpy_paths
 
-__version__ = "0.3.6"
+__version__ = "0.3.7"
 
 
 @dataclass
@@ -101,11 +101,19 @@ def scan_local(root: Path | None = None) -> list[LocalPackage]:
     return rows
 
 
+def _app_dir_has_python(app_dir: Path) -> bool:
+    if not app_dir.is_dir():
+        return False
+    return any(p.is_file() and p.suffix == ".py" for p in app_dir.iterdir())
+
+
 def ensure_seed_installed(root: Path | None = None) -> None:
     """Seed / refresh core+manager entries from on-disk markers.
 
     Keeps ``installed.json`` aligned with filesystem versions so Manager
     does not show a perpetual Update when inventory is missing or stale.
+    Also drops app entries whose ``apps/<id>/`` has no ``.py`` (stale
+    bootstrap seed that listed apps without shipping them).
     """
     base = root or dgpy_paths.dgpy_root()
     data = load_installed(base)
@@ -127,6 +135,12 @@ def ensure_seed_installed(root: Path | None = None) -> None:
             or existing.get("path") != entry["path"]
         ):
             packages[pid] = entry
+            changed = True
+    for pid in list(packages):
+        if pid in ("core", "manager"):
+            continue
+        if not _app_dir_has_python(base / "apps" / pid):
+            del packages[pid]
             changed = True
     if changed:
         save_installed(data, base)
