@@ -1,5 +1,5 @@
 """
-Flame: DG2: Clip → Set Start Frame to 1.
+Flame: DG: Clip → Set Start Frame to 1.
 
 Media Panel; logic in set_start_frame_1_app.
 """
@@ -15,7 +15,7 @@ for _p in (_DGPY_ROOT, _APP_DIR):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
-__version__ = "1.0.1"
+__version__ = "1.0.2"
 
 _pending_selection: list | None = None
 
@@ -33,14 +33,14 @@ def _scope_visible(selection) -> bool:
         targets = app.get_targets(items, logger=logger)
     except Exception as exc:  # noqa: BLE001
         logger.warning(
-            "DG2: Clip Set Start Frame isVisible error pending=%s: %s",
+            "DG: Clip Set Start Frame isVisible error pending=%s: %s",
             dgpy_flame_types.summarize(items),
             exc,
         )
         return False
     visible = bool(targets)
     logger.debug(
-        "DG2: Clip Set Start Frame isVisible pending=%s targets=%s visible=%s",
+        "DG: Clip Set Start Frame isVisible pending=%s targets=%s visible=%s",
         dgpy_flame_types.summarize(items),
         len(targets),
         visible,
@@ -62,7 +62,7 @@ def _resolve_execute_selection(selection) -> list:
             pending
         ) != dgpy_flame_types.summarize(execute_items):
             logger.debug(
-                "DG2: Clip Set Start Frame using isVisible context %s "
+                "DG: Clip Set Start Frame using isVisible context %s "
                 "(execute had %s)",
                 dgpy_flame_types.summarize(pending),
                 dgpy_flame_types.summarize(execute_items),

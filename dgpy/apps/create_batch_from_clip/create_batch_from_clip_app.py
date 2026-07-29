@@ -7,7 +7,7 @@ import dgpy_flame_attr
 import dgpy_flame_types
 import dgpy_log
 
-__version__ = "1.0.10"
+__version__ = "1.0.11"
 
 # Schematic gap Clip → Render (Flame coords; ~2× legacy node unit)
 _RENDER_OFFSET_X = 300

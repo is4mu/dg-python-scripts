@@ -1,7 +1,7 @@
 """
 Flame main-menu: List Plugins.
 
-Menu: DGpy2 → List Plugins
+Menu: DGpy → List Plugins
 Scans current Desktop (timeline FX + batch nodes) on execute only.
 """
 
@@ -26,7 +26,7 @@ def _run(_selection=None):
 def get_main_menu_custom_ui_actions():
     return [
         {
-            "hierarchy": ["DGpy2"],
+            "hierarchy": ["DGpy"],
             "actions": [
                 {
                     "name": "List Plugins",

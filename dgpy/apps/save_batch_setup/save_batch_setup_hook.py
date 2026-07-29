@@ -1,5 +1,5 @@
 """
-Flame: DG2: Batch → Save Setup.
+Flame: DG: Batch → Save Setup.
 
 Media Panel: save setups for selected PyBatch, or all under PyDesktop.
 """
@@ -15,7 +15,7 @@ for _p in (_DGPY_ROOT, _APP_DIR):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
-__version__ = "1.1.4"
+__version__ = "1.1.5"
 
 _pending_selection: list | None = None
 
@@ -32,10 +32,10 @@ def _scope_visible(selection) -> bool:
         batches = dgpy_flame_types.get_batch_groups(items)
         visible = bool(batches)
     except Exception as exc:  # noqa: BLE001
-        logger.warning("DG2: Batch Save Setup isVisible error: %s", exc)
+        logger.warning("DG: Batch Save Setup isVisible error: %s", exc)
         return False
     logger.debug(
-        "DG2: Batch Save Setup isVisible pending=%s n=%s",
+        "DG: Batch Save Setup isVisible pending=%s n=%s",
         dgpy_flame_types.summarize(items),
         len(batches),
     )
@@ -57,7 +57,7 @@ def _resolve_execute_selection(selection) -> list:
             pending
         ) != dgpy_flame_types.summarize(execute_items):
             logger.debug(
-                "DG2: Batch Save Setup using isVisible context %s "
+                "DG: Batch Save Setup using isVisible context %s "
                 "(execute had %s)",
                 dgpy_flame_types.summarize(pending),
                 dgpy_flame_types.summarize(execute_items),

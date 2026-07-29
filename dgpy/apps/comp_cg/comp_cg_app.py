@@ -12,7 +12,7 @@ import dgpy_flame_attr
 import dgpy_flame_types
 import dgpy_log
 
-__version__ = "1.0.4"
+__version__ = "1.0.5"
 
 _NODE_UNIT = 150
 _BATCH_NAME = "comp_cg"

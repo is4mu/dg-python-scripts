@@ -1,5 +1,5 @@
 """
-Flame: DG2: Sequence → Only Primary / Only Top / Set Top as Primary.
+Flame: DG: Sequence → Only Primary / Only Top / Set Top as Primary.
 
 Media Panel; logic in keep_video_tracks_app.
 """
@@ -15,7 +15,7 @@ for _p in (_DGPY_ROOT, _APP_DIR):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
-__version__ = "1.0.5"
+__version__ = "1.0.6"
 
 _pending_selection: list | None = None
 
@@ -33,14 +33,14 @@ def _scope_visible(selection) -> bool:
         targets = app.get_targets(items, logger=logger)
     except Exception as exc:  # noqa: BLE001
         logger.warning(
-            "DG2: Sequence track tools isVisible error pending=%s: %s",
+            "DG: Sequence track tools isVisible error pending=%s: %s",
             dgpy_flame_types.summarize(items),
             exc,
         )
         return False
     visible = bool(targets)
     logger.debug(
-        "DG2: Sequence track tools isVisible pending=%s targets=%s visible=%s",
+        "DG: Sequence track tools isVisible pending=%s targets=%s visible=%s",
         dgpy_flame_types.summarize(items),
         len(targets),
         visible,
@@ -62,7 +62,7 @@ def _resolve_execute_selection(selection) -> list:
             pending
         ) != dgpy_flame_types.summarize(execute_items):
             logger.debug(
-                "DG2: Sequence track tools using isVisible context %s "
+                "DG: Sequence track tools using isVisible context %s "
                 "(execute had %s)",
                 dgpy_flame_types.summarize(pending),
                 dgpy_flame_types.summarize(execute_items),

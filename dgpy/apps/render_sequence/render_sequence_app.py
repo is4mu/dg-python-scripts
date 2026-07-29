@@ -6,7 +6,7 @@ import dgpy_flame_attr
 import dgpy_flame_types
 import dgpy_log
 
-__version__ = "1.0.4"
+__version__ = "1.0.5"
 
 _SEQUENCES_REEL_TYPE = "Sequences"
 
@@ -113,10 +113,10 @@ def render_targets(targets: list, *, label: str) -> tuple[int, int]:
 def render_from_selection(selection) -> None:
     logger = dgpy_log.setup()
     targets = get_targets_from_selection(selection, logger=logger)
-    render_targets(targets, label="DG2: Sequence Render")
+    render_targets(targets, label="DG: Sequence Render")
 
 
 def render_all_sequence_reels(_selection=None) -> None:
     logger = dgpy_log.setup()
     targets = get_targets_from_sequence_reels(logger=logger)
-    render_targets(targets, label="DG2: Render Sequence Reels")
+    render_targets(targets, label="DG: Render Sequence Reels")

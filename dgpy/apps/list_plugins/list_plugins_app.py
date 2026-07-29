@@ -11,7 +11,7 @@ from PySide6 import QtCore, QtWidgets
 import dgpy_gui
 import dgpy_log
 
-__version__ = "1.1.2"
+__version__ = "1.1.3"
 
 _WINDOW: QtWidgets.QWidget | None = None
 _NONE = "(none)"

@@ -1,5 +1,5 @@
 """
-Flame: DG2: Clip → Create Batch Group.
+Flame: DG: Clip → Create Batch Group.
 
 Media Panel entry; logic in create_batch_from_clip_app.
 """
@@ -15,7 +15,7 @@ for _p in (_DGPY_ROOT, _APP_DIR):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
-__version__ = "1.0.10"
+__version__ = "1.0.11"
 
 _pending_selection: list | None = None
 
@@ -32,14 +32,14 @@ def _scope_visible(selection) -> bool:
         clips = dgpy_flame_types.get_clips(items, logger=logger)
     except Exception as exc:  # noqa: BLE001
         logger.warning(
-            "DG2: Clip Create Batch Group isVisible error pending=%s: %s",
+            "DG: Clip Create Batch Group isVisible error pending=%s: %s",
             dgpy_flame_types.summarize(items),
             exc,
         )
         return False
     visible = bool(clips)
     logger.debug(
-        "DG2: Clip Create Batch Group isVisible pending=%s clips=%s visible=%s",
+        "DG: Clip Create Batch Group isVisible pending=%s clips=%s visible=%s",
         dgpy_flame_types.summarize(items),
         len(clips),
         visible,
@@ -61,7 +61,7 @@ def _resolve_execute_selection(selection) -> list:
             pending
         ) != dgpy_flame_types.summarize(execute_items):
             logger.debug(
-                "DG2: Clip Create Batch Group using isVisible context %s "
+                "DG: Clip Create Batch Group using isVisible context %s "
                 "(execute had %s)",
                 dgpy_flame_types.summarize(pending),
                 dgpy_flame_types.summarize(execute_items),

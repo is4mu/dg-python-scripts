@@ -11,7 +11,7 @@ import dgpy_paths
 from dg_export_presets import ExportPresetDef, resolve_preset_xml
 from dg_export_selection import ExportSource
 
-__version__ = "0.1.7"
+__version__ = "0.1.8"
 
 ProgressCb = Callable[[int, int, str], None]
 

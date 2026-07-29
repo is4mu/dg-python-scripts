@@ -12,7 +12,7 @@ import dgpy_manifest
 import dgpy_paths
 import dgpy_sync
 
-__version__ = "0.3.14"
+__version__ = "0.3.15"
 
 _WINDOW: QtWidgets.QWidget | None = None
 
@@ -112,7 +112,7 @@ class ManagerWindow(QtWidgets.QDialog):
 
         note = QtWidgets.QLabel(
             "Install 後は自動 Rescan。core/manager は Uninstall 不可"
-            "（配布基盤のため）。移行期間メニュー: DGpy2 → DG Script Manager"
+            "（配布基盤のため）。移行期間メニュー: DGpy → DG Script Manager"
         )
         note.setWordWrap(True)
         layout.addWidget(note)

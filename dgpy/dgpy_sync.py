@@ -17,7 +17,7 @@ import dgpy_semver
 from dgpy_http import download_asset_to, download_to
 from dgpy_manifest import Manifest, ManifestPackage
 
-__version__ = "0.3.14"
+__version__ = "0.3.15"
 
 STATUS_NEW = "New"
 STATUS_UPDATE = "Update"

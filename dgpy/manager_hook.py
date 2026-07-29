@@ -1,7 +1,7 @@
 """
 Flame main-menu entry for DG Script Manager (P1).
 
-Menu (migration): DGpy2 → DG Script Manager
+Menu (migration): DGpy → DG Script Manager
 
 Note: Flame loads every .py under the hook path as a top-level module by
 *filename*. Library modules must use unique basenames (no package __init__.py).
@@ -36,11 +36,11 @@ def get_main_menu_custom_ui_actions():
 
     return [
         {
-            "hierarchy": ["DGpy2"],
+            "hierarchy": ["DGpy"],
             "actions": [
                 {
                     "name": "DG Script Manager",
-                    # Keep Manager first under DGpy2; apps use order >= 100.
+                    # Keep Manager first under DGpy; apps use order >= 100.
                     "order": 0,
                     "separator": "below",
                     "execute": _open_manager,

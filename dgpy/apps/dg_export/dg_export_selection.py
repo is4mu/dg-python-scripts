@@ -8,7 +8,7 @@ from typing import Any
 
 import dgpy_flame_types
 
-__version__ = "0.1.7"
+__version__ = "0.1.8"
 
 _UNSAFE = re.compile(r'[<>:"|?*\\]+')
 

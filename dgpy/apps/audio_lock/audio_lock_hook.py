@@ -1,5 +1,5 @@
 """
-Flame: DG2: Audio → Lock / Unlock Audio Tracks.
+Flame: DG: Audio → Lock / Unlock Audio Tracks.
 """
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ for _p in (_DGPY_ROOT, _APP_DIR):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
-__version__ = "1.0.3"
+__version__ = "1.0.4"
 
 _pending_selection: list | None = None
 
@@ -40,7 +40,7 @@ def _resolve(selection) -> list:
             pending
         ) != dgpy_flame_types.summarize(execute_items):
             dgpy_log.setup().debug(
-                "DG2: Audio Lock using isVisible context %s (execute had %s)",
+                "DG: Audio Lock using isVisible context %s (execute had %s)",
                 dgpy_flame_types.summarize(pending),
                 dgpy_flame_types.summarize(execute_items),
             )

@@ -1,5 +1,5 @@
 """
-Flame: DG2: Sequence Render (+ hotkey-only DG2: Render Sequence Reels).
+Flame: DG: Sequence Render (+ hotkey-only DG: Render Sequence Reels).
 
 Media Panel; logic in render_sequence_app.
 """
@@ -15,7 +15,7 @@ for _p in (_DGPY_ROOT, _APP_DIR):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
-__version__ = "1.0.4"
+__version__ = "1.0.5"
 
 _pending_selection: list | None = None
 
@@ -33,14 +33,14 @@ def _scope_visible(selection) -> bool:
         targets = app.get_targets_from_selection(items, logger=logger)
     except Exception as exc:  # noqa: BLE001
         logger.warning(
-            "DG2: Sequence Render isVisible error pending=%s: %s",
+            "DG: Sequence Render isVisible error pending=%s: %s",
             dgpy_flame_types.summarize(items),
             exc,
         )
         return False
     visible = bool(targets)
     logger.debug(
-        "DG2: Sequence Render isVisible pending=%s targets=%s visible=%s",
+        "DG: Sequence Render isVisible pending=%s targets=%s visible=%s",
         dgpy_flame_types.summarize(items),
         len(targets),
         visible,
@@ -62,7 +62,7 @@ def _resolve_execute_selection(selection) -> list:
             pending
         ) != dgpy_flame_types.summarize(execute_items):
             logger.debug(
-                "DG2: Sequence Render using isVisible context %s "
+                "DG: Sequence Render using isVisible context %s "
                 "(execute had %s)",
                 dgpy_flame_types.summarize(pending),
                 dgpy_flame_types.summarize(execute_items),
@@ -95,14 +95,14 @@ def get_media_panel_custom_ui_actions():
         [
             {
                 "layout_key": "sequence_render.selection",
-                "name": "DG2: Sequence Render",
+                "name": "DG: Sequence Render",
                 "isVisible": _scope_visible,
                 "execute": _run_selection,
                 "minimumVersion": "2025",
             },
             {
                 "layout_key": "sequence_render.reels_hotkey",
-                "name": "DG2: Render Sequence Reels",
+                "name": "DG: Render Sequence Reels",
                 "isVisible": _scope_hotkey_hidden,
                 "execute": _run_sequence_reels,
                 "minimumVersion": "2025",

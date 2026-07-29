@@ -5,7 +5,7 @@ from __future__ import annotations
 import dgpy_flame_types
 import dgpy_log
 
-__version__ = "1.0.3"
+__version__ = "1.0.4"
 
 
 def get_targets(selection, *, logger=None) -> list:

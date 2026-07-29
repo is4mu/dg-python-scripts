@@ -1,5 +1,5 @@
 """
-Flame: DG2: Batch → Open.
+Flame: DG: Batch → Open.
 
 Media Panel: open selected PyBatch, or all batch_groups under selected PyDesktop.
 After open(), set expanded=False (legacy behavior).
@@ -21,7 +21,7 @@ for _p in (_DGPY_ROOT, _APP_DIR):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
-__version__ = "1.0.6"
+__version__ = "1.0.7"
 
 _pending_selection: list | None = None
 
@@ -43,12 +43,12 @@ def _scope_visible(selection) -> bool:
         visible = any(_is_closed(b) for b in batches)
     except Exception as exc:  # noqa: BLE001
         logger.warning(
-            "DG2: Batch Open isVisible error: %s",
+            "DG: Batch Open isVisible error: %s",
             exc,
         )
         return False
     logger.debug(
-        "DG2: Batch Open isVisible pending=%s closed=%s",
+        "DG: Batch Open isVisible pending=%s closed=%s",
         dgpy_flame_types.summarize(items),
         visible,
     )
@@ -70,7 +70,7 @@ def _resolve_execute_selection(selection) -> list:
             pending
         ) != dgpy_flame_types.summarize(execute_items):
             logger.debug(
-                "DG2: Batch Open using isVisible context %s (execute had %s)",
+                "DG: Batch Open using isVisible context %s (execute had %s)",
                 dgpy_flame_types.summarize(pending),
                 dgpy_flame_types.summarize(execute_items),
             )
@@ -88,7 +88,7 @@ def _open_batches(selection=None) -> None:
         b for b in dgpy_flame_types.get_batch_groups(items) if _is_closed(b)
     ]
     if not batches:
-        logger.info("DG2: Batch Open: nothing closed to open")
+        logger.info("DG: Batch Open: nothing closed to open")
         return
 
     ok = 0
@@ -101,11 +101,11 @@ def _open_batches(selection=None) -> None:
         except Exception as exc:  # noqa: BLE001
             failed += 1
             logger.warning(
-                "DG2: Batch Open failed for %s: %s",
+                "DG: Batch Open failed for %s: %s",
                 dgpy_flame_types.item_label(batch),
                 exc,
             )
-    logger.info("DG2: Batch Open: opened %s (failed %s)", ok, failed)
+    logger.info("DG: Batch Open: opened %s (failed %s)", ok, failed)
 
 
 def get_media_panel_custom_ui_actions():

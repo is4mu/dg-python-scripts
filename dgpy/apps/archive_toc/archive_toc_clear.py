@@ -9,7 +9,7 @@ from pathlib import Path
 import dgpy_gui
 import dgpy_log
 
-__version__ = "1.0.5"
+__version__ = "1.0.6"
 
 ARCHIVE_DIR = Path("/opt/Autodesk/archive")
 

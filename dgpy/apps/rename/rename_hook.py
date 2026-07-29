@@ -1,8 +1,8 @@
 """
-Flame: DG2: Rename (batch rename dialog).
+Flame: DG: Rename (batch rename dialog).
 
 Contexts (v1.1): Media Panel, Timeline, Batch, Action.
-Menu: context menu root → DG2: Rename (hierarchy [])
+Menu: context menu root → DG: Rename (hierarchy [])
 
 Selection note (Flame quirk):
   isVisible(selection) receives the right-click context object.
@@ -65,9 +65,9 @@ def _scope_visible(selection) -> bool:
         _pending_selection = items
         visible = bool(items)
     except Exception as exc:  # noqa: BLE001
-        logger.warning("DG2: Rename isVisible error: %s", exc)
+        logger.warning("DG: Rename isVisible error: %s", exc)
         return False
-    logger.debug("DG2: Rename isVisible pending=%s", _summarize(items))
+    logger.debug("DG: Rename isVisible pending=%s", _summarize(items))
     return visible
 
 
@@ -84,7 +84,7 @@ def _resolve_execute_selection(selection) -> list:
     if pending:
         if execute_items and _summarize(pending) != _summarize(execute_items):
             logger.debug(
-                "DG2: Rename using isVisible context %s (execute had %s)",
+                "DG: Rename using isVisible context %s (execute had %s)",
                 _summarize(pending),
                 _summarize(execute_items),
             )
@@ -102,8 +102,8 @@ def _open_rename(selection=None):
         import dgpy_gui
         import dgpy_log
 
-        dgpy_log.setup().exception("DG2: Rename failed: %s", exc)
-        dgpy_gui.warning(None, "DG2: Rename", f"Failed to open:\n{exc}")
+        dgpy_log.setup().exception("DG: Rename failed: %s", exc)
+        dgpy_gui.warning(None, "DG: Rename", f"Failed to open:\n{exc}")
 
 
 def _rename_actions_other() -> list[dict]:
@@ -113,7 +113,7 @@ def _rename_actions_other() -> list[dict]:
             "order": 20,
             "actions": [
                 {
-                    "name": "DG2: Rename",
+                    "name": "DG: Rename",
                     "order": 20,
                     "isVisible": _scope_visible,
                     "execute": _open_rename,
@@ -131,7 +131,7 @@ def get_media_panel_custom_ui_actions():
         [
             {
                 "layout_key": "rename.root",
-                "name": "DG2: Rename",
+                "name": "DG: Rename",
                 "isVisible": _scope_visible,
                 "execute": _open_rename,
                 "minimumVersion": "2025",

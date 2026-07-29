@@ -1,4 +1,4 @@
-"""DG2: Rename dialog — pattern / tokens / replace. PySide6 only."""
+"""DG: Rename dialog — pattern / tokens / replace. PySide6 only."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from PySide6 import QtCore, QtWidgets
 import dgpy_gui
 import dgpy_log
 
-__version__ = "1.2.6"
+__version__ = "1.2.7"
 
 TOKEN_LIST = ("<name>", "<date>", "<index>")
 _DEFAULT_PATTERN = "<name>"
@@ -141,7 +141,7 @@ class RenameDialog(QtWidgets.QDialog):
         self._replace_rows: list[dict] = []
         self._token_target: QtWidgets.QLineEdit | None = None
 
-        self.setWindowTitle("DG2: Rename")
+        self.setWindowTitle("DG: Rename")
         self.setMinimumWidth(480)
         self.setWindowFlags(
             self.windowFlags() | QtCore.Qt.WindowType.WindowStaysOnTopHint
@@ -362,7 +362,7 @@ def open_rename(selection=None) -> None:
     if selection:
         items = list(selection) if isinstance(selection, (list, tuple)) else [selection]
     if not items:
-        dgpy_gui.info(None, "DG2: Rename", "Nothing selected.")
+        dgpy_gui.info(None, "DG: Rename", "Nothing selected.")
         return
 
     app = QtWidgets.QApplication.instance()
@@ -383,7 +383,7 @@ def open_rename(selection=None) -> None:
     if len(items) > 5:
         names += ", …"
     logger.info(
-        "DG2: Rename opened (%s item(s)): %s",
+        "DG: Rename opened (%s item(s)): %s",
         len(items),
         names,
     )

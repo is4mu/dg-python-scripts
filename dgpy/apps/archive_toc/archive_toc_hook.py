@@ -1,7 +1,7 @@
 """
 Flame main-menu: Clear Archive TOCs.
 
-Menu (migration): DGpy2 → Clear Archive TOCs
+Menu (migration): DGpy → Clear Archive TOCs
 """
 
 from __future__ import annotations
@@ -25,7 +25,7 @@ def _run(_selection=None):
 def get_main_menu_custom_ui_actions():
     return [
         {
-            "hierarchy": ["DGpy2"],
+            "hierarchy": ["DGpy"],
             "actions": [
                 {
                     "name": "Clear Archive TOCs",

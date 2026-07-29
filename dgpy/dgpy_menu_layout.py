@@ -12,10 +12,10 @@ from __future__ import annotations
 
 from typing import Any
 
-__version__ = "0.1.4"
+__version__ = "0.1.5"
 
-# Temporary coexistence prefix. Flip to "DG:" when legacy is retired.
-MENU_PREFIX = "DG2:"
+# Media Panel / Timeline group prefix (legacy coexistence "DG2:" retired).
+MENU_PREFIX = "DG:"
 
 
 def _h(*parts: str) -> list[str]:

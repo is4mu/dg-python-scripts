@@ -13,7 +13,7 @@ _DGPY_ROOT = os.path.dirname(os.path.abspath(__file__))
 if _DGPY_ROOT not in sys.path:
     sys.path.insert(0, _DGPY_ROOT)
 
-__version__ = "0.3.14"
+__version__ = "0.3.15"
 
 _RAN_THIS_SESSION = False
 _SCHEDULED = False

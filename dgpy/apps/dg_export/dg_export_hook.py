@@ -1,7 +1,7 @@
 """
-Flame: DG2: Export (PyExporter).
+Flame: DG: Export (PyExporter).
 
-Media Panel: DG2: Export → <stem of each presets/*.xml>
+Media Panel: DG: Export → <stem of each presets/*.xml>
 """
 
 from __future__ import annotations
@@ -38,10 +38,10 @@ def _scope_visible(selection) -> bool:
         _pending_selection = items
         visible = dg_export_selection.has_exportable(items)
     except Exception as exc:  # noqa: BLE001
-        logger.warning("DG2: Export isVisible error: %s", exc)
+        logger.warning("DG: Export isVisible error: %s", exc)
         return False
     logger.debug(
-        "DG2: Export isVisible pending=%s visible=%s",
+        "DG: Export isVisible pending=%s visible=%s",
         dgpy_flame_types.summarize(items),
         visible,
     )
@@ -62,7 +62,7 @@ def _resolve_execute_selection(selection) -> list:
             execute_items
         ):
             logger.debug(
-                "DG2: Export using isVisible context %s (execute had %s)",
+                "DG: Export using isVisible context %s (execute had %s)",
                 dgpy_flame_types.summarize(pending),
                 dgpy_flame_types.summarize(execute_items),
             )

@@ -6,7 +6,7 @@ from typing import Any
 
 import dgpy_flame_types
 
-__version__ = "0.3.2"
+__version__ = "0.3.3"
 
 
 def _attr(obj: Any, name: str, default=None):

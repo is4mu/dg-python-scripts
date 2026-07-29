@@ -1,5 +1,5 @@
 """
-Flame: DG2: Batch → Render.
+Flame: DG: Batch → Render.
 
 Media Panel: render selected PyBatch, or all batch_groups under selected PyDesktop.
 No confirm / info dialogs — log only.
@@ -21,7 +21,7 @@ for _p in (_DGPY_ROOT, _APP_DIR):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
-__version__ = "1.0.4"
+__version__ = "1.0.5"
 
 _pending_selection: list | None = None
 
@@ -38,10 +38,10 @@ def _scope_visible(selection) -> bool:
         batches = dgpy_flame_types.get_batch_groups(items)
         visible = bool(batches)
     except Exception as exc:  # noqa: BLE001
-        logger.warning("DG2: Batch Render isVisible error: %s", exc)
+        logger.warning("DG: Batch Render isVisible error: %s", exc)
         return False
     logger.debug(
-        "DG2: Batch Render isVisible pending=%s visible=%s",
+        "DG: Batch Render isVisible pending=%s visible=%s",
         dgpy_flame_types.summarize(items),
         visible,
     )
@@ -63,7 +63,7 @@ def _resolve_execute_selection(selection) -> list:
             pending
         ) != dgpy_flame_types.summarize(execute_items):
             logger.debug(
-                "DG2: Batch Render using isVisible context %s (execute had %s)",
+                "DG: Batch Render using isVisible context %s (execute had %s)",
                 dgpy_flame_types.summarize(pending),
                 dgpy_flame_types.summarize(execute_items),
             )
@@ -79,7 +79,7 @@ def _render_batches(selection=None) -> None:
     items = _resolve_execute_selection(selection)
     batches = dgpy_flame_types.get_batch_groups(items)
     if not batches:
-        logger.info("DG2: Batch Render: nothing to render")
+        logger.info("DG: Batch Render: nothing to render")
         return
 
     ok = 0
@@ -91,11 +91,11 @@ def _render_batches(selection=None) -> None:
         except Exception as exc:  # noqa: BLE001
             failed += 1
             logger.warning(
-                "DG2: Batch Render failed for %s: %s",
+                "DG: Batch Render failed for %s: %s",
                 dgpy_flame_types.item_label(batch),
                 exc,
             )
-    logger.info("DG2: Batch Render: ok %s (failed %s)", ok, failed)
+    logger.info("DG: Batch Render: ok %s (failed %s)", ok, failed)
 
 
 def get_media_panel_custom_ui_actions():

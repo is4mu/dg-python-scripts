@@ -6,7 +6,7 @@ import dgpy_flame_attr
 import dgpy_flame_types
 import dgpy_log
 
-__version__ = "1.0.2"
+__version__ = "1.0.3"
 
 
 def _frame_number(time_obj) -> int | None:

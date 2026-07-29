@@ -1,8 +1,8 @@
 """
-Flame: DG2: Color (set item.colour from palette).
+Flame: DG: Color (set item.colour from palette).
 
 Contexts: Media Panel, Timeline, Batch.
-Menu: DG2: Color → <color name> (hierarchy ["DG2: Color"])
+Menu: DG: Color → <color name> (hierarchy ["DG: Color"])
 
 Selection note (Flame quirk):
   isVisible(selection) receives the right-click context object.
@@ -21,7 +21,7 @@ for _p in (_DGPY_ROOT, _APP_DIR):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
-__version__ = "1.0.4"
+__version__ = "1.0.5"
 
 # Redesigned 10-color palette (muted 和色-inspired). Menu names: English short.
 COLORS: dict[str, tuple[float, float, float]] = {
@@ -81,9 +81,9 @@ def _scope_visible(selection) -> bool:
         _pending_selection = items
         visible = bool(items)
     except Exception as exc:  # noqa: BLE001
-        logger.warning("DG2: Color isVisible error: %s", exc)
+        logger.warning("DG: Color isVisible error: %s", exc)
         return False
-    logger.debug("DG2: Color isVisible pending=%s", _summarize(items))
+    logger.debug("DG: Color isVisible pending=%s", _summarize(items))
     return visible
 
 
@@ -100,7 +100,7 @@ def _resolve_execute_selection(selection) -> list:
     if pending:
         if execute_items and _summarize(pending) != _summarize(execute_items):
             logger.debug(
-                "DG2: Color using isVisible context %s (execute had %s)",
+                "DG: Color using isVisible context %s (execute had %s)",
                 _summarize(pending),
                 _summarize(execute_items),
             )
@@ -118,7 +118,7 @@ def _set_colour(items: list, rgb: tuple[float, float, float]) -> int:
             import dgpy_log
 
             dgpy_log.setup().warning(
-                "DG2: Color failed on %s", _item_label(item), exc_info=True
+                "DG: Color failed on %s", _item_label(item), exc_info=True
             )
     return ok
 
@@ -131,7 +131,7 @@ def _make_set_color(name: str, rgb: tuple[float, float, float]):
         if not items:
             return
         n = _set_colour(items, rgb)
-        dgpy_log.setup().info("DG2: Color set %s on %s item(s)", name, n)
+        dgpy_log.setup().info("DG: Color set %s on %s item(s)", name, n)
 
     return _execute
 
@@ -168,7 +168,7 @@ def _color_actions_other() -> list[dict]:
         )
     return [
         {
-            "hierarchy": ["DG2: Color"],
+            "hierarchy": ["DG: Color"],
             "order": 10,
             "actions": actions,
         }

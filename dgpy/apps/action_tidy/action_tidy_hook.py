@@ -1,5 +1,5 @@
 """
-Flame: DG2: Segment — Clean Up / Toggle Fit / Strip Expressions.
+Flame: DG: Segment — Clean Up / Toggle Fit / Strip Expressions.
 
 Media Panel + Timeline.
 """
@@ -15,7 +15,7 @@ for _p in (_DGPY_ROOT, _APP_DIR):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
-__version__ = "0.3.2"
+__version__ = "0.3.3"
 
 _pending_selection: list | None = None
 
@@ -39,13 +39,13 @@ def _scope_visible(selection) -> bool:
         visible = has_segments(items, logger=logger)
     except Exception as exc:  # noqa: BLE001
         logger.warning(
-            "DG2: Segment isVisible error pending=%s: %s",
+            "DG: Segment isVisible error pending=%s: %s",
             dgpy_flame_types.summarize(items),
             exc,
         )
         return False
     logger.debug(
-        "DG2: Segment isVisible pending=%s visible=%s",
+        "DG: Segment isVisible pending=%s visible=%s",
         dgpy_flame_types.summarize(items),
         visible,
     )
@@ -66,7 +66,7 @@ def _resolve_execute_selection(selection) -> list:
             pending
         ) != dgpy_flame_types.summarize(execute_items):
             logger.debug(
-                "DG2: Segment using isVisible context %s (execute had %s)",
+                "DG: Segment using isVisible context %s (execute had %s)",
                 dgpy_flame_types.summarize(pending),
                 dgpy_flame_types.summarize(execute_items),
             )
@@ -253,7 +253,7 @@ def _timeline_actions() -> list[dict]:
 def _timeline_group() -> list[dict]:
     return [
         {
-            "hierarchy": ["DG2: Segment"],
+            "hierarchy": ["DG: Segment"],
             "order": 43,
             "actions": _timeline_actions(),
         }
