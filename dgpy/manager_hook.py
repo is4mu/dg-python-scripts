@@ -23,6 +23,13 @@ def _open_manager(selection=None):
     dgpy_manager_app.open_manager(selection)
 
 
+def app_initialized(project_name):
+    """Also register via manager_hook so startup runs even if dgpy_startup is skipped."""
+    import dgpy_startup
+
+    dgpy_startup.app_initialized(project_name)
+
+
 def get_main_menu_custom_ui_actions():
     return [
         {

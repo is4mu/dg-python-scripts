@@ -1,6 +1,7 @@
 """Flame app_initialized: silent Update All for studio auto-update.
 
 Hook basename must be unique (Flame loads every .py by filename).
+Defer with flame.schedule_idle_event (not QTimer) — see Autodesk watch_folder.py.
 """
 
 from __future__ import annotations
@@ -12,10 +13,12 @@ _DGPY_ROOT = os.path.dirname(os.path.abspath(__file__))
 if _DGPY_ROOT not in sys.path:
     sys.path.insert(0, _DGPY_ROOT)
 
-__version__ = "0.3.11"
+__version__ = "0.3.12"
 
 _RAN_THIS_SESSION = False
-_DEFER_MS = 500
+_SCHEDULED = False
+# Seconds — matches Autodesk python_utilities/examples/watch_folder.py
+_IDLE_DELAY_SEC = 1
 
 
 def _run_quiet_update() -> None:
@@ -31,7 +34,7 @@ def _run_quiet_update() -> None:
     logger = dgpy_log.setup()
 
     if _RAN_THIS_SESSION:
-        logger.debug("startup auto-update: already ran this session")
+        logger.info("startup auto-update: already ran this session")
         return
     _RAN_THIS_SESSION = True
 
@@ -87,21 +90,33 @@ def _run_quiet_update() -> None:
 
 
 def app_initialized(project_name: str) -> None:
-    """Called after project Start. Schedules silent Update All."""
-    try:
-        import dgpy_log
-        import dgpy_paths
+    """Called after project Start. Schedules silent Update All on idle."""
+    global _SCHEDULED
+    import dgpy_log
+    import dgpy_paths
 
-        dgpy_paths.ensure_dgpy_on_sys_path()
-        dgpy_log.setup().debug(
-            "app_initialized(%r): schedule startup auto-update", project_name
+    dgpy_paths.ensure_dgpy_on_sys_path()
+    logger = dgpy_log.setup()
+    if _SCHEDULED:
+        logger.info(
+            "app_initialized(%r): startup auto-update already scheduled",
+            project_name,
         )
-    except Exception:  # noqa: BLE001
-        pass
+        return
+    _SCHEDULED = True
+    logger.info(
+        "app_initialized(%r): schedule startup auto-update (idle %ss)",
+        project_name,
+        _IDLE_DELAY_SEC,
+    )
 
     try:
-        from PySide6 import QtCore
+        import flame  # type: ignore
 
-        QtCore.QTimer.singleShot(_DEFER_MS, _run_quiet_update)
-    except Exception:  # noqa: BLE001
+        flame.schedule_idle_event(_run_quiet_update, delay=_IDLE_DELAY_SEC)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "schedule_idle_event failed (%s); running startup auto-update now",
+            exc,
+        )
         _run_quiet_update()
