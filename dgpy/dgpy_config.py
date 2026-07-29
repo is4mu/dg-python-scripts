@@ -12,7 +12,7 @@ import dgpy_paths
 DEFAULT_REPO = "is4mu/dg-python-scripts"
 DEFAULT_CHANNEL = "latest"
 
-__version__ = "0.3.0"
+__version__ = "0.3.21"
 
 
 @dataclass
@@ -21,6 +21,7 @@ class Config:
     github_repo: str = DEFAULT_REPO
     channel: str = DEFAULT_CHANNEL
     manifest_url: str = ""
+    auto_update_on_start: bool = True
 
     def resolved_install_root(self) -> Path:
         """Always prefer the running dgpy folder (machine-local, from __file__)."""
@@ -37,6 +38,18 @@ class Config:
 
 def config_path(root: Path | None = None) -> Path:
     return dgpy_paths.state_dir(root) / "config.json"
+
+
+def _as_bool(value: Any, default: bool = True) -> bool:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    if isinstance(value, str):
+        return value.strip().lower() in ("1", "true", "yes", "on")
+    return default
 
 
 def _normalize(cfg: Config) -> Config:
@@ -68,6 +81,9 @@ def load(root: Path | None = None) -> Config:
             github_repo=str(data.get("github_repo") or DEFAULT_REPO),
             channel=str(data.get("channel") or DEFAULT_CHANNEL),
             manifest_url=str(data.get("manifest_url") or ""),
+            auto_update_on_start=_as_bool(
+                data.get("auto_update_on_start"), default=True
+            ),
         )
     )
     # Persist correction if the file still had a Mac path etc.

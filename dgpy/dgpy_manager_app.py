@@ -12,7 +12,7 @@ import dgpy_manifest
 import dgpy_paths
 import dgpy_sync
 
-__version__ = "0.3.10"
+__version__ = "0.3.11"
 
 _WINDOW: QtWidgets.QWidget | None = None
 
@@ -343,106 +343,43 @@ class ManagerWindow(QtWidgets.QDialog):
     def _expand_dependencies(self, packages: list) -> list:
         if not self._manifest:
             return list(packages)
-        by_id = self._manifest.by_id()
-        needed: dict[str, object] = {p.package_id: p for p in packages}
-        changed = True
-        while changed:
-            changed = False
-            for pkg in list(needed.values()):
-                for dep in pkg.depends:  # type: ignore[attr-defined]
-                    if dep in needed or dep not in by_id:
-                        continue
-                    dep_row = next(
-                        (r for r in self._rows if r.package_id == dep),
-                        None,
-                    )
-                    if dep_row and dep_row.status in (
-                        dgpy_sync.STATUS_NEW,
-                        dgpy_sync.STATUS_UPDATE,
-                    ):
-                        needed[dep] = by_id[dep]
-                        changed = True
-                    elif dep_row is None:
-                        needed[dep] = by_id[dep]
-                        changed = True
-        return list(needed.values())
-
-    def _rescan_hooks(self) -> bool:
-        """Run Rescan and let Qt process events (hooks may reload UI)."""
-        ok = dgpy_flame_util.rescan_python_hooks()
-        try:
-            QtWidgets.QApplication.processEvents()
-        except Exception:  # noqa: BLE001
-            pass
-        return ok
+        return dgpy_sync.expand_dependencies(packages, self._manifest, self._rows)
 
     def _run_install(self, packages) -> None:
-        """Install in phases: Core → Manager → Rescan → Apps → Rescan."""
+        """Install in phases; show dialogs (manual path)."""
         if not self._ensure_writable():
             return
         self._set_busy(True)
-        done: list[str] = []
-        rescans: list[str] = []
         try:
             packages = self._expand_dependencies(packages)
-            core_pkgs, manager_pkgs, app_pkgs = (
-                dgpy_sync.partition_for_phased_install(packages)
+            result = dgpy_sync.run_phased_install(
+                packages, root=self._cfg.resolved_install_root()
             )
-            root = self._cfg.resolved_install_root()
-            # dgpy_sync.py lives in manager — after writing it, later phases
-            # must call install_many(..., use_ondisk_installer=True).
-            sync_updated = False
-
-            if core_pkgs:
-                self._logger.info("Install phase: core")
-                done.extend(dgpy_sync.install_many(core_pkgs, root=root))
-            if manager_pkgs:
-                self._logger.info("Install phase: manager")
-                done.extend(
-                    dgpy_sync.install_many(
-                        manager_pkgs,
-                        root=root,
-                        use_ondisk_installer=bool(core_pkgs),
-                    )
+            if result.skipped:
+                dgpy_gui.warning(self, "DG Script Manager", result.skipped)
+                return
+            if result.error:
+                partial = (
+                    f"\n\n完了済み: {', '.join(result.done)}" if result.done else ""
                 )
-                sync_updated = True
-
-            if core_pkgs or manager_pkgs:
-                self._logger.info("Install phase: Rescan (after platform)")
-                if self._rescan_hooks():
-                    rescans.append("platform")
-                else:
-                    self._logger.warning(
-                        "Rescan after core/manager failed or skipped"
-                    )
-
-            if app_pkgs:
-                self._logger.info(
-                    "Install phase: apps (%s)",
-                    ", ".join(p.package_id for p in app_pkgs),
+                dgpy_gui.error(
+                    self,
+                    "DG Script Manager",
+                    f"Install failed:\n{result.error}{partial}",
                 )
-                done.extend(
-                    dgpy_sync.install_many(
-                        app_pkgs,
-                        root=root,
-                        use_ondisk_installer=sync_updated,
-                    )
-                )
-                self._logger.info("Install phase: Rescan (after apps)")
-                if self._rescan_hooks():
-                    rescans.append("apps")
-                else:
-                    self._logger.warning("Rescan after apps failed or skipped")
+                return
 
-            updated_self = any(pid in ("core", "manager") for pid in done)
-            msg = "インストール完了: " + (", ".join(done) if done else "(なし)")
+            updated_self = any(pid in ("core", "manager") for pid in result.done)
+            msg = "インストール完了: " + (
+                ", ".join(result.done) if result.done else "(なし)"
+            )
             msg += "\n\n"
-            if rescans:
+            if result.rescans:
                 msg += (
                     "Rescan Python Hooks を実行しました"
-                    f"（{' → '.join(rescans)}）。"
+                    f"（{' → '.join(result.rescans)}）。"
                 )
-            elif done:
+            elif result.done:
                 msg += (
                     "自動 Rescan に失敗したか、Flame 外のためスキップしました。\n"
                     "手動で Python → Rescan Python Hooks を実行してください。"
@@ -455,11 +392,10 @@ class ManagerWindow(QtWidgets.QDialog):
             dgpy_gui.info(self, "DG Script Manager", msg)
         except Exception as exc:  # noqa: BLE001
             self._logger.exception("Install failed: %s", exc)
-            partial = f"\n\n完了済み: {', '.join(done)}" if done else ""
             dgpy_gui.error(
                 self,
                 "DG Script Manager",
-                f"Install failed:\n{exc}{partial}",
+                f"Install failed:\n{exc}",
             )
         finally:
             self._set_busy(False)

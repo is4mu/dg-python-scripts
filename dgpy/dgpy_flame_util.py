@@ -37,11 +37,13 @@ def ensure_timeline_tab(*, logger=None, label: str = "") -> bool:
         return False
 
 
-def rescan_python_hooks() -> bool:
+def rescan_python_hooks(*, process_events: bool = False) -> bool:
     """
     Trigger Flame's Rescan Python Hooks via execute_shortcut.
 
     Returns True if Flame reported success. Safe no-op outside Flame.
+    When ``process_events`` is True, pump the Qt event loop after Rescan
+    (hooks may reload UI).
     """
     logger = dgpy_log.get_logger()
     try:
@@ -59,6 +61,13 @@ def rescan_python_hooks() -> bool:
                 "execute_shortcut(%r) returned False",
                 RESCAN_SHORTCUT,
             )
+        if process_events:
+            try:
+                from PySide6 import QtWidgets
+
+                QtWidgets.QApplication.processEvents()
+            except Exception:  # noqa: BLE001
+                pass
         return ok
     except Exception as exc:  # noqa: BLE001
         logger.exception("Rescan Python Hooks failed: %s", exc)

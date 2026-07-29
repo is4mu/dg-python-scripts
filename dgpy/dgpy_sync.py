@@ -17,7 +17,7 @@ import dgpy_semver
 from dgpy_http import download_asset_to, download_to
 from dgpy_manifest import Manifest, ManifestPackage
 
-__version__ = "0.3.10"
+__version__ = "0.3.11"
 
 STATUS_NEW = "New"
 STATUS_UPDATE = "Update"
@@ -380,6 +380,115 @@ def partition_for_phased_install(
     manager = [by_id["manager"]] if "manager" in by_id else []
     apps = [p for p in packages if p.package_id not in PROTECTED_PACKAGES]
     return core, manager, apps
+
+
+_install_busy = False
+
+
+@dataclass
+class PhasedInstallResult:
+    done: list[str]
+    rescans: list[str]
+    error: str | None = None
+    skipped: str | None = None
+
+
+def expand_dependencies(
+    packages: list[ManifestPackage],
+    manifest: Manifest,
+    rows: list[PackageRow],
+) -> list[ManifestPackage]:
+    """Include New/Update dependencies from the same manifest."""
+    by_id = manifest.by_id()
+    needed: dict[str, ManifestPackage] = {p.package_id: p for p in packages}
+    changed = True
+    while changed:
+        changed = False
+        for pkg in list(needed.values()):
+            for dep in pkg.depends:
+                if dep in needed or dep not in by_id:
+                    continue
+                dep_row = next((r for r in rows if r.package_id == dep), None)
+                if dep_row and dep_row.status in (STATUS_NEW, STATUS_UPDATE):
+                    needed[dep] = by_id[dep]
+                    changed = True
+                elif dep_row is None:
+                    needed[dep] = by_id[dep]
+                    changed = True
+    return list(needed.values())
+
+
+def run_phased_install(
+    packages: list[ManifestPackage],
+    root: Path | None = None,
+) -> PhasedInstallResult:
+    """Install Core → Manager → Rescan → Apps → Rescan. No UI dialogs."""
+    global _install_busy
+    import dgpy_flame_util
+
+    logger = dgpy_log.get_logger()
+    if _install_busy:
+        return PhasedInstallResult([], [], skipped="install already in progress")
+    if not packages:
+        return PhasedInstallResult([], [], skipped="nothing to install")
+
+    base = root or dgpy_paths.dgpy_root()
+    writable, write_msg = dgpy_paths.check_writable(base)
+    if not writable:
+        return PhasedInstallResult([], [], skipped=write_msg or "not writable")
+
+    _install_busy = True
+    done: list[str] = []
+    rescans: list[str] = []
+    try:
+        core_pkgs, manager_pkgs, app_pkgs = partition_for_phased_install(packages)
+        sync_updated = False
+
+        if core_pkgs:
+            logger.info("Install phase: core")
+            done.extend(install_many(core_pkgs, root=base))
+        if manager_pkgs:
+            logger.info("Install phase: manager")
+            done.extend(
+                install_many(
+                    manager_pkgs,
+                    root=base,
+                    use_ondisk_installer=bool(core_pkgs),
+                )
+            )
+            sync_updated = True
+
+        if core_pkgs or manager_pkgs:
+            logger.info("Install phase: Rescan (after platform)")
+            if dgpy_flame_util.rescan_python_hooks(process_events=True):
+                rescans.append("platform")
+            else:
+                logger.warning("Rescan after core/manager failed or skipped")
+
+        if app_pkgs:
+            logger.info(
+                "Install phase: apps (%s)",
+                ", ".join(p.package_id for p in app_pkgs),
+            )
+            done.extend(
+                install_many(
+                    app_pkgs,
+                    root=base,
+                    use_ondisk_installer=sync_updated,
+                )
+            )
+            logger.info("Install phase: Rescan (after apps)")
+            if dgpy_flame_util.rescan_python_hooks(process_events=True):
+                rescans.append("apps")
+            else:
+                logger.warning("Rescan after apps failed or skipped")
+
+        return PhasedInstallResult(done=done, rescans=rescans)
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("Phased install failed: %s", exc)
+        return PhasedInstallResult(done=done, rescans=rescans, error=str(exc))
+    finally:
+        _install_busy = False
 
 
 def uninstall_package(package_id: str, root: Path | None = None) -> None:
