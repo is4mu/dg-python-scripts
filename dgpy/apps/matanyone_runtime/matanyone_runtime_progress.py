@@ -8,7 +8,7 @@ from PySide6 import QtCore, QtWidgets
 
 import matanyone_runtime_setup as setup
 
-__version__ = "0.1.4"
+__version__ = "0.1.5"
 
 
 class _SetupWorker(QtCore.QObject):

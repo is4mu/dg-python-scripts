@@ -12,7 +12,7 @@ from typing import Callable
 
 import matanyone_runtime_paths as paths
 
-__version__ = "0.1.4"
+__version__ = "0.1.5"
 
 LogFn = Callable[[str], None]
 StepFn = Callable[[int, int, str], None]
@@ -253,7 +253,26 @@ def ensure_host_python(*, log: LogFn | None = None) -> str:
     return _install_python_via_miniforge(log=log)
 
 
-def _venv_is_usable(venv_python: Path | None, *, log: LogFn | None = None) -> bool:
+def _patch_matanyone_deps(repo: Path, *, log: LogFn | None = None) -> None:
+    """Replace abandoned cchardet (fails on Py3.10+) with faust-cchardet."""
+    pyproject = repo / "pyproject.toml"
+    if not pyproject.is_file():
+        _log(log, f"No pyproject.toml to patch under {repo}")
+        return
+    text = pyproject.read_text(encoding="utf-8")
+    original = text
+    for old, new in (
+        ("'cchardet >= 2.1.7'", "'faust-cchardet >= 2.1.18'"),
+        ('"cchardet >= 2.1.7"', '"faust-cchardet >= 2.1.18"'),
+        ("cchardet >= 2.1.7", "faust-cchardet >= 2.1.18"),
+        ("'cchardet>=2.1.7'", "'faust-cchardet>=2.1.18'"),
+    ):
+        text = text.replace(old, new)
+    if text == original:
+        _log(log, "MatAnyone pyproject.toml: no cchardet pin to patch")
+        return
+    pyproject.write_text(text, encoding="utf-8")
+    _log(log, "Patched MatAnyone deps: cchardet → faust-cchardet (Py3.10+ build fix)")
     if venv_python is None or not venv_python.is_file():
         return False
     ver = _python_version(str(venv_python))
@@ -421,6 +440,7 @@ def setup_runtime(
         _run([git, "clone", "--depth", "1", REPO_URL, str(repo)], log=log)
     else:
         _log(log, f"Repo already present: {repo}")
+    _patch_matanyone_deps(repo, log=log)
 
     _step(step, 3)
     venv_dir = root / paths.VENV_DIRNAME
@@ -469,6 +489,8 @@ def setup_runtime(
         _run(pip + ["install", "torch", "torchvision"], log=log)
 
     _step(step, 6)
+    # Preinstall maintained fork so pip does not try to compile abandoned cchardet.
+    _run(pip + ["install", "faust-cchardet>=2.1.18"], log=log)
     _run(pip + ["install", "-e", str(repo)], cwd=repo, log=log)
 
     _step(step, 7)
