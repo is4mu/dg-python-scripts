@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from typing import Any
 
-__version__ = "0.1.5"
+__version__ = "0.1.6"
 
 # Media Panel / Timeline group prefix (legacy coexistence "DG2:" retired).
 MENU_PREFIX = "DG:"
@@ -106,6 +106,7 @@ MEDIA_PANEL_ACTIONS: dict[str, dict[str, Any]] = {
     "clip.create_batch": {"group": "clip", "order": 10},
     "clip.resize_all": {"group": "clip", "order": 20, "separator": "below"},
     "clip.comp_cg": {"group": "clip", "order": 30, "separator": "below"},
+    "clip.matanyone": {"group": "clip", "order": 40},
     "clip.set_start_frame_1": {"group": "clip", "order": 50},
     "clip.goto.first": {"group": "clip.goto", "order": 10},
     "clip.goto.last": {"group": "clip.goto", "order": 20},
