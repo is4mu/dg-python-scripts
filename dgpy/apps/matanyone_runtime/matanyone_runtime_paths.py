@@ -9,7 +9,7 @@ from typing import Callable
 
 import dgpy_paths
 
-__version__ = "0.1.7"
+__version__ = "0.1.8"
 
 RUNTIME_NAME = "matanyone"
 READY_NAME = "READY.json"
@@ -20,44 +20,99 @@ MINIFORGE_DIRNAME = "miniforge3"
 LogFn = Callable[[str], None]
 
 
+def _dgpy(root: Path | None = None) -> Path:
+    return root or dgpy_paths.dgpy_root()
+
+
+def legacy_runtime_roots(root: Path | None = None) -> list[Path]:
+    """Former locations that Flame still scans (must be emptied)."""
+    dgpy = _dgpy(root)
+    python_dir = dgpy.parent
+    return [
+        # Original: under dgpy/ (worst — inside package tree)
+        dgpy / "runtimes" / RUNTIME_NAME,
+        # 0.1.7: beside dgpy but still under …/python/ (still scanned)
+        python_dir / "dgpy_runtimes" / RUNTIME_NAME,
+    ]
+
+
 def legacy_runtime_root(root: Path | None = None) -> Path:
-    """Old location under dgpy/ (slow Flame hook scan — do not use for new installs)."""
-    return (root or dgpy_paths.dgpy_root()) / "runtimes" / RUNTIME_NAME
+    """Oldest legacy path (compat for callers)."""
+    return legacy_runtime_roots(root)[0]
 
 
 def runtime_root(root: Path | None = None) -> Path:
-    """Sibling of dgpy/: .../python/dgpy_runtimes/matanyone
+    """Outside Flame's python hook tree entirely.
 
-    Kept outside dgpy/ so Flame's \"Scanning for python hooks\" does not walk
-    Miniforge / venv (tens of thousands of .py files).
+    dgpy is typically:
+      /opt/Autodesk/shared/python/dgpy  →  /opt/Autodesk/shared/dgpy_runtimes/matanyone
+      ~/flame/python/dgpy               →  ~/flame/dgpy_runtimes/matanyone
+
+    Anything under …/python/ is scanned for hooks.
     """
-    return (root or dgpy_paths.dgpy_root()).parent / "dgpy_runtimes" / RUNTIME_NAME
+    dgpy = _dgpy(root)
+    python_dir = dgpy.parent
+    if python_dir.name == "python":
+        return python_dir.parent / "dgpy_runtimes" / RUNTIME_NAME
+    # Unusual layout: go one level above dgpy anyway
+    return dgpy.parent.parent / "dgpy_runtimes" / RUNTIME_NAME
+
+
+def _rewrite_ready_paths(dest: Path, *, old_prefix: Path, log: LogFn | None = None) -> None:
+    """Fix absolute paths inside READY.json after a directory move."""
+    ready = dest / READY_NAME
+    if not ready.is_file():
+        return
+    try:
+        data = json.loads(ready.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return
+    if not isinstance(data, dict):
+        return
+    old_s = str(old_prefix)
+    new_s = str(dest)
+    changed = False
+    for key in ("python", "host_python", "repo", "inference_script", "sam_script"):
+        raw = str(data.get(key) or "")
+        if old_s in raw:
+            data[key] = raw.replace(old_s, new_s, 1)
+            changed = True
+    if changed:
+        ready.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+        if log:
+            log(f"Updated READY.json paths after migrate → {dest}")
 
 
 def migrate_legacy_runtime_if_needed(*, log: LogFn | None = None) -> Path:
-    """Move dgpy/runtimes/matanyone → dgpy_runtimes/matanyone when needed."""
-    legacy = legacy_runtime_root()
+    """Move any scanned legacy location → outside …/python/."""
     dest = runtime_root()
-    if not legacy.exists():
-        return dest
-    if dest.exists():
+    for legacy in legacy_runtime_roots():
+        if not legacy.exists():
+            continue
+        if legacy.resolve() == dest.resolve():
+            continue
+        if dest.exists():
+            if log:
+                log(
+                    f"Legacy runtime still at {legacy} while {dest} exists. "
+                    f"Delete the legacy folder so Flame stops scanning it."
+                )
+            continue
+        dest.parent.mkdir(parents=True, exist_ok=True)
         if log:
             log(
-                f"Legacy runtime still present at {legacy} but {dest} exists. "
-                f"Delete the legacy folder to speed up Flame hook scan."
+                "Migrating MatAnyone runtime out of Flame python scan path:\n"
+                f"  {legacy}\n→ {dest}"
             )
-        return dest
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    if log:
-        log(f"Migrating runtime out of dgpy/ (hook-scan safe):\n  {legacy}\n→ {dest}")
-    shutil.move(str(legacy), str(dest))
-    # Remove empty dgpy/runtimes if possible.
-    try:
-        parent = legacy.parent
-        if parent.is_dir() and not any(parent.iterdir()):
-            parent.rmdir()
-    except OSError:
-        pass
+        shutil.move(str(legacy), str(dest))
+        _rewrite_ready_paths(dest, old_prefix=legacy, log=log)
+        # Clean empty parents (runtimes/, dgpy_runtimes/ under python/)
+        for parent in (legacy.parent,):
+            try:
+                if parent.is_dir() and not any(parent.iterdir()):
+                    parent.rmdir()
+            except OSError:
+                pass
     return dest
 
 
@@ -95,11 +150,11 @@ def is_ready(root: Path | None = None) -> bool:
     migrate_legacy_runtime_if_needed()
     path = ready_path(root)
     if not path.is_file():
-        # Legacy READY still under dgpy/ before migrate failed?
-        legacy_ready = legacy_runtime_root(root) / READY_NAME
-        if legacy_ready.is_file():
-            migrate_legacy_runtime_if_needed()
-            path = ready_path(root)
+        for legacy in legacy_runtime_roots(root):
+            if (legacy / READY_NAME).is_file():
+                migrate_legacy_runtime_if_needed()
+                path = ready_path(root)
+                break
     if not path.is_file():
         return False
     py = resolve_python(root)

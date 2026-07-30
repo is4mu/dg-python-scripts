@@ -12,7 +12,7 @@ from typing import Callable
 
 import matanyone_runtime_paths as paths
 
-__version__ = "0.1.7"
+__version__ = "0.1.8"
 
 LogFn = Callable[[str], None]
 StepFn = Callable[[int, int, str], None]
@@ -526,15 +526,21 @@ def setup_runtime(
 
 def remove_runtime(*, log: LogFn | None = None) -> None:
     paths.migrate_legacy_runtime_if_needed(log=log)
-    root = paths.runtime_root()
-    legacy = paths.legacy_runtime_root()
-    for target in (root, legacy):
+    targets = [paths.runtime_root(), *paths.legacy_runtime_roots()]
+    removed = False
+    seen: set[str] = set()
+    for target in targets:
+        key = str(target.resolve()) if target.exists() else str(target)
+        if key in seen:
+            continue
+        seen.add(key)
         if not target.exists():
             continue
         _log(log, f"Removing {target}")
         shutil.rmtree(target)
-    if not root.exists() and not legacy.exists():
-        _log(log, f"Nothing to remove under {root} or {legacy}")
+        removed = True
+    if not removed:
+        _log(log, f"Nothing to remove (checked {paths.runtime_root()})")
 
 
 def main(argv: list[str] | None = None) -> int:

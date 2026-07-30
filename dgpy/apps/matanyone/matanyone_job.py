@@ -13,7 +13,7 @@ from typing import Any, Callable
 
 import dgpy_paths
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 ProgressCb = Callable[[str], None]
 MAX_SIZE = 1080
@@ -242,11 +242,13 @@ def sequence_pattern(pha_dir: Path) -> str | None:
     if not m:
         return str(frames[0])
     prefix, digits, suffix = m.group(1), m.group(2), m.group(3)
+    width = len(digits)
     start = int(digits)
     last = frames[-1].name
     m2 = re.match(r"^(.*?)(\d+)(\.[^.]+)$", last)
     end = int(m2.group(2)) if m2 else start
-    return str(pha_dir / f"{prefix}[{start}-{end}]{suffix}")
+    # Flame: name.[0000-0099].ext  (padding matters)
+    return str(pha_dir / f"{prefix}[{start:0{width}d}-{end:0{width}d}]{suffix}")
 
 
 def import_path(path_str: str, destination) -> None:
@@ -262,7 +264,11 @@ def import_path(path_str: str, destination) -> None:
         if not reels:
             raise RuntimeError("No desktop reel for import")
         dest = reels[0]
-    flame.import_clips(path_str, dest)
+    # Prefer list form (Flame 2020+ docs / community scripts).
+    try:
+        flame.import_clips([path_str], dest)
+    except TypeError:
+        flame.import_clips(path_str, dest)
 
 
 def gpu_vram_warning() -> str | None:
@@ -392,30 +398,59 @@ def run_job(opts: JobOptions, *, logger, progress: ProgressCb | None = None) -> 
 
         pha_mov, fgr_mov, pha_dir = _find_outputs(out_dir)
         alpha: Path | None = None
-        import_target: str | None = None
+        import_candidates: list[str] = []
         if opts.output_kind == "alpha_sequence":
-            if pha_dir is None:
+            if pha_dir is None and pha_mov is None:
                 raise RuntimeError("Alpha sequence folder (pha/) not found")
-            alpha = pha_dir
-            import_target = sequence_pattern(pha_dir) or str(pha_dir)
+            if pha_dir is not None:
+                alpha = pha_dir
+                patterned = sequence_pattern(pha_dir)
+                if patterned:
+                    import_candidates.append(patterned)
+            if pha_mov is not None:
+                if alpha is None:
+                    alpha = pha_mov
+                import_candidates.append(str(pha_mov))
         else:
             if pha_mov is None:
                 raise RuntimeError("Alpha movie (*_pha.mp4) not found")
             alpha = pha_mov
-            import_target = str(pha_mov)
+            import_candidates.append(str(pha_mov))
 
         fgr_path = fgr_mov if opts.write_foreground else None
         imported = False
-        if opts.import_to_flame and import_target:
-            log(f"Importing {import_target}")
-            import_path(import_target, opts.import_destination)
-            imported = True
-            if fgr_path is not None:
-                import_path(str(fgr_path), opts.import_destination)
+        import_errors: list[str] = []
+        if opts.import_to_flame and import_candidates:
+            last_err: Exception | None = None
+            for target in import_candidates:
+                try:
+                    log(f"Importing {target}")
+                    import_path(target, opts.import_destination)
+                    imported = True
+                    if fgr_path is not None:
+                        import_path(str(fgr_path), opts.import_destination)
+                    break
+                except Exception as exc:  # noqa: BLE001
+                    last_err = exc
+                    import_errors.append(f"{target}: {exc}")
+                    log(f"Import failed, trying next candidate: {exc}")
+            if not imported and last_err is not None:
+                detail = "\n".join(import_errors)
+                return JobResult(
+                    ok=True,
+                    message=(
+                        "Matte finished but Flame import failed.\n"
+                        f"Files are on disk under:\n{out_dir}\n\n{detail}"
+                    ),
+                    work_dir=work,
+                    alpha_path=alpha,
+                    foreground_path=fgr_path,
+                    imported=False,
+                )
 
         return JobResult(
             ok=True,
-            message="Done",
+            message="Done" if imported or not opts.import_to_flame else "Done (not imported)",
             work_dir=work,
             alpha_path=alpha,
             foreground_path=fgr_path,

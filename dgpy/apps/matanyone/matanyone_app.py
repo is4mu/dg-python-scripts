@@ -8,7 +8,7 @@ import matanyone_dialog as dialog
 import matanyone_job as job
 import matanyone_selection as selection
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 
 def run_from_selection(selection_items) -> None:
@@ -61,6 +61,9 @@ def run_from_selection(selection_items) -> None:
     msg = f"Done.\nWork: {result.work_dir}\nAlpha: {result.alpha_path}"
     if result.imported:
         msg += "\nImported to Flame."
+        dgpy_gui.info(None, "MatAnyone", msg)
+    elif "import failed" in result.message.lower():
+        dgpy_gui.warning(None, "MatAnyone", result.message)
     else:
         msg += "\n(Not imported — open path manually if needed.)"
-    dgpy_gui.info(None, "MatAnyone", msg)
+        dgpy_gui.info(None, "MatAnyone", msg)
