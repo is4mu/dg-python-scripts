@@ -8,7 +8,7 @@ from PySide6 import QtCore, QtWidgets
 
 import matanyone_runtime_setup as setup
 
-__version__ = "0.1.2"
+__version__ = "0.1.3"
 
 
 class _SetupWorker(QtCore.QObject):
@@ -61,8 +61,9 @@ class SetupProgressDialog(QtWidgets.QDialog):
         layout.addWidget(self._bar)
 
         self._eta = QtWidgets.QLabel(
-            "Typical total: ~10–40 min (PyTorch download dominates). "
-            "Exact time depends on network."
+            "Typical total: ~10–40 min. "
+            "If Python is missing, Miniforge download runs first; "
+            "PyTorch is usually the longest step."
         )
         self._eta.setWordWrap(True)
         layout.addWidget(self._eta)
@@ -106,8 +107,9 @@ class SetupProgressDialog(QtWidgets.QDialog):
         mm, ss = divmod(secs, 60)
         # Keep the network hint; append elapsed.
         base = (
-            "Typical total: ~10–40 min (PyTorch download dominates). "
-            "Exact time depends on network."
+            "Typical total: ~10–40 min. "
+            "If Python is missing, Miniforge download runs first; "
+            "PyTorch is usually the longest step."
         )
         self._eta.setText(f"{base}\nElapsed: {mm:02d}:{ss:02d}")
 

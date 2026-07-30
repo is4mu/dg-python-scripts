@@ -15,7 +15,7 @@ for _p in (_DGPY_ROOT, _APP_DIR):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
-__version__ = "0.1.2"
+__version__ = "0.1.3"
 
 
 def _setup(_selection=None) -> None:
@@ -41,14 +41,12 @@ def _setup(_selection=None) -> None:
             "MatAnyone Runtime",
             "Install MatAnyone runtime now?\n\n"
             f"Target:\n{paths.runtime_root()}\n\n"
-            "Needs network, git, NVIDIA GPU drivers, several GB of disk,\n"
-            "and a system Python 3.8+ (not Flame's Python).\n"
-            "Optional: export MATANYONE_PYTHON=/usr/bin/python3.11\n\n"
+            "Needs network, git, NVIDIA GPU drivers, and several GB of disk.\n"
+            "If Python 3.8+ is missing, Setup installs it automatically "
+            "(dnf when allowed, otherwise Miniforge under the runtime folder).\n\n"
             "Typical time: about 10–40 minutes "
-            "(PyTorch download is usually the longest step).\n"
-            "A progress window will show steps and live log.\n\n"
-            "If a previous attempt failed with pillow/cp36 errors, "
-            "this run will recreate the venv with a newer Python.",
+            "(Python bootstrap + PyTorch download).\n"
+            "A progress window will show steps and live log.",
         ):
             return
 

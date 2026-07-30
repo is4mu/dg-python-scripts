@@ -7,17 +7,31 @@ from pathlib import Path
 
 import dgpy_paths
 
-__version__ = "0.1.2"
+__version__ = "0.1.3"
 
 RUNTIME_NAME = "matanyone"
 READY_NAME = "READY.json"
 REPO_DIRNAME = "MatAnyone"
 VENV_DIRNAME = "venv"
+MINIFORGE_DIRNAME = "miniforge3"
 
 
 def runtime_root(root: Path | None = None) -> Path:
     """.../dgpy/runtimes/matanyone"""
     return (root or dgpy_paths.dgpy_root()) / "runtimes" / RUNTIME_NAME
+
+
+def miniforge_root(root: Path | None = None) -> Path:
+    return runtime_root(root) / MINIFORGE_DIRNAME
+
+
+def miniforge_python(root: Path | None = None) -> Path | None:
+    base = miniforge_root(root)
+    for rel in ("bin/python", "bin/python3"):
+        candidate = base / rel
+        if candidate.is_file():
+            return candidate
+    return None
 
 
 def ready_path(root: Path | None = None) -> Path:

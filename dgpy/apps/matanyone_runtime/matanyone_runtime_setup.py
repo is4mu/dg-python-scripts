@@ -12,7 +12,7 @@ from typing import Callable
 
 import matanyone_runtime_paths as paths
 
-__version__ = "0.1.2"
+__version__ = "0.1.3"
 
 LogFn = Callable[[str], None]
 StepFn = Callable[[int, int, str], None]
@@ -24,6 +24,7 @@ MIN_PY = (3, 8)
 # Deterministic steps for the progress bar (weights are relative).
 SETUP_STEPS: list[tuple[str, int]] = [
     ("Prepare folders", 1),
+    ("Ensure Python >= 3.8", 3),
     ("Clone MatAnyone repository", 2),
     ("Create Python venv", 1),
     ("Upgrade pip / wheel", 1),
@@ -117,19 +118,24 @@ def _is_flame_python(executable: str) -> bool:
     return any(m in lower for m in markers)
 
 
-def find_host_python(*, log: LogFn | None = None) -> str:
-    """Return a Python >=3.8 binary that is NOT Flame's interpreter.
+def try_find_host_python(*, log: LogFn | None = None) -> str | None:
+    """Return a Python >=3.8 binary that is NOT Flame's interpreter, or None.
 
     Order:
     1. MATANYONE_PYTHON
-    2. python3.12 … python3.8 on PATH
-    3. conda run -n base python (if usable)
-    4. plain python3 if >=3.8 and not Flame
+    2. Bundled Miniforge under runtimes/matanyone/
+    3. python3.12 … python3.8 on PATH
+    4. conda run -n base / matanyone
+    5. plain python3 if >=3.8 and not Flame
     """
     candidates: list[str] = []
     env_py = (os.environ.get("MATANYONE_PYTHON") or "").strip()
     if env_py:
         candidates.append(env_py)
+
+    bundled = paths.miniforge_python()
+    if bundled is not None:
+        candidates.append(str(bundled))
 
     for name in (
         "python3.12",
@@ -145,7 +151,6 @@ def find_host_python(*, log: LogFn | None = None) -> str:
 
     conda = _which("conda")
     if conda:
-        # Prefer an existing env named matanyone, then base.
         for env_name in ("matanyone", "base"):
             try:
                 out = subprocess.check_output(
@@ -160,7 +165,6 @@ def find_host_python(*, log: LogFn | None = None) -> str:
                 pass
 
     seen: set[str] = set()
-    tried: list[str] = []
     for raw in candidates:
         path = str(Path(raw).expanduser())
         if path in seen:
@@ -168,7 +172,6 @@ def find_host_python(*, log: LogFn | None = None) -> str:
         seen.add(path)
         ver = _python_version(path)
         flame = _is_flame_python(path)
-        tried.append(f"{path} ver={ver} flame={flame}")
         if ver is None:
             continue
         if flame:
@@ -179,15 +182,169 @@ def find_host_python(*, log: LogFn | None = None) -> str:
             continue
         _log(log, f"Using host Python: {path} ({ver[0]}.{ver[1]})")
         return path
+    return None
 
-    detail = "\n".join(tried) if tried else "(no candidates found)"
-    raise RuntimeError(
-        "No suitable Python >= 3.8 found for MatAnyone runtime.\n"
-        "Flame's embedded Python cannot be used (often 3.6/3.7).\n"
-        "Install python3.8+ (dnf/yum) or conda, or set MATANYONE_PYTHON "
-        "to a 3.8+ interpreter.\n"
-        f"Tried:\n{detail}"
+
+def find_host_python(*, log: LogFn | None = None) -> str:
+    """Return Python >=3.8, installing one if needed (dnf or bundled Miniforge)."""
+    return ensure_host_python(log=log)
+
+
+def _pkg_manager() -> tuple[str, list[str]] | None:
+    """Return (binary, base_install_cmd_prefix) or None."""
+    for name in ("dnf", "yum"):
+        found = _which(name)
+        if found:
+            return found, [found, "install", "-y"]
+    return None
+
+
+def _install_python_via_pkg_manager(*, log: LogFn | None = None) -> str | None:
+    """Try OS packages (Rocky/RHEL). Needs root or passwordless sudo."""
+    mgr = _pkg_manager()
+    if mgr is None:
+        _log(log, "No dnf/yum on PATH — skip OS Python install")
+        return None
+
+    _mgr_bin, prefix = mgr
+    # Rocky 8 common package names first.
+    packages = (
+        "python39",
+        "python3.9",
+        "python311",
+        "python3.11",
+        "python310",
+        "python3.10",
+        "python38",
+        "python3.8",
     )
+    use_sudo = True
+    try:
+        use_sudo = os.geteuid() != 0
+    except AttributeError:
+        use_sudo = True
+    sudo = _which("sudo")
+    if use_sudo and not sudo:
+        _log(log, "Not root and sudo missing — skip OS Python install")
+        return None
+
+    for pkg in packages:
+        cmd = list(prefix) + [pkg]
+        if use_sudo:
+            # Non-interactive only; fall through to Miniforge if password needed.
+            cmd = [sudo, "-n"] + cmd
+        _log(log, f"Trying OS install: {' '.join(cmd)}")
+        proc = subprocess.run(
+            cmd,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if proc.stdout:
+            _log(log, proc.stdout.rstrip())
+        if proc.stderr:
+            _log(log, proc.stderr.rstrip())
+        if proc.returncode != 0:
+            continue
+        found = try_find_host_python(log=log)
+        if found:
+            _log(log, f"OS package {pkg} provided usable Python: {found}")
+            return found
+    _log(log, "OS package install did not yield Python >= 3.8")
+    return None
+
+
+def _miniforge_installer() -> tuple[str, str]:
+    """Return (url, filename) for this platform."""
+    import platform
+
+    system = platform.system().lower()
+    machine = platform.machine().lower()
+    if machine in ("amd64",):
+        machine = "x86_64"
+    if machine in ("arm64",) and system == "linux":
+        machine = "aarch64"
+
+    if system == "linux" and machine in ("x86_64", "aarch64"):
+        name = f"Miniforge3-Linux-{machine}.sh"
+    elif system == "darwin" and machine in ("x86_64", "arm64"):
+        name = f"Miniforge3-MacOSX-{machine}.sh"
+    else:
+        raise RuntimeError(
+            f"Unsupported platform for Miniforge bootstrap: {system}/{machine}"
+        )
+    url = (
+        "https://github.com/conda-forge/miniforge/releases/latest/download/"
+        + name
+    )
+    return url, name
+
+
+def _install_python_via_miniforge(*, log: LogFn | None = None) -> str:
+    """Download Miniforge into runtimes/matanyone (no root required)."""
+    import urllib.request
+
+    root = paths.runtime_root()
+    root.mkdir(parents=True, exist_ok=True)
+    existing = paths.miniforge_python()
+    if existing is not None:
+        ver = _python_version(str(existing))
+        if ver is not None and ver >= MIN_PY:
+            _log(log, f"Reusing bundled Miniforge: {existing}")
+            return str(existing)
+
+    url, name = _miniforge_installer()
+    installer = root / name
+    prefix = paths.miniforge_root()
+    if prefix.exists():
+        _log(log, f"Removing incomplete Miniforge: {prefix}")
+        shutil.rmtree(prefix)
+
+    _log(log, f"Downloading Miniforge: {url}")
+    try:
+        urllib.request.urlretrieve(url, str(installer))
+    except Exception as exc:  # noqa: BLE001
+        raise RuntimeError(
+            f"Failed to download Miniforge ({url}): {exc}\n"
+            "Check network / GitHub access from this machine."
+        ) from exc
+
+    bash = _which("bash") or "/bin/bash"
+    _run(
+        [bash, str(installer), "-b", "-p", str(prefix)],
+        log=log,
+    )
+    try:
+        installer.unlink()
+    except OSError:
+        pass
+
+    py = paths.miniforge_python()
+    if py is None:
+        raise RuntimeError(f"Miniforge installed but python missing under {prefix}")
+    ver = _python_version(str(py))
+    if ver is None or ver < MIN_PY:
+        raise RuntimeError(f"Miniforge python unusable: {py} ({ver})")
+    _log(log, f"Bundled Miniforge Python ready: {py} ({ver[0]}.{ver[1]})")
+    return str(py)
+
+
+def ensure_host_python(*, log: LogFn | None = None) -> str:
+    """Find or install a non-Flame Python >= 3.8."""
+    found = try_find_host_python(log=log)
+    if found:
+        return found
+
+    _log(
+        log,
+        "No Python >= 3.8 on PATH — trying automatic install "
+        "(dnf/yum if permitted, else bundled Miniforge).",
+    )
+    found = _install_python_via_pkg_manager(log=log)
+    if found:
+        return found
+
+    return _install_python_via_miniforge(log=log)
 
 
 def _venv_is_usable(venv_python: Path | None, *, log: LogFn | None = None) -> bool:
@@ -342,13 +499,14 @@ def setup_runtime(
         force = True
 
     if force and root.exists():
-        # Keep cloned repo if present; only wipe when full force from UI,
-        # but always drop a bad venv below. Full wipe when caller force=True.
         _log(log, f"Removing existing runtime: {root}")
         shutil.rmtree(root)
         root.mkdir(parents=True, exist_ok=True)
 
     _step(step, 1)
+    host_py = ensure_host_python(log=log)
+
+    _step(step, 2)
     repo = paths.repo_dir()
     if not (repo / "inference_matanyone.py").is_file():
         git = _which("git")
@@ -358,14 +516,13 @@ def setup_runtime(
     else:
         _log(log, f"Repo already present: {repo}")
 
-    _step(step, 2)
+    _step(step, 3)
     venv_dir = root / paths.VENV_DIRNAME
     py_bin = paths.venv_python()
     if not _venv_is_usable(py_bin, log=log):
         if venv_dir.exists():
             _log(log, f"Removing broken/old venv: {venv_dir}")
             shutil.rmtree(venv_dir)
-        host_py = find_host_python(log=log)
         _run([host_py, "-m", "venv", str(venv_dir)], log=log)
         py_bin = paths.venv_python()
     else:
@@ -380,10 +537,10 @@ def setup_runtime(
         )
 
     pip = [str(py_bin), "-m", "pip"]
-    _step(step, 3)
+    _step(step, 4)
     _run(pip + ["install", "--upgrade", "pip", "wheel", "setuptools"], log=log)
 
-    _step(step, 4)
+    _step(step, 5)
     _log(
         log,
         "Note: PyTorch download is usually the slowest step "
@@ -405,13 +562,13 @@ def setup_runtime(
         _log(log, "cu124 torch install failed; trying default PyPI torch")
         _run(pip + ["install", "torch", "torchvision"], log=log)
 
-    _step(step, 5)
+    _step(step, 6)
     _run(pip + ["install", "-e", str(repo)], cwd=repo, log=log)
 
-    _step(step, 6)
+    _step(step, 7)
     _run(pip + ["install", "Pillow", "numpy", "opencv-python-headless"], log=log)
 
-    _step(step, 7)
+    _step(step, 8)
     sam_helper = root / "sam2_make_mask.py"
     _write_sam_helper(sam_helper)
 
@@ -422,6 +579,7 @@ def setup_runtime(
     ready = {
         "version": __version__,
         "python": str(py_bin),
+        "host_python": host_py,
         "repo": str(repo),
         "inference_script": str(infer),
         "sam_script": str(sam_helper),
