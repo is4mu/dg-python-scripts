@@ -15,7 +15,7 @@ for _p in (_DGPY_ROOT, _APP_DIR):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
-__version__ = "0.1.5"
+__version__ = "0.1.6"
 
 
 def _setup(_selection=None) -> None:
@@ -25,6 +25,17 @@ def _setup(_selection=None) -> None:
     import matanyone_runtime_progress as progress
 
     logger = dgpy_log.setup()
+    if progress.setup_is_running():
+        dgpy_gui.info(
+            None,
+            "MatAnyone Runtime",
+            "Setup is already running.\n"
+            "The progress window was brought to the front "
+            "(Flame remains usable).",
+        )
+        progress.start_setup_nonblocking(force=False)  # raises existing
+        return
+
     if paths.is_ready():
         if not dgpy_gui.confirm(
             None,
@@ -46,34 +57,32 @@ def _setup(_selection=None) -> None:
             "(no system / Flame Python install).\n\n"
             "Typical time: about 10–40 minutes "
             "(Miniforge + PyTorch download).\n"
-            "A progress window will show steps and live log.",
+            "A non-modal progress window opens — Flame stays usable.",
         ):
             return
 
-    ok, err = progress.run_setup_with_progress(force=force)
-    if not ok:
-        logger.error("MatAnyone runtime setup failed: %s", err)
-        dgpy_gui.error(
-            None,
-            "MatAnyone Runtime",
-            f"Setup failed:\n{err}",
-        )
+    started = progress.start_setup_nonblocking(force=force)
+    if not started:
+        logger.info("MatAnyone setup already in progress — raised existing window")
         return
-
-    dgpy_gui.info(
-        None,
-        "MatAnyone Runtime",
-        f"Ready.\n\n{paths.runtime_root()}\npython={paths.resolve_python()}",
-    )
+    logger.info("MatAnyone runtime setup started (non-modal; Flame stays usable)")
 
 
 def _remove(_selection=None) -> None:
     import dgpy_gui
     import dgpy_log
     import matanyone_runtime_paths as paths
+    import matanyone_runtime_progress as progress
     import matanyone_runtime_setup as setup
 
     logger = dgpy_log.setup()
+    if progress.setup_is_running():
+        dgpy_gui.warning(
+            None,
+            "MatAnyone Runtime",
+            "Setup is still running. Wait until it finishes before Remove.",
+        )
+        return
     if not paths.runtime_root().exists():
         dgpy_gui.info(None, "MatAnyone Runtime", "Runtime folder not found.")
         return

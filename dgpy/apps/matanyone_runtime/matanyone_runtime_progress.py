@@ -1,4 +1,7 @@
-"""Progress dialog for MatAnyone runtime setup (PySide6)."""
+"""Progress dialog for MatAnyone runtime setup (PySide6).
+
+Non-modal so Flame stays interactive while setup runs on a QThread.
+"""
 
 from __future__ import annotations
 
@@ -8,7 +11,10 @@ from PySide6 import QtCore, QtWidgets
 
 import matanyone_runtime_setup as setup
 
-__version__ = "0.1.5"
+__version__ = "0.1.6"
+
+# Keep alive while the background job runs (menu callback returns immediately).
+_ACTIVE: SetupProgressDialog | None = None
 
 
 class _SetupWorker(QtCore.QObject):
@@ -35,14 +41,20 @@ class _SetupWorker(QtCore.QObject):
 
 
 class SetupProgressDialog(QtWidgets.QDialog):
-    """Step bar + live log. Work runs on a QThread so the UI stays alive."""
+    """Non-modal progress UI. Work runs on a QThread."""
 
     def __init__(self, *, force: bool, parent=None):
         super().__init__(parent)
         self.setWindowTitle("MatAnyone Runtime Setup")
         self.setMinimumSize(640, 420)
-        self.setModal(True)
+        self.setModal(False)
+        self.setWindowModality(QtCore.Qt.WindowModality.NonModal)
+        # Tool window: stays handy without blocking Flame's main window.
+        flags = self.windowFlags()
+        flags |= QtCore.Qt.WindowType.Tool
+        self.setWindowFlags(flags)
         self._force = force
+        self._finished = False
         self._ok = False
         self._error = ""
         self._started = time.monotonic()
@@ -50,6 +62,13 @@ class SetupProgressDialog(QtWidgets.QDialog):
         self._worker: _SetupWorker | None = None
 
         layout = QtWidgets.QVBoxLayout(self)
+
+        note = QtWidgets.QLabel(
+            "Flame stays usable while setup runs. You can keep editing; "
+            "this window is non-modal (Hide to tuck it away)."
+        )
+        note.setWordWrap(True)
+        layout.addWidget(note)
 
         self._step_label = QtWidgets.QLabel("Starting…")
         layout.addWidget(self._step_label)
@@ -77,10 +96,17 @@ class SetupProgressDialog(QtWidgets.QDialog):
         self._log.setFont(font)
         layout.addWidget(self._log, 1)
 
+        row = QtWidgets.QHBoxLayout()
+        self._hide_btn = QtWidgets.QPushButton("Hide")
+        self._hide_btn.setToolTip("Hide this window; setup keeps running")
+        self._hide_btn.clicked.connect(self.hide)
         self._close_btn = QtWidgets.QPushButton("Close")
         self._close_btn.setEnabled(False)
-        self._close_btn.clicked.connect(self.accept)
-        layout.addWidget(self._close_btn, alignment=QtCore.Qt.AlignmentFlag.AlignRight)
+        self._close_btn.clicked.connect(self.close)
+        row.addStretch(1)
+        row.addWidget(self._hide_btn)
+        row.addWidget(self._close_btn)
+        layout.addLayout(row)
 
         self._elapsed_timer = QtCore.QTimer(self)
         self._elapsed_timer.setInterval(1000)
@@ -104,7 +130,6 @@ class SetupProgressDialog(QtWidgets.QDialog):
     def _tick_elapsed(self) -> None:
         secs = int(time.monotonic() - self._started)
         mm, ss = divmod(secs, 60)
-        # Keep the network hint; append elapsed.
         base = (
             "Typical total: ~10–40 min. "
             "Miniforge (if needed) then PyTorch are the long steps."
@@ -121,34 +146,59 @@ class SetupProgressDialog(QtWidgets.QDialog):
     @QtCore.Slot(int, int, str)
     def _on_step(self, index: int, total: int, label: str) -> None:
         self._bar.setMaximum(total)
-        # Show completed steps as index (0-based step about to run / running).
         self._bar.setValue(min(index + 1, total))
         self._step_label.setText(f"Step {index + 1}/{total}: {label}")
 
     @QtCore.Slot(object)
     def _on_ok(self, _root) -> None:
+        import dgpy_gui
+        import matanyone_runtime_paths as paths
+
+        self._finished = True
         self._ok = True
         self._elapsed_timer.stop()
         self._bar.setValue(self._bar.maximum())
         self._step_label.setText("Done")
         self._on_log("— setup finished —")
+        self._hide_btn.setEnabled(False)
         self._close_btn.setEnabled(True)
+        self.show()
+        self.raise_()
+        self.activateWindow()
+        dgpy_gui.info(
+            self,
+            "MatAnyone Runtime",
+            f"Ready.\n\n{paths.runtime_root()}\npython={paths.resolve_python()}",
+        )
 
     @QtCore.Slot(str)
     def _on_err(self, message: str) -> None:
+        import dgpy_gui
+        import dgpy_log
+
+        self._finished = True
         self._ok = False
         self._error = message
         self._elapsed_timer.stop()
         self._step_label.setText("Failed")
         self._on_log("— setup failed —")
         self._on_log(message)
+        self._hide_btn.setEnabled(False)
         self._close_btn.setEnabled(True)
+        dgpy_log.setup().error("MatAnyone runtime setup failed: %s", message)
+        self.show()
+        self.raise_()
+        self.activateWindow()
+        dgpy_gui.error(self, "MatAnyone Runtime", f"Setup failed:\n{message}")
 
     def closeEvent(self, event) -> None:  # noqa: N802
-        # Block closing while worker runs (no Cancel for v1 — mid-pip is messy).
-        if self._thread is not None and self._thread.isRunning():
+        global _ACTIVE
+        # While running: treat close like Hide (job keeps going).
+        if self._thread is not None and self._thread.isRunning() and not self._finished:
             event.ignore()
+            self.hide()
             return
+        _ACTIVE = None
         super().closeEvent(event)
 
     @property
@@ -160,9 +210,22 @@ class SetupProgressDialog(QtWidgets.QDialog):
         return self._error
 
 
-def run_setup_with_progress(*, force: bool) -> tuple[bool, str]:
-    """Show modal progress UI; return (ok, error_or_empty)."""
+def setup_is_running() -> bool:
+    return _ACTIVE is not None and _ACTIVE._thread is not None and _ACTIVE._thread.isRunning()
+
+
+def start_setup_nonblocking(*, force: bool) -> bool:
+    """Start non-modal setup. Returns False if a setup is already running."""
+    global _ACTIVE
+    if setup_is_running():
+        assert _ACTIVE is not None
+        _ACTIVE.show()
+        _ACTIVE.raise_()
+        _ACTIVE.activateWindow()
+        return False
     dlg = SetupProgressDialog(force=force)
+    _ACTIVE = dlg
     dlg.start()
-    dlg.exec()
-    return dlg.succeeded, dlg.error_message
+    dlg.show()
+    dlg.raise_()
+    return True
