@@ -7,7 +7,7 @@ from pathlib import Path
 
 import dgpy_paths
 
-__version__ = "0.1.3"
+__version__ = "0.1.4"
 
 RUNTIME_NAME = "matanyone"
 READY_NAME = "READY.json"

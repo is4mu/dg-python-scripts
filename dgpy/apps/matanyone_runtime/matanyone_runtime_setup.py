@@ -12,7 +12,7 @@ from typing import Callable
 
 import matanyone_runtime_paths as paths
 
-__version__ = "0.1.3"
+__version__ = "0.1.4"
 
 LogFn = Callable[[str], None]
 StepFn = Callable[[int, int, str], None]
@@ -24,7 +24,7 @@ MIN_PY = (3, 8)
 # Deterministic steps for the progress bar (weights are relative).
 SETUP_STEPS: list[tuple[str, int]] = [
     ("Prepare folders", 1),
-    ("Ensure Python >= 3.8", 3),
+    ("Ensure Miniforge Python >= 3.8", 3),
     ("Clone MatAnyone repository", 2),
     ("Create Python venv", 1),
     ("Upgrade pip / wheel", 1),
@@ -119,14 +119,11 @@ def _is_flame_python(executable: str) -> bool:
 
 
 def try_find_host_python(*, log: LogFn | None = None) -> str | None:
-    """Return a Python >=3.8 binary that is NOT Flame's interpreter, or None.
+    """Return an isolated Python >=3.8, or None.
 
-    Order:
-    1. MATANYONE_PYTHON
+    Order (no system package install):
+    1. MATANYONE_PYTHON (explicit override)
     2. Bundled Miniforge under runtimes/matanyone/
-    3. python3.12 … python3.8 on PATH
-    4. conda run -n base / matanyone
-    5. plain python3 if >=3.8 and not Flame
     """
     candidates: list[str] = []
     env_py = (os.environ.get("MATANYONE_PYTHON") or "").strip()
@@ -136,33 +133,6 @@ def try_find_host_python(*, log: LogFn | None = None) -> str | None:
     bundled = paths.miniforge_python()
     if bundled is not None:
         candidates.append(str(bundled))
-
-    for name in (
-        "python3.12",
-        "python3.11",
-        "python3.10",
-        "python3.9",
-        "python3.8",
-        "python3",
-    ):
-        found = _which(name)
-        if found:
-            candidates.append(found)
-
-    conda = _which("conda")
-    if conda:
-        for env_name in ("matanyone", "base"):
-            try:
-                out = subprocess.check_output(
-                    [conda, "run", "-n", env_name, "which", "python"],
-                    text=True,
-                    stderr=subprocess.DEVNULL,
-                    timeout=60,
-                ).strip()
-                if out:
-                    candidates.append(out.splitlines()[-1].strip())
-            except (OSError, subprocess.SubprocessError):
-                pass
 
     seen: set[str] = set()
     for raw in candidates:
@@ -180,78 +150,14 @@ def try_find_host_python(*, log: LogFn | None = None) -> str | None:
         if ver < MIN_PY:
             _log(log, f"Skip too-old Python: {path} ({ver[0]}.{ver[1]})")
             continue
-        _log(log, f"Using host Python: {path} ({ver[0]}.{ver[1]})")
+        _log(log, f"Using Python: {path} ({ver[0]}.{ver[1]})")
         return path
     return None
 
 
 def find_host_python(*, log: LogFn | None = None) -> str:
-    """Return Python >=3.8, installing one if needed (dnf or bundled Miniforge)."""
+    """Return Python >=3.8 via Miniforge (or MATANYONE_PYTHON)."""
     return ensure_host_python(log=log)
-
-
-def _pkg_manager() -> tuple[str, list[str]] | None:
-    """Return (binary, base_install_cmd_prefix) or None."""
-    for name in ("dnf", "yum"):
-        found = _which(name)
-        if found:
-            return found, [found, "install", "-y"]
-    return None
-
-
-def _install_python_via_pkg_manager(*, log: LogFn | None = None) -> str | None:
-    """Try OS packages (Rocky/RHEL). Needs root or passwordless sudo."""
-    mgr = _pkg_manager()
-    if mgr is None:
-        _log(log, "No dnf/yum on PATH — skip OS Python install")
-        return None
-
-    _mgr_bin, prefix = mgr
-    # Rocky 8 common package names first.
-    packages = (
-        "python39",
-        "python3.9",
-        "python311",
-        "python3.11",
-        "python310",
-        "python3.10",
-        "python38",
-        "python3.8",
-    )
-    use_sudo = True
-    try:
-        use_sudo = os.geteuid() != 0
-    except AttributeError:
-        use_sudo = True
-    sudo = _which("sudo")
-    if use_sudo and not sudo:
-        _log(log, "Not root and sudo missing — skip OS Python install")
-        return None
-
-    for pkg in packages:
-        cmd = list(prefix) + [pkg]
-        if use_sudo:
-            # Non-interactive only; fall through to Miniforge if password needed.
-            cmd = [sudo, "-n"] + cmd
-        _log(log, f"Trying OS install: {' '.join(cmd)}")
-        proc = subprocess.run(
-            cmd,
-            text=True,
-            capture_output=True,
-            check=False,
-        )
-        if proc.stdout:
-            _log(log, proc.stdout.rstrip())
-        if proc.stderr:
-            _log(log, proc.stderr.rstrip())
-        if proc.returncode != 0:
-            continue
-        found = try_find_host_python(log=log)
-        if found:
-            _log(log, f"OS package {pkg} provided usable Python: {found}")
-            return found
-    _log(log, "OS package install did not yield Python >= 3.8")
-    return None
 
 
 def _miniforge_installer() -> tuple[str, str]:
@@ -281,7 +187,7 @@ def _miniforge_installer() -> tuple[str, str]:
 
 
 def _install_python_via_miniforge(*, log: LogFn | None = None) -> str:
-    """Download Miniforge into runtimes/matanyone (no root required)."""
+    """Download Miniforge into runtimes/matanyone (no root / no OS packages)."""
     import urllib.request
 
     root = paths.runtime_root()
@@ -330,20 +236,20 @@ def _install_python_via_miniforge(*, log: LogFn | None = None) -> str:
 
 
 def ensure_host_python(*, log: LogFn | None = None) -> str:
-    """Find or install a non-Flame Python >= 3.8."""
+    """Find or install Miniforge Python >= 3.8 under the runtime folder.
+
+    Does not install OS packages (dnf/yum) and does not use Flame Python.
+    Override with MATANYONE_PYTHON if needed.
+    """
     found = try_find_host_python(log=log)
     if found:
         return found
 
     _log(
         log,
-        "No Python >= 3.8 on PATH — trying automatic install "
-        "(dnf/yum if permitted, else bundled Miniforge).",
+        "No bundled Miniforge yet — downloading into "
+        f"{paths.miniforge_root()} (no system Python install).",
     )
-    found = _install_python_via_pkg_manager(log=log)
-    if found:
-        return found
-
     return _install_python_via_miniforge(log=log)
 
 
