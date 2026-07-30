@@ -273,6 +273,9 @@ def _patch_matanyone_deps(repo: Path, *, log: LogFn | None = None) -> None:
         return
     pyproject.write_text(text, encoding="utf-8")
     _log(log, "Patched MatAnyone deps: cchardet → faust-cchardet (Py3.10+ build fix)")
+
+
+def _venv_is_usable(venv_python: Path | None, *, log: LogFn | None = None) -> bool:
     if venv_python is None or not venv_python.is_file():
         return False
     ver = _python_version(str(venv_python))
