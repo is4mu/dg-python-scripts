@@ -1,13 +1,15 @@
-"""Resolve MatAnyone runtime install root (outside Flame Python)."""
+"""Resolve MatAnyone runtime install root (outside Flame hook scan)."""
 
 from __future__ import annotations
 
 import json
+import shutil
 from pathlib import Path
+from typing import Callable
 
 import dgpy_paths
 
-__version__ = "0.1.6"
+__version__ = "0.1.7"
 
 RUNTIME_NAME = "matanyone"
 READY_NAME = "READY.json"
@@ -15,10 +17,48 @@ REPO_DIRNAME = "MatAnyone"
 VENV_DIRNAME = "venv"
 MINIFORGE_DIRNAME = "miniforge3"
 
+LogFn = Callable[[str], None]
+
+
+def legacy_runtime_root(root: Path | None = None) -> Path:
+    """Old location under dgpy/ (slow Flame hook scan — do not use for new installs)."""
+    return (root or dgpy_paths.dgpy_root()) / "runtimes" / RUNTIME_NAME
+
 
 def runtime_root(root: Path | None = None) -> Path:
-    """.../dgpy/runtimes/matanyone"""
-    return (root or dgpy_paths.dgpy_root()) / "runtimes" / RUNTIME_NAME
+    """Sibling of dgpy/: .../python/dgpy_runtimes/matanyone
+
+    Kept outside dgpy/ so Flame's \"Scanning for python hooks\" does not walk
+    Miniforge / venv (tens of thousands of .py files).
+    """
+    return (root or dgpy_paths.dgpy_root()).parent / "dgpy_runtimes" / RUNTIME_NAME
+
+
+def migrate_legacy_runtime_if_needed(*, log: LogFn | None = None) -> Path:
+    """Move dgpy/runtimes/matanyone → dgpy_runtimes/matanyone when needed."""
+    legacy = legacy_runtime_root()
+    dest = runtime_root()
+    if not legacy.exists():
+        return dest
+    if dest.exists():
+        if log:
+            log(
+                f"Legacy runtime still present at {legacy} but {dest} exists. "
+                f"Delete the legacy folder to speed up Flame hook scan."
+            )
+        return dest
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    if log:
+        log(f"Migrating runtime out of dgpy/ (hook-scan safe):\n  {legacy}\n→ {dest}")
+    shutil.move(str(legacy), str(dest))
+    # Remove empty dgpy/runtimes if possible.
+    try:
+        parent = legacy.parent
+        if parent.is_dir() and not any(parent.iterdir()):
+            parent.rmdir()
+    except OSError:
+        pass
+    return dest
 
 
 def miniforge_root(root: Path | None = None) -> Path:
@@ -52,7 +92,14 @@ def venv_python(root: Path | None = None) -> Path | None:
 
 
 def is_ready(root: Path | None = None) -> bool:
+    migrate_legacy_runtime_if_needed()
     path = ready_path(root)
+    if not path.is_file():
+        # Legacy READY still under dgpy/ before migrate failed?
+        legacy_ready = legacy_runtime_root(root) / READY_NAME
+        if legacy_ready.is_file():
+            migrate_legacy_runtime_if_needed()
+            path = ready_path(root)
     if not path.is_file():
         return False
     py = resolve_python(root)
@@ -60,6 +107,7 @@ def is_ready(root: Path | None = None) -> bool:
 
 
 def load_ready(root: Path | None = None) -> dict:
+    migrate_legacy_runtime_if_needed()
     path = ready_path(root)
     if not path.is_file():
         return {}

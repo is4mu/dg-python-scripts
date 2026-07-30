@@ -12,7 +12,7 @@ from typing import Callable
 
 import matanyone_runtime_paths as paths
 
-__version__ = "0.1.5"
+__version__ = "0.1.7"
 
 LogFn = Callable[[str], None]
 StepFn = Callable[[int, int, str], None]
@@ -410,6 +410,7 @@ def setup_runtime(
     force: bool = False,
 ) -> Path:
     """Clone MatAnyone, create venv, install deps, write READY.json."""
+    paths.migrate_legacy_runtime_if_needed(log=log)
     root = paths.runtime_root()
 
     _step(step, 0)
@@ -524,12 +525,16 @@ def setup_runtime(
 
 
 def remove_runtime(*, log: LogFn | None = None) -> None:
+    paths.migrate_legacy_runtime_if_needed(log=log)
     root = paths.runtime_root()
-    if not root.exists():
-        _log(log, f"Nothing to remove: {root}")
-        return
-    _log(log, f"Removing {root}")
-    shutil.rmtree(root)
+    legacy = paths.legacy_runtime_root()
+    for target in (root, legacy):
+        if not target.exists():
+            continue
+        _log(log, f"Removing {target}")
+        shutil.rmtree(target)
+    if not root.exists() and not legacy.exists():
+        _log(log, f"Nothing to remove under {root} or {legacy}")
 
 
 def main(argv: list[str] | None = None) -> int:

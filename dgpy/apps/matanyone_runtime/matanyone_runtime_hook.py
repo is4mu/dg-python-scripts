@@ -15,7 +15,7 @@ for _p in (_DGPY_ROOT, _APP_DIR):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
-__version__ = "0.1.6"
+__version__ = "0.1.7"
 
 
 def _setup(_selection=None) -> None:
@@ -25,6 +25,9 @@ def _setup(_selection=None) -> None:
     import matanyone_runtime_progress as progress
 
     logger = dgpy_log.setup()
+    paths.migrate_legacy_runtime_if_needed(
+        log=lambda m: logger.info("[matanyone_runtime] %s", m)
+    )
     if progress.setup_is_running():
         dgpy_gui.info(
             None,
