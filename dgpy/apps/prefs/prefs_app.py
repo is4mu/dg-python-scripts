@@ -14,7 +14,7 @@ import dgpy_paths
 import dgpy_prefs
 import dgpy_tools
 
-__version__ = "0.1.1"
+__version__ = "0.1.2"
 
 _WINDOW: QtWidgets.QWidget | None = None
 
@@ -107,7 +107,7 @@ class PreferencesDialog(QtWidgets.QDialog):
         self._matanyone_box = self._section("MatAnyone")
         self._tools_box = self._section("Tools")
         self._log_box = self._section("Log")
-        self._prefs_box = self._section("Prefs paths (Phase B)")
+        self._prefs_box = self._section("User prefs")
 
         row = QtWidgets.QHBoxLayout()
         refresh = QtWidgets.QPushButton("Refresh")
@@ -291,11 +291,13 @@ class PreferencesDialog(QtWidgets.QDialog):
     def _fill_prefs_paths(self) -> None:
         form = self._prefs_box
         self._clear_form(form)
-        form.addRow("machine", _row_open(dgpy_prefs.machine_prefs_path()))
-        form.addRow("user", _row_open(dgpy_prefs.user_prefs_path()))
+        form.addRow("prefs.json", _row_open(dgpy_prefs.user_prefs_path()))
         form.addRow(
             "note",
-            _mono("Paths only for now — editing lands in Phase B."),
+            _mono(
+                "Outside Flame python/ (not hook-scanned). "
+                "Editing lands in Phase B — no machine prefs file."
+            ),
         )
 
 

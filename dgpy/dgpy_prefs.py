@@ -1,27 +1,25 @@
-"""User / machine prefs path helpers (Phase B schema stub). Unique for Flame scan."""
+"""User prefs path helpers. Unique basename for Flame scan."""
 
 from __future__ import annotations
 
 import sys
 from pathlib import Path
 
-import dgpy_paths
-
-__version__ = "0.3.26"
+__version__ = "0.3.27"
 
 
-def machine_prefs_path(root: Path | None = None) -> Path:
-    """Machine-common prefs next to install (shared dgpy → all users)."""
-    return dgpy_paths.state_dir(root) / "prefs_machine.json"
+def flame_user_dgpy_dir() -> Path:
+    """Per-user DGpy data root — sibling of Flame ``python/`` (not scanned).
 
-
-def user_prefs_dir() -> Path:
-    """Per-user prefs root (never under shared /opt dgpy)."""
+    macOS: ~/Library/Preferences/Autodesk/flame/dgpy
+    Linux: ~/flame/dgpy
+    """
     home = Path.home()
     if sys.platform == "darwin":
-        return home / "Library" / "Application Support" / "DGpy"
-    return home / ".config" / "dgpy"
+        return home / "Library" / "Preferences" / "Autodesk" / "flame" / "dgpy"
+    return home / "flame" / "dgpy"
 
 
 def user_prefs_path() -> Path:
-    return user_prefs_dir() / "prefs.json"
+    """User preferences JSON (small settings only; never under python/)."""
+    return flame_user_dgpy_dir() / "prefs.json"
