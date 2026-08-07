@@ -18,7 +18,7 @@ from typing import Any, Callable
 
 import dgpy_paths
 
-__version__ = "0.3.1"
+__version__ = "0.4.0"
 
 ProgressCb = Callable[[str], None]
 StepCb = Callable[[int, int, str], None]
@@ -305,6 +305,9 @@ def run_sam_mask(
     image: Path,
     points: list[tuple[float, float]],
     out_mask: Path,
+    checkpoint: Path,
+    config: str,
+    cwd: Path | None = None,
     log: ProgressCb,
     cancel: threading.Event | None = None,
     holder: _ProcHolder | None = None,
@@ -322,17 +325,22 @@ def run_sam_mask(
         pts,
         "--out",
         str(out_mask),
+        "--checkpoint",
+        str(checkpoint),
+        "--config",
+        config,
     ]
     try:
-        _run_streaming(cmd, log=log, cancel=cancel, holder=holder)
+        # cwd=sam2 repo avoids shadowing the installed package by a local folder.
+        _run_streaming(cmd, cwd=cwd, log=log, cancel=cancel, holder=holder)
     except RuntimeError as exc:
         raise RuntimeError(
-            "SAM mask failed (experimental). Use Flame mask, or install "
-            "SAM/SAM2 + checkpoint into the MatAnyone runtime.\n"
+            "SAM2 mask failed. Use Flame mask, or re-run "
+            "DGpy → MatAnyone SAM2 Setup…\n"
             f"{exc}"
         ) from exc
     if not out_mask.is_file():
-        raise RuntimeError("SAM mask produced no file")
+        raise RuntimeError("SAM2 mask produced no file")
     return out_mask
 
 
@@ -536,7 +544,17 @@ def run_job(
         _check_cancel(cancel)
         mask_path = opts.mask_path
         if opts.mask_source == "sam2":
-            log("Preparing SAM2 mask (experimental)…")
+            if not rpaths.is_sam2_ready():
+                return JobResult(
+                    ok=False,
+                    message=(
+                        "SAM2 is not installed in the MatAnyone runtime.\n"
+                        "Use DGpy → MatAnyone SAM2 Setup… first "
+                        "(or choose Flame PNG/EXR mask)."
+                    ),
+                    work_dir=work,
+                )
+            log("Preparing SAM2 mask…")
             still = work / "first_frame.png"
             extract_first_frame(
                 video,
@@ -562,8 +580,7 @@ def run_job(
             sam = rpaths.sam_script()
             if sam is None:
                 raise RuntimeError(
-                    "SAM helper missing in runtime. "
-                    "Use Flame mask, or finish SAM setup later."
+                    "SAM2 helper missing. Re-run DGpy → MatAnyone SAM2 Setup…"
                 )
             mask_path = work / "mask.png"
             run_sam_mask(
@@ -572,6 +589,9 @@ def run_job(
                 image=still,
                 points=points,
                 out_mask=mask_path,
+                checkpoint=rpaths.sam2_checkpoint_path(),
+                config=rpaths.sam2_config_id(),
+                cwd=rpaths.sam2_repo_dir(),
                 log=log,
                 cancel=cancel,
                 holder=holder,

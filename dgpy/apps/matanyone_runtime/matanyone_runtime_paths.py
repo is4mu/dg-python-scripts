@@ -9,7 +9,7 @@ from typing import Callable
 
 import dgpy_paths
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 
 RUNTIME_NAME = "matanyone"
 READY_NAME = "READY.json"
@@ -19,6 +19,10 @@ INFERENCE_SCRIPT_NAME = "inference_matanyone2.py"
 ENGINE_ID = "matanyone2"
 VENV_DIRNAME = "venv"
 MINIFORGE_DIRNAME = "miniforge3"
+SAM2_REPO_DIRNAME = "sam2"
+SAM2_CKPT_DIRNAME = "checkpoints"
+SAM2_CKPT_NAME = "sam2.1_hiera_large.pt"
+SAM2_CONFIG = "configs/sam2.1/sam2.1_hiera_l.yaml"
 
 LogFn = Callable[[str], None]
 
@@ -217,3 +221,38 @@ def sam_script(root: Path | None = None) -> Path | None:
         return Path(raw)
     candidate = runtime_root(root) / "sam2_make_mask.py"
     return candidate if candidate.is_file() else None
+
+
+def sam2_repo_dir(root: Path | None = None) -> Path:
+    return runtime_root(root) / SAM2_REPO_DIRNAME
+
+
+def sam2_checkpoint_path(root: Path | None = None) -> Path:
+    data = load_ready(root)
+    sam2 = data.get("sam2") if isinstance(data.get("sam2"), dict) else {}
+    raw = str((sam2 or {}).get("checkpoint") or "").strip()
+    if raw:
+        return Path(raw)
+    return runtime_root(root) / SAM2_CKPT_DIRNAME / SAM2_CKPT_NAME
+
+
+def sam2_config_id(root: Path | None = None) -> str:
+    data = load_ready(root)
+    sam2 = data.get("sam2") if isinstance(data.get("sam2"), dict) else {}
+    raw = str((sam2 or {}).get("config") or "").strip()
+    return raw or SAM2_CONFIG
+
+
+def is_sam2_ready(root: Path | None = None) -> bool:
+    """True when MatAnyone 2 READY plus SAM2 package + checkpoint are present."""
+    if not is_ready(root):
+        return False
+    data = load_ready(root)
+    sam2 = data.get("sam2")
+    if not isinstance(sam2, dict) or not sam2.get("ready"):
+        return False
+    ckpt = sam2_checkpoint_path(root)
+    if not ckpt.is_file() or ckpt.stat().st_size < 1_000_000:
+        return False
+    helper = sam_script(root)
+    return helper is not None and helper.is_file()

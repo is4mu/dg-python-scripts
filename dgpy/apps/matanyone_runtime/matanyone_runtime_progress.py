@@ -11,11 +11,12 @@ from PySide6 import QtCore, QtWidgets
 
 import matanyone_runtime_setup as setup
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 
 # Keep alive while the background job runs (menu callback returns immediately).
 _ACTIVE_SETUP: SetupProgressDialog | None = None
 _ACTIVE_REMOVE: RemoveProgressDialog | None = None
+_ACTIVE_SAM2: Sam2SetupProgressDialog | None = None
 
 
 class _SetupWorker(QtCore.QObject):
@@ -55,6 +56,29 @@ class _RemoveWorker(QtCore.QObject):
                 step=lambda i, t, label: self.step_changed.emit(i, t, label),
             )
             self.finished_ok.emit()
+        except Exception as exc:  # noqa: BLE001
+            self.finished_err.emit(str(exc))
+
+
+class _Sam2SetupWorker(QtCore.QObject):
+    log_line = QtCore.Signal(str)
+    step_changed = QtCore.Signal(int, int, str)
+    finished_ok = QtCore.Signal(object)
+    finished_err = QtCore.Signal(str)
+
+    def __init__(self, force: bool):
+        super().__init__()
+        self._force = force
+
+    @QtCore.Slot()
+    def run(self) -> None:
+        try:
+            root = setup.setup_sam2(
+                log=lambda m: self.log_line.emit(m),
+                step=lambda i, t, label: self.step_changed.emit(i, t, label),
+                force=self._force,
+            )
+            self.finished_ok.emit(root)
         except Exception as exc:  # noqa: BLE001
             self.finished_err.emit(str(exc))
 
@@ -292,6 +316,72 @@ class RemoveProgressDialog(_ProgressDialogBase):
         QtWidgets.QDialog.closeEvent(self, event)
 
 
+class Sam2SetupProgressDialog(_ProgressDialogBase):
+    """Non-modal SAM2 install into the existing MatAnyone runtime."""
+
+    def __init__(self, *, force: bool, parent=None):
+        super().__init__(
+            "MatAnyone SAM2 Setup",
+            "Installs facebookresearch/sam2 + checkpoint under "
+            "dgpy_runtimes/matanyone (no system packages). "
+            "Flame stays usable.",
+            steps=setup.sam2_setup_step_count(),
+            parent=parent,
+        )
+        self._force = force
+        self._worker: _Sam2SetupWorker | None = None
+
+    def start(self) -> None:
+        self._thread = QtCore.QThread(self)
+        self._worker = _Sam2SetupWorker(self._force)
+        self._worker.moveToThread(self._thread)
+        self._thread.started.connect(self._worker.run)
+        self._worker.log_line.connect(self._on_log)
+        self._worker.step_changed.connect(self._on_step)
+        self._worker.finished_ok.connect(self._on_ok)
+        self._worker.finished_err.connect(self._on_err)
+        self._worker.finished_ok.connect(self._thread.quit)
+        self._worker.finished_err.connect(self._thread.quit)
+        self._thread.finished.connect(self._worker.deleteLater)
+        self._thread.start()
+
+    @QtCore.Slot(object)
+    def _on_ok(self, _root) -> None:
+        import dgpy_gui
+        import matanyone_runtime_paths as paths
+
+        self._on_log("— SAM2 setup finished —")
+        self._mark_done_ui(ok=True, label="Done")
+        dgpy_gui.info(
+            self,
+            "MatAnyone SAM2",
+            "SAM2 ready.\n\n"
+            f"checkpoint={paths.sam2_checkpoint_path()}\n"
+            f"config={paths.sam2_config_id()}",
+        )
+
+    @QtCore.Slot(str)
+    def _on_err(self, message: str) -> None:
+        import dgpy_gui
+        import dgpy_log
+
+        self._error = message
+        self._on_log("— SAM2 setup failed —")
+        self._on_log(message)
+        self._mark_done_ui(ok=False, label="Failed")
+        dgpy_log.setup().error("MatAnyone SAM2 setup failed: %s", message)
+        dgpy_gui.error(self, "MatAnyone SAM2", f"Setup failed:\n{message}")
+
+    def closeEvent(self, event) -> None:  # noqa: N802
+        global _ACTIVE_SAM2
+        if self._thread is not None and self._thread.isRunning() and not self._finished:
+            event.ignore()
+            self.hide()
+            return
+        _ACTIVE_SAM2 = None
+        QtWidgets.QDialog.closeEvent(self, event)
+
+
 def setup_is_running() -> bool:
     return (
         _ACTIVE_SETUP is not None
@@ -308,6 +398,18 @@ def remove_is_running() -> bool:
     )
 
 
+def sam2_setup_is_running() -> bool:
+    return (
+        _ACTIVE_SAM2 is not None
+        and _ACTIVE_SAM2._thread is not None
+        and _ACTIVE_SAM2._thread.isRunning()
+    )
+
+
+def _any_runtime_job_running() -> bool:
+    return setup_is_running() or remove_is_running() or sam2_setup_is_running()
+
+
 def start_setup_nonblocking(*, force: bool) -> bool:
     """Start non-modal setup. Returns False if a setup is already running."""
     global _ACTIVE_SETUP
@@ -317,7 +419,7 @@ def start_setup_nonblocking(*, force: bool) -> bool:
         _ACTIVE_SETUP.raise_()
         _ACTIVE_SETUP.activateWindow()
         return False
-    if remove_is_running():
+    if _any_runtime_job_running():
         return False
     dlg = SetupProgressDialog(force=force)
     _ACTIVE_SETUP = dlg
@@ -336,10 +438,29 @@ def start_remove_nonblocking() -> bool:
         _ACTIVE_REMOVE.raise_()
         _ACTIVE_REMOVE.activateWindow()
         return False
-    if setup_is_running():
+    if _any_runtime_job_running():
         return False
     dlg = RemoveProgressDialog()
     _ACTIVE_REMOVE = dlg
+    dlg.start()
+    dlg.show()
+    dlg.raise_()
+    return True
+
+
+def start_sam2_setup_nonblocking(*, force: bool) -> bool:
+    """Start non-modal SAM2 setup. Returns False if busy."""
+    global _ACTIVE_SAM2
+    if sam2_setup_is_running():
+        assert _ACTIVE_SAM2 is not None
+        _ACTIVE_SAM2.show()
+        _ACTIVE_SAM2.raise_()
+        _ACTIVE_SAM2.activateWindow()
+        return False
+    if _any_runtime_job_running():
+        return False
+    dlg = Sam2SetupProgressDialog(force=force)
+    _ACTIVE_SAM2 = dlg
     dlg.start()
     dlg.show()
     dlg.raise_()

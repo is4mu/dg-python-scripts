@@ -12,7 +12,7 @@ from typing import Callable
 
 import matanyone_runtime_paths as paths
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 
 LogFn = Callable[[str], None]
 StepFn = Callable[[int, int, str], None]
@@ -325,14 +325,15 @@ def _venv_is_usable(venv_python: Path | None, *, log: LogFn | None = None) -> bo
 
 
 def _write_sam_helper(dest: Path) -> None:
-    """Minimal SAM / SAM2 point-mask helper used when Mask source = SAM2."""
+    """SAM2 point-mask helper (runs inside the isolated runtime venv)."""
     dest.write_text(
         '''#!/usr/bin/env python3
-"""Make a binary mask PNG from an RGB image + foreground click points.
+"""Make a binary mask PNG from an RGB image + foreground click points (SAM2).
 
-Tries segment_anything / sam2 if installed; otherwise fails with a clear error.
 Usage:
-  python sam2_make_mask.py --image frame.png --points "x1,y1;x2,y2" --out mask.png
+  python sam2_make_mask.py --image frame.png --points "x1,y1;x2,y2" --out mask.png \\
+      --checkpoint /path/to/sam2.1_hiera_large.pt \\
+      --config configs/sam2.1/sam2.1_hiera_l.yaml
 """
 from __future__ import annotations
 
@@ -342,6 +343,7 @@ import sys
 from pathlib import Path
 
 import numpy as np
+import torch
 from PIL import Image
 
 
@@ -363,66 +365,51 @@ def main() -> int:
     ap.add_argument("--image", required=True)
     ap.add_argument("--points", required=True, help="x,y;x,y … foreground clicks")
     ap.add_argument("--out", required=True)
-    ap.add_argument("--checkpoint", default="", help="Optional SAM checkpoint path")
+    ap.add_argument("--checkpoint", default=os.environ.get("SAM2_CHECKPOINT", ""))
+    ap.add_argument(
+        "--config",
+        default=os.environ.get("SAM2_CONFIG", "configs/sam2.1/sam2.1_hiera_l.yaml"),
+    )
     args = ap.parse_args()
+
+    ckpt = str(args.checkpoint or "").strip()
+    if not ckpt or not Path(ckpt).is_file():
+        print(
+            "SAM2 checkpoint missing. Run DGpy → MatAnyone SAM2 Setup…",
+            file=sys.stderr,
+        )
+        return 2
+
+    try:
+        from sam2.build_sam import build_sam2
+        from sam2.sam2_image_predictor import SAM2ImagePredictor
+    except ImportError as exc:
+        print(
+            "sam2 package not importable in this Python. "
+            "Run DGpy → MatAnyone SAM2 Setup…\\n"
+            f"{exc}",
+            file=sys.stderr,
+        )
+        return 2
 
     image = np.array(Image.open(args.image).convert("RGB"))
     points = _parse_points(args.points)
     point_coords = np.array(points, dtype=np.float32)
     point_labels = np.ones(len(points), dtype=np.int32)
 
-    mask = None
-    err = None
-    try:
-        from segment_anything import SamPredictor, sam_model_registry
-
-        ckpt = args.checkpoint or os.environ.get("SAM_CHECKPOINT", "")
-        if not ckpt or not Path(ckpt).is_file():
-            raise RuntimeError(
-                "SAM checkpoint missing. Set --checkpoint or SAM_CHECKPOINT."
-            )
-        sam = sam_model_registry["vit_h"](checkpoint=ckpt)
-        predictor = SamPredictor(sam)
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    print(f"SAM2 device={device} ckpt={ckpt} config={args.config}", flush=True)
+    predictor = SAM2ImagePredictor(build_sam2(args.config, ckpt, device=device))
+    with torch.inference_mode():
         predictor.set_image(image)
         masks, scores, _ = predictor.predict(
             point_coords=point_coords,
             point_labels=point_labels,
             multimask_output=True,
         )
-        mask = masks[int(np.argmax(scores))]
-    except Exception as exc:  # noqa: BLE001
-        err = exc
-        try:
-            from sam2.build_sam import build_sam2
-            from sam2.sam2_image_predictor import SAM2ImagePredictor
-
-            ckpt = args.checkpoint or os.environ.get("SAM2_CHECKPOINT", "")
-            cfg = os.environ.get("SAM2_CONFIG", "configs/sam2.1/sam2.1_hiera_l.yaml")
-            if not ckpt or not Path(ckpt).is_file():
-                raise RuntimeError(
-                    "SAM2 checkpoint missing. Set --checkpoint or SAM2_CHECKPOINT."
-                )
-            predictor = SAM2ImagePredictor(build_sam2(cfg, ckpt))
-            predictor.set_image(image)
-            masks, scores, _ = predictor.predict(
-                point_coords=point_coords,
-                point_labels=point_labels,
-                multimask_output=True,
-            )
-            mask = masks[int(np.argmax(scores))]
-            err = None
-        except Exception as exc2:  # noqa: BLE001
-            err = exc2 if err is None else err
-
-    if mask is None:
-        print(
-            "SAM/SAM2 mask failed. Install segment_anything (or sam2) into the "
-            f"MatAnyone runtime and provide a checkpoint.\\nLast error: {err}",
-            file=sys.stderr,
-        )
-        return 2
-
+    mask = masks[int(np.argmax(scores))]
     out = (mask.astype(np.uint8) * 255)
+    Path(args.out).parent.mkdir(parents=True, exist_ok=True)
     Image.fromarray(out, mode="L").save(args.out)
     print(args.out)
     return 0
@@ -437,6 +424,173 @@ if __name__ == "__main__":
         dest.chmod(0o755)
     except OSError:
         pass
+
+
+SAM2_REPO_URL = "https://github.com/facebookresearch/sam2.git"
+SAM2_CKPT_URL = (
+    "https://dl.fbaipublicfiles.com/segment_anything_2/092824/"
+    "sam2.1_hiera_large.pt"
+)
+
+SAM2_SETUP_STEPS: list[tuple[str, int]] = [
+    ("Check MatAnyone 2 runtime", 1),
+    ("Clone SAM2 repository", 2),
+    ("Install SAM2 into runtime venv", 4),
+    ("Download SAM2.1 large checkpoint", 5),
+    ("Write helper + READY.sam2", 1),
+]
+
+
+def sam2_setup_step_count() -> int:
+    return len(SAM2_SETUP_STEPS)
+
+
+def sam2_setup_step_label(index: int) -> str:
+    if 0 <= index < len(SAM2_SETUP_STEPS):
+        return SAM2_SETUP_STEPS[index][0]
+    return ""
+
+
+def _update_ready_sam2(
+    *,
+    checkpoint: Path,
+    config: str,
+    repo: Path,
+    log: LogFn | None = None,
+) -> None:
+    data = paths.load_ready()
+    if not data:
+        raise RuntimeError("READY.json missing — run MatAnyone Runtime Setup first")
+    data["sam2"] = {
+        "ready": True,
+        "repo": str(repo),
+        "checkpoint": str(checkpoint),
+        "config": config,
+    }
+    helper = paths.runtime_root() / "sam2_make_mask.py"
+    data["sam_script"] = str(helper)
+    paths.ready_path().write_text(
+        json.dumps(data, indent=2) + "\n", encoding="utf-8"
+    )
+    _log(log, f"READY.sam2 updated → {checkpoint}")
+
+
+def setup_sam2(
+    *,
+    log: LogFn | None = None,
+    step: StepFn | None = None,
+    force: bool = False,
+) -> Path:
+    """Install facebookresearch/sam2 + checkpoint into the MatAnyone runtime.
+
+    Stays under dgpy_runtimes/matanyone — no OS packages, no …/python/**.
+    """
+    paths.migrate_legacy_runtime_if_needed(log=log)
+    root = paths.runtime_root()
+
+    def _s(index: int, label: str | None = None) -> None:
+        if step:
+            step(index, len(SAM2_SETUP_STEPS), label or sam2_setup_step_label(index))
+
+    _s(0)
+    if not paths.is_ready():
+        raise RuntimeError(
+            "MatAnyone 2 runtime is not ready.\n"
+            "Run DGpy → MatAnyone Runtime Setup… first."
+        )
+    py = paths.resolve_python()
+    if not py:
+        raise RuntimeError("Runtime python missing")
+
+    if paths.is_sam2_ready() and not force:
+        _log(log, f"SAM2 already ready: {paths.sam2_checkpoint_path()}")
+        _s(len(SAM2_SETUP_STEPS) - 1, "Already ready")
+        return root
+
+    _s(1)
+    repo = paths.sam2_repo_dir()
+    marker = repo / "sam2" / "build_sam.py"
+    if force and repo.exists():
+        _log(log, f"Removing existing SAM2 repo: {repo}")
+        shutil.rmtree(repo)
+    if not marker.is_file():
+        if repo.exists():
+            shutil.rmtree(repo)
+        git = _which("git")
+        if not git:
+            raise RuntimeError("git not found on PATH")
+        _run([git, "clone", "--depth", "1", SAM2_REPO_URL, str(repo)], log=log)
+    else:
+        _log(log, f"SAM2 repo already present: {repo}")
+
+    _s(2)
+    # Avoid requiring system CUDA toolkit / nvcc for optional CUDA ops.
+    env = {
+        **os.environ,
+        "SAM2_BUILD_CUDA": "0",
+        "SAM2_BUILD_ALLOW_ERRORS": "1",
+    }
+    pip = [py, "-m", "pip"]
+    _run(
+        pip + ["install", "-e", str(repo)],
+        cwd=repo,
+        env=env,
+        log=log,
+    )
+
+    _s(3)
+    ckpt_dir = root / paths.SAM2_CKPT_DIRNAME
+    ckpt_dir.mkdir(parents=True, exist_ok=True)
+    ckpt = ckpt_dir / paths.SAM2_CKPT_NAME
+    if force and ckpt.exists():
+        try:
+            ckpt.unlink()
+        except OSError:
+            pass
+    if not ckpt.is_file() or ckpt.stat().st_size < 1_000_000:
+        import urllib.request
+
+        _log(log, f"Downloading SAM2 checkpoint: {SAM2_CKPT_URL}")
+        tmp = ckpt.with_suffix(".pt.partial")
+        try:
+            urllib.request.urlretrieve(SAM2_CKPT_URL, str(tmp))
+            tmp.replace(ckpt)
+        except Exception as exc:  # noqa: BLE001
+            if tmp.exists():
+                try:
+                    tmp.unlink()
+                except OSError:
+                    pass
+            raise RuntimeError(f"Failed to download SAM2 checkpoint: {exc}") from exc
+        _log(log, f"Checkpoint saved: {ckpt} ({ckpt.stat().st_size} bytes)")
+    else:
+        _log(log, f"Checkpoint already present: {ckpt}")
+
+    _s(4)
+    helper = root / "sam2_make_mask.py"
+    _write_sam_helper(helper)
+    _update_ready_sam2(
+        checkpoint=ckpt,
+        config=paths.SAM2_CONFIG,
+        repo=repo,
+        log=log,
+    )
+    # Smoke import
+    _run(
+        [
+            py,
+            "-c",
+            "from sam2.build_sam import build_sam2; "
+            "from sam2.sam2_image_predictor import SAM2ImagePredictor; "
+            "print('sam2 import ok')",
+        ],
+        cwd=str(repo),
+        log=log,
+    )
+    if not paths.is_sam2_ready():
+        raise RuntimeError("SAM2 Setup finished but is_sam2_ready() is still False")
+    _log(log, "SAM2 Setup complete")
+    return root
 
 
 def setup_runtime(
@@ -653,7 +807,7 @@ def main(argv: list[str] | None = None) -> int:
     import argparse
 
     ap = argparse.ArgumentParser(description="MatAnyone runtime setup")
-    ap.add_argument("action", choices=("setup", "remove", "status"))
+    ap.add_argument("action", choices=("setup", "setup-sam2", "remove", "status"))
     ap.add_argument("--force", action="store_true")
     args = ap.parse_args(argv)
 
@@ -666,10 +820,14 @@ def main(argv: list[str] | None = None) -> int:
     if args.action == "status":
         print(f"root={paths.runtime_root()}")
         print(f"ready={paths.is_ready()}")
+        print(f"sam2_ready={paths.is_sam2_ready()}")
         print(f"python={paths.resolve_python()}")
         return 0
     if args.action == "remove":
         remove_runtime(log=_print, step=_print_step)
+        return 0
+    if args.action == "setup-sam2":
+        setup_sam2(log=_print, step=_print_step, force=args.force)
         return 0
     setup_runtime(log=_print, step=_print_step, force=args.force)
     return 0

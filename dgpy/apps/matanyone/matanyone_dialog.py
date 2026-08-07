@@ -9,7 +9,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 
 import matanyone_selection as selection
 
-__version__ = "0.3.1"
+__version__ = "0.4.0"
 
 _WINDOW: QtWidgets.QWidget | None = None
 
@@ -35,8 +35,9 @@ class _SamPreview(QtWidgets.QLabel):
         self.setMinimumSize(480, 270)
         self.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         self.setStyleSheet("background:#222; color:#aaa;")
-        self.setText("SAM2: export runs first, then points are collected\n"
-                     "(use Flame mask if SAM is not set up)")
+        self.setText(
+            "SAM2: after export, click foreground points on the first frame"
+        )
         self._pixmap: QtGui.QPixmap | None = None
         self._points: list[tuple[float, float]] = []
 
@@ -127,12 +128,32 @@ class MatAnyoneDialog(QtWidgets.QDialog):
             QtWidgets.QLabel("Max size: short side ≤ 1080 (fixed)")
         )
 
+        try:
+            import matanyone_runtime_paths as rpaths
+
+            sam2_ready = rpaths.is_sam2_ready()
+        except Exception:  # noqa: BLE001
+            sam2_ready = False
+
         mask_box = QtWidgets.QGroupBox("Mask source")
         mask_layout = QtWidgets.QVBoxLayout(mask_box)
-        self._mask_flame = QtWidgets.QRadioButton("Flame (PNG / EXR file) — recommended")
-        self._mask_sam = QtWidgets.QRadioButton(
-            "SAM2 (experimental — click points after export)"
+        self._mask_flame = QtWidgets.QRadioButton(
+            "Flame (PNG / EXR file) — recommended"
         )
+        if sam2_ready:
+            sam_label = "SAM2 (click points after export)"
+            hint_text = (
+                "SAM2 is ready. After Run, click foreground points on the "
+                "first-frame preview. Points on this dialog are optional."
+            )
+        else:
+            sam_label = "SAM2 (requires DGpy → MatAnyone SAM2 Setup…)"
+            hint_text = (
+                "SAM2 is not installed yet. Run DGpy → MatAnyone SAM2 Setup… "
+                "first (same runtime folder; no system packages), or use a "
+                "Flame PNG/EXR mask."
+            )
+        self._mask_sam = QtWidgets.QRadioButton(sam_label)
         self._mask_flame.setChecked(True)
         mask_layout.addWidget(self._mask_flame)
         mask_layout.addWidget(self._mask_sam)
@@ -151,11 +172,7 @@ class MatAnyoneDialog(QtWidgets.QDialog):
         clear_pts = QtWidgets.QPushButton("Clear SAM points")
         clear_pts.clicked.connect(self._sam_preview.clear_points)
         mask_layout.addWidget(clear_pts)
-        hint = QtWidgets.QLabel(
-            "SAM2 is experimental: weights are not installed by Runtime Setup. "
-            "After Run, a first-frame preview collects clicks; if SAM is missing, "
-            "use Flame mask instead."
-        )
+        hint = QtWidgets.QLabel(hint_text)
         hint.setWordWrap(True)
         mask_layout.addWidget(hint)
         layout.addWidget(mask_box)

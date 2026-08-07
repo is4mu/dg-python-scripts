@@ -1,5 +1,5 @@
 """
-Flame main menu: MatAnyone Runtime Setup / Remove.
+Flame main menu: MatAnyone Runtime Setup / SAM2 Setup / Remove.
 
 Menu: DGpy → MatAnyone Runtime…
 """
@@ -15,7 +15,7 @@ for _p in (_DGPY_ROOT, _APP_DIR):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 
 
 def _setup(_selection=None) -> None:
@@ -28,11 +28,11 @@ def _setup(_selection=None) -> None:
     paths.migrate_legacy_runtime_if_needed(
         log=lambda m: logger.info("[matanyone_runtime] %s", m)
     )
-    if progress.remove_is_running():
+    if progress.remove_is_running() or progress.sam2_setup_is_running():
         dgpy_gui.warning(
             None,
             "MatAnyone Runtime",
-            "Remove is still running. Wait until it finishes before Setup.",
+            "Another MatAnyone runtime job is still running. Wait until it finishes.",
         )
         return
     if progress.setup_is_running():
@@ -85,6 +85,69 @@ def _setup(_selection=None) -> None:
     logger.info("MatAnyone 2 runtime setup started (non-modal; Flame stays usable)")
 
 
+def _setup_sam2(_selection=None) -> None:
+    import dgpy_gui
+    import dgpy_log
+    import matanyone_runtime_paths as paths
+    import matanyone_runtime_progress as progress
+
+    logger = dgpy_log.setup()
+    if progress.setup_is_running() or progress.remove_is_running():
+        dgpy_gui.warning(
+            None,
+            "MatAnyone SAM2",
+            "Another MatAnyone runtime job is still running. Wait until it finishes.",
+        )
+        return
+    if progress.sam2_setup_is_running():
+        dgpy_gui.info(
+            None,
+            "MatAnyone SAM2",
+            "SAM2 Setup is already running.\n"
+            "The progress window was brought to the front.",
+        )
+        progress.start_sam2_setup_nonblocking(force=False)
+        return
+
+    if not paths.is_ready():
+        dgpy_gui.warning(
+            None,
+            "MatAnyone SAM2",
+            "MatAnyone 2 runtime is not ready.\n"
+            "Run DGpy → MatAnyone Runtime Setup… first.",
+        )
+        return
+
+    if paths.is_sam2_ready():
+        if not dgpy_gui.confirm(
+            None,
+            "MatAnyone SAM2",
+            f"SAM2 already ready:\n{paths.sam2_checkpoint_path()}\n\n"
+            "Reinstall (force)?",
+        ):
+            return
+        force = True
+    else:
+        force = False
+        if not dgpy_gui.confirm(
+            None,
+            "MatAnyone SAM2",
+            "Install SAM2 into the MatAnyone runtime?\n\n"
+            f"Target:\n{paths.runtime_root()}/sam2\n"
+            f"Checkpoint:\n{paths.runtime_root()}/checkpoints/"
+            f"{paths.SAM2_CKPT_NAME}\n\n"
+            "Uses the existing runtime venv (no system Python / dnf).\n"
+            "Download is ~1 GB. Non-modal progress — Flame stays usable.",
+        ):
+            return
+
+    started = progress.start_sam2_setup_nonblocking(force=force)
+    if not started:
+        logger.info("SAM2 setup already in progress")
+        return
+    logger.info("MatAnyone SAM2 setup started (non-modal)")
+
+
 def _remove(_selection=None) -> None:
     import dgpy_gui
     import dgpy_log
@@ -92,7 +155,7 @@ def _remove(_selection=None) -> None:
     import matanyone_runtime_progress as progress
 
     logger = dgpy_log.setup()
-    if progress.setup_is_running():
+    if progress.setup_is_running() or progress.sam2_setup_is_running():
         dgpy_gui.warning(
             None,
             "MatAnyone Runtime",
@@ -112,7 +175,6 @@ def _remove(_selection=None) -> None:
     paths.migrate_legacy_runtime_if_needed(
         log=lambda m: logger.info("[matanyone_runtime] %s", m)
     )
-    # Also offer remove if only legacy leftovers exist.
     primary = paths.runtime_root()
     legacy_left = [p for p in paths.legacy_runtime_roots() if p.exists()]
     if not primary.exists() and not legacy_left:
@@ -150,8 +212,14 @@ def get_main_menu_custom_ui_actions():
                     "minimumVersion": "2025",
                 },
                 {
-                    "name": "MatAnyone Runtime Remove…",
+                    "name": "MatAnyone SAM2 Setup…",
                     "order": 81,
+                    "execute": _setup_sam2,
+                    "minimumVersion": "2025",
+                },
+                {
+                    "name": "MatAnyone Runtime Remove…",
+                    "order": 82,
                     "execute": _remove,
                     "minimumVersion": "2025",
                 },

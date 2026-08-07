@@ -9,12 +9,13 @@ import matanyone_job as job
 import matanyone_job_progress as job_progress
 import matanyone_selection as selection
 
-__version__ = "0.3.1"
+__version__ = "0.4.0"
 
 
 def run_from_selection(selection_items) -> None:
     import dgpy_gui
     import dgpy_log
+    import matanyone_runtime_paths as rpaths
 
     logger = dgpy_log.setup()
     if job_progress.job_is_running():
@@ -45,16 +46,16 @@ def run_from_selection(selection_items) -> None:
     if opts_ui is None:
         return
 
-    if opts_ui.mask_source == "sam2":
-        if not dgpy_gui.confirm(
+    if opts_ui.mask_source == "sam2" and not rpaths.is_sam2_ready():
+        dgpy_gui.warning(
             None,
             "MatAnyone",
-            "SAM2 mask mode is experimental.\n\n"
-            "SAM/SAM2 weights are not installed by Runtime Setup.\n"
-            "If mask generation fails, use Flame (PNG/EXR) instead.\n\n"
-            "Continue with SAM2?",
-        ):
-            return
+            "SAM2 is not ready in the MatAnyone runtime.\n\n"
+            "Run DGpy → MatAnyone SAM2 Setup… first "
+            "(uses the existing runtime; no system packages),\n"
+            "or choose Flame (PNG/EXR) mask instead.",
+        )
+        return
 
     def _sam_provider(still: Path):
         return dialog.collect_sam_points(still)
