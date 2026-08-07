@@ -18,7 +18,7 @@ from typing import Any, Callable
 
 import dgpy_paths
 
-__version__ = "0.7.0"
+__version__ = "0.8.0"
 
 ProgressCb = Callable[[str], None]
 StepCb = Callable[[int, int, str], None]
@@ -466,6 +466,269 @@ def _find_outputs(out_dir: Path) -> tuple[Path | None, Path | None, Path | None]
     return pha_mov, fgr_mov, pha_dir
 
 
+def _probe_size_ffprobe(path: Path) -> tuple[int, int] | None:
+    import shutil
+
+    ffprobe = shutil.which("ffprobe")
+    if not ffprobe:
+        return None
+    proc = subprocess.run(
+        [
+            ffprobe,
+            "-v",
+            "error",
+            "-select_streams",
+            "v:0",
+            "-show_entries",
+            "stream=width,height",
+            "-of",
+            "csv=s=x:p=0",
+            str(path),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if proc.returncode != 0:
+        return None
+    line = (proc.stdout or "").strip().splitlines()
+    if not line:
+        return None
+    parts = line[0].strip().split("x")
+    if len(parts) != 2:
+        return None
+    try:
+        w, h = int(parts[0]), int(parts[1])
+    except ValueError:
+        return None
+    if w < 1 or h < 1:
+        return None
+    return w, h
+
+
+def _probe_size_opencv(path: Path, *, python: str) -> tuple[int, int]:
+    code = (
+        "import sys\n"
+        "import cv2\n"
+        "p=sys.argv[1]\n"
+        "img=cv2.imread(p, cv2.IMREAD_UNCHANGED)\n"
+        "if img is not None:\n"
+        "    h,w=img.shape[:2]; print(f'{w}x{h}'); raise SystemExit(0)\n"
+        "cap=cv2.VideoCapture(p)\n"
+        "w=int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)); h=int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))\n"
+        "cap.release()\n"
+        "if w<1 or h<1: raise SystemExit('probe failed')\n"
+        "print(f'{w}x{h}')\n"
+    )
+    proc = subprocess.run(
+        [python, "-c", code, str(path)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if proc.returncode != 0:
+        detail = (proc.stderr or proc.stdout or "").strip()
+        raise RuntimeError(f"Failed to probe size for {path}: {detail}")
+    parts = (proc.stdout or "").strip().split("x")
+    if len(parts) != 2:
+        raise RuntimeError(f"Unexpected probe output for {path}: {proc.stdout!r}")
+    return int(parts[0]), int(parts[1])
+
+
+def probe_media_size(path: Path, *, python: str) -> tuple[int, int]:
+    """Return (width, height) of an image or video on disk."""
+    sized = _probe_size_ffprobe(path)
+    if sized is not None:
+        return sized
+    return _probe_size_opencv(path, python=python)
+
+
+def _first_sequence_frame(seq_dir: Path) -> Path | None:
+    frames = sorted(seq_dir.glob("*.png"))
+    if not frames:
+        frames = sorted(seq_dir.glob("*.exr"))
+    return frames[0] if frames else None
+
+
+def _resize_sequence_lanczos(
+    seq_dir: Path,
+    *,
+    target_w: int,
+    target_h: int,
+    python: str,
+    log: ProgressCb,
+    cancel: threading.Event | None = None,
+    holder: _ProcHolder | None = None,
+) -> None:
+    first = _first_sequence_frame(seq_dir)
+    if first is None:
+        raise RuntimeError(f"No frames to resize in {seq_dir}")
+    cur_w, cur_h = probe_media_size(first, python=python)
+    if (cur_w, cur_h) == (target_w, target_h):
+        log(f"Sequence already {target_w}x{target_h}; skip resize")
+        return
+    log(f"Resizing sequence {cur_w}x{cur_h} → {target_w}x{target_h} (lanczos)")
+    code = (
+        "import sys\n"
+        "from pathlib import Path\n"
+        "import cv2\n"
+        "d=Path(sys.argv[1]); tw,th=int(sys.argv[2]),int(sys.argv[3])\n"
+        "exts={'.png','.exr'}\n"
+        "n=0\n"
+        "for p in sorted(d.iterdir()):\n"
+        "    if not p.is_file() or p.suffix.lower() not in exts: continue\n"
+        "    img=cv2.imread(str(p), cv2.IMREAD_UNCHANGED)\n"
+        "    if img is None: raise SystemExit(f'read failed: {p}')\n"
+        "    out=cv2.resize(img,(tw,th),interpolation=cv2.INTER_LANCZOS4)\n"
+        "    if not cv2.imwrite(str(p), out): raise SystemExit(f'write failed: {p}')\n"
+        "    n+=1\n"
+        "print(f'resized {n} frames')\n"
+    )
+    _run_streaming(
+        [python, "-c", code, str(seq_dir), str(target_w), str(target_h)],
+        log=log,
+        cancel=cancel,
+        holder=holder,
+    )
+
+
+def _resize_movie_lanczos(
+    movie: Path,
+    *,
+    target_w: int,
+    target_h: int,
+    python: str,
+    log: ProgressCb,
+    cancel: threading.Event | None = None,
+    holder: _ProcHolder | None = None,
+) -> None:
+    cur_w, cur_h = probe_media_size(movie, python=python)
+    if (cur_w, cur_h) == (target_w, target_h):
+        log(f"Movie already {target_w}x{target_h}; skip resize ({movie.name})")
+        return
+    log(f"Resizing movie {cur_w}x{cur_h} → {target_w}x{target_h} (lanczos): {movie.name}")
+    import shutil
+
+    tmp = movie.with_name(f".{movie.stem}_upscale{movie.suffix}")
+    if tmp.exists():
+        tmp.unlink()
+    ffmpeg = shutil.which("ffmpeg")
+    if ffmpeg:
+        _run_streaming(
+            [
+                ffmpeg,
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-y",
+                "-i",
+                str(movie),
+                "-vf",
+                f"scale={target_w}:{target_h}:flags=lanczos",
+                "-c:v",
+                "libx264",
+                "-crf",
+                "15",
+                "-pix_fmt",
+                "yuv420p",
+                "-an",
+                str(tmp),
+            ],
+            log=log,
+            cancel=cancel,
+            holder=holder,
+        )
+    else:
+        code = (
+            "import sys\n"
+            "import cv2\n"
+            "src,dst,tw,th=sys.argv[1],sys.argv[2],int(sys.argv[3]),int(sys.argv[4])\n"
+            "cap=cv2.VideoCapture(src)\n"
+            "fps=cap.get(cv2.CAP_PROP_FPS) or 24.0\n"
+            "fourcc=cv2.VideoWriter_fourcc(*'mp4v')\n"
+            "writer=cv2.VideoWriter(dst, fourcc, fps, (tw,th), True)\n"
+            "if not writer.isOpened(): raise SystemExit('VideoWriter open failed')\n"
+            "while True:\n"
+            "    ok,frame=cap.read()\n"
+            "    if not ok: break\n"
+            "    writer.write(cv2.resize(frame,(tw,th),interpolation=cv2.INTER_LANCZOS4))\n"
+            "cap.release(); writer.release()\n"
+        )
+        _run_streaming(
+            [python, "-c", code, str(movie), str(tmp), str(target_w), str(target_h)],
+            log=log,
+            cancel=cancel,
+            holder=holder,
+        )
+    if not tmp.is_file():
+        raise RuntimeError(f"Upscale produced no file: {tmp}")
+    movie.unlink()
+    tmp.rename(movie)
+
+
+def restore_outputs_to_source_size(
+    *,
+    out_dir: Path,
+    source_video: Path,
+    output_kind: str,
+    write_foreground: bool,
+    python: str,
+    log: ProgressCb,
+    cancel: threading.Event | None = None,
+    holder: _ProcHolder | None = None,
+) -> tuple[int, int]:
+    """Upscale MatAnyone outputs to intermediate export WxH (lanczos). Return target size."""
+    target_w, target_h = probe_media_size(source_video, python=python)
+    log(f"Source (export) size: {target_w}x{target_h}")
+    pha_mov, fgr_mov, pha_dir = _find_outputs(out_dir)
+
+    if output_kind == "alpha_sequence":
+        if pha_dir is not None:
+            _resize_sequence_lanczos(
+                pha_dir,
+                target_w=target_w,
+                target_h=target_h,
+                python=python,
+                log=log,
+                cancel=cancel,
+                holder=holder,
+            )
+        if pha_mov is not None:
+            _resize_movie_lanczos(
+                pha_mov,
+                target_w=target_w,
+                target_h=target_h,
+                python=python,
+                log=log,
+                cancel=cancel,
+                holder=holder,
+            )
+    else:
+        if pha_mov is None:
+            raise RuntimeError("Alpha movie (*_pha.mp4) not found for resize")
+        _resize_movie_lanczos(
+            pha_mov,
+            target_w=target_w,
+            target_h=target_h,
+            python=python,
+            log=log,
+            cancel=cancel,
+            holder=holder,
+        )
+
+    if write_foreground and fgr_mov is not None:
+        _resize_movie_lanczos(
+            fgr_mov,
+            target_w=target_w,
+            target_h=target_h,
+            python=python,
+            log=log,
+            cancel=cancel,
+            holder=holder,
+        )
+    return target_w, target_h
+
+
 def sequence_pattern(pha_dir: Path) -> str | None:
     """Build Flame-style sequence path from pha/0000.png …"""
     frames = sorted(pha_dir.glob("*.png"))
@@ -786,6 +1049,18 @@ def run_infer(
             mask=mask_path,
             out_dir=out_dir,
             save_image=save_image,
+            log=log,
+            cancel=cancel,
+            holder=holder,
+        )
+
+        _check_cancel(cancel)
+        restore_outputs_to_source_size(
+            out_dir=out_dir,
+            source_video=video,
+            output_kind=opts.output_kind,
+            write_foreground=opts.write_foreground,
+            python=python,
             log=log,
             cancel=cancel,
             holder=holder,
