@@ -18,7 +18,7 @@ from typing import Any, Callable
 
 import dgpy_paths
 
-__version__ = "0.3.0"
+__version__ = "0.3.1"
 
 ProgressCb = Callable[[str], None]
 StepCb = Callable[[int, int, str], None]
@@ -358,11 +358,13 @@ def run_matanyone(
         str(mask),
         "-o",
         str(out_dir),
-        "--max-size",
+        "--max_size",
         str(MAX_SIZE),
     ]
     if save_image:
-        cmd.append("--save-image")
+        # inference_matanyone2.py (argparse) uses underscores;
+        # the `matanyone2` Typer CLI uses hyphens — we call the .py script.
+        cmd.append("--save_image")
     _run_streaming(
         cmd,
         cwd=inference_script.parent,
@@ -583,7 +585,7 @@ def run_job(
         set_step(3)
         out_dir = work / "out"
         save_image = opts.output_kind == "alpha_sequence"
-        log("Running MatAnyone 2 (max-size=1080 short side)…")
+        log("Running MatAnyone 2 (max_size=1080 short side)…")
         _check_cancel(cancel)
         run_matanyone(
             python=python,
