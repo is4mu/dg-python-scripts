@@ -11,7 +11,7 @@ from typing import Any
 
 from PySide6 import QtCore, QtGui
 
-__version__ = "0.10.0"
+__version__ = "0.10.1"
 
 MAX_OBJECTS = 8
 
@@ -248,7 +248,8 @@ def brush_edit_qimage(
 ) -> None:
     """Mutate a mask QImage in place: Add=white, Erase=black."""
     painter = QtGui.QPainter(img)
-    painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing, True)
+    # Hard edges — faster and better for binary mattes.
+    painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing, False)
     color = QtGui.QColor(255, 255, 255) if add else QtGui.QColor(0, 0, 0)
     painter.setPen(QtCore.Qt.PenStyle.NoPen)
     painter.setBrush(QtGui.QBrush(color))

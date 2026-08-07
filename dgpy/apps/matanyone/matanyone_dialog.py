@@ -11,7 +11,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 import matanyone_sam2 as sam
 import matanyone_selection as selection
 
-__version__ = "0.10.0"
+__version__ = "0.10.1"
 
 _WINDOW: QtWidgets.QWidget | None = None
 
@@ -74,7 +74,10 @@ def _blank_gray(w: int, h: int, value: int) -> QtGui.QImage:
 
 
 def _compose_base_paint(base: QtGui.QImage, paint: QtGui.QImage) -> QtGui.QImage:
-    """Compose SAM base with paint overlay (128=neutral, 255=fg, 0=bg)."""
+    """Compose SAM base with paint overlay (128=neutral, 255=fg, 0=bg).
+
+    Used on OK / after SAM — not on every brush dab.
+    """
     b = base.convertToFormat(QtGui.QImage.Format.Format_Grayscale8)
     p = paint.convertToFormat(QtGui.QImage.Format.Format_Grayscale8)
     w, h = b.width(), b.height()
@@ -86,13 +89,27 @@ def _compose_base_paint(base: QtGui.QImage, paint: QtGui.QImage) -> QtGui.QImage
             QtCore.Qt.TransformationMode.FastTransformation,
         )
     out = b.copy()
+    # Prefer scanline bytes when available (much faster than pixelColor).
+    try:
+        for y in range(h):
+            out_mv = memoryview(out.scanLine(y)).cast("B")
+            p_mv = memoryview(p.scanLine(y)).cast("B")
+            for x in range(w):
+                pv = p_mv[x]
+                if pv >= 250:
+                    out_mv[x] = 255
+                elif pv <= 5:
+                    out_mv[x] = 0
+        return out
+    except (TypeError, ValueError, BufferError):
+        pass
     for y in range(h):
         for x in range(w):
             pv = p.pixelColor(x, y).value()
             if pv >= 250:
-                out.setPixelColor(x, y, QtGui.QColor(255, 255, 255))
+                out.setPixel(x, y, 255)
             elif pv <= 5:
-                out.setPixelColor(x, y, QtGui.QColor(0, 0, 0))
+                out.setPixel(x, y, 0)
     return out
 
 
@@ -114,6 +131,7 @@ class _ImagePreview(QtWidgets.QLabel):
 
     point_added = QtCore.Signal(float, float, int)
     paint_at = QtCore.Signal(float, float, bool)  # x, y, add
+    paint_finished = QtCore.Signal()
 
     def __init__(self, *, interactive: bool = False, parent=None):
         super().__init__(parent)
@@ -130,6 +148,12 @@ class _ImagePreview(QtWidgets.QLabel):
         self._tool = _TOOL_POS
         self._brush_radius = 20.0
         self._painting = False
+        # Cached layout for paint/hit-testing (avoid re-scale every mouse move).
+        self._scaled: QtGui.QPixmap | None = None
+        self._x_off = 0.0
+        self._y_off = 0.0
+        self._sx = 1.0
+        self._sy = 1.0
 
     def set_accept_input(self, enabled: bool) -> None:
         self._accept_input = bool(enabled and self._interactive)
@@ -148,11 +172,13 @@ class _ImagePreview(QtWidgets.QLabel):
             self._mask_img = None
         if path is None or not path.is_file():
             self._pixmap = None
+            self._scaled = None
             self.setText("No preview")
             return
         pm = QtGui.QPixmap(str(path))
         self._pixmap = pm if not pm.isNull() else None
         if self._pixmap is None:
+            self._scaled = None
             self.setText("Could not load image")
             return
         self._refresh()
@@ -193,6 +219,7 @@ class _ImagePreview(QtWidgets.QLabel):
         self._refresh()
 
     def _mask_overlay(self, size: QtCore.QSize) -> QtGui.QPixmap | None:
+        """Fast green overlay via alpha channel (preview-sized only)."""
         if self._mask_img is None or self._mask_img.isNull():
             return None
         gray = self._mask_img.scaled(
@@ -200,45 +227,51 @@ class _ImagePreview(QtWidgets.QLabel):
             QtCore.Qt.AspectRatioMode.IgnoreAspectRatio,
             QtCore.Qt.TransformationMode.FastTransformation,
         ).convertToFormat(QtGui.QImage.Format.Format_Grayscale8)
-        w, h = gray.width(), gray.height()
-        overlay = QtGui.QImage(w, h, QtGui.QImage.Format.Format_ARGB32)
-        overlay.fill(QtCore.Qt.GlobalColor.transparent)
-        for y in range(h):
-            for x in range(w):
-                v = gray.pixelColor(x, y).value()
-                if v < 16:
-                    continue
-                a = min(200, int(v * 0.7))
-                overlay.setPixelColor(x, y, QtGui.QColor(0, 220, 120, a))
-        return QtGui.QPixmap.fromImage(overlay)
+        tint = QtGui.QImage(
+            gray.size(), QtGui.QImage.Format.Format_ARGB32_Premultiplied
+        )
+        tint.fill(QtGui.QColor(0, 220, 120, 180))
+        tint.setAlphaChannel(gray)
+        return QtGui.QPixmap.fromImage(tint)
 
-    def _image_xy(self, event) -> tuple[float, float] | None:
+    def _rebuild_scaled_cache(self) -> QtGui.QPixmap | None:
         if self._pixmap is None or self._pixmap.isNull():
+            self._scaled = None
             return None
         scaled = self._pixmap.scaled(
             self.size(),
             QtCore.Qt.AspectRatioMode.KeepAspectRatio,
-            QtCore.Qt.TransformationMode.SmoothTransformation,
+            QtCore.Qt.TransformationMode.FastTransformation,
         )
-        x_off = (self.width() - scaled.width()) / 2
-        y_off = (self.height() - scaled.height()) / 2
-        pos = event.position() if hasattr(event, "position") else event.localPos()
-        lx = float(pos.x()) - x_off
-        ly = float(pos.y()) - y_off
-        if lx < 0 or ly < 0 or lx > scaled.width() or ly > scaled.height():
+        self._scaled = scaled
+        self._x_off = (self.width() - scaled.width()) / 2
+        self._y_off = (self.height() - scaled.height()) / 2
+        self._sx = scaled.width() / max(self._pixmap.width(), 1)
+        self._sy = scaled.height() / max(self._pixmap.height(), 1)
+        return scaled
+
+    def _image_xy(self, event) -> tuple[float, float] | None:
+        if self._pixmap is None or self._pixmap.isNull():
             return None
-        ix = lx * (self._pixmap.width() / max(scaled.width(), 1))
-        iy = ly * (self._pixmap.height() / max(scaled.height(), 1))
+        if self._scaled is None or self._scaled.isNull():
+            self._rebuild_scaled_cache()
+        if self._scaled is None:
+            return None
+        pos = event.position() if hasattr(event, "position") else event.localPos()
+        lx = float(pos.x()) - self._x_off
+        ly = float(pos.y()) - self._y_off
+        if lx < 0 or ly < 0 or lx > self._scaled.width() or ly > self._scaled.height():
+            return None
+        ix = lx / max(self._sx, 1e-6)
+        iy = ly / max(self._sy, 1e-6)
         return ix, iy
 
     def _refresh(self) -> None:
         if self._pixmap is None or self._pixmap.isNull():
             return
-        scaled = self._pixmap.scaled(
-            self.size(),
-            QtCore.Qt.AspectRatioMode.KeepAspectRatio,
-            QtCore.Qt.TransformationMode.SmoothTransformation,
-        )
+        scaled = self._rebuild_scaled_cache()
+        if scaled is None:
+            return
         canvas = QtGui.QPixmap(scaled)
         painter = QtGui.QPainter(canvas)
         painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
@@ -246,8 +279,6 @@ class _ImagePreview(QtWidgets.QLabel):
         if overlay is not None:
             painter.drawPixmap(0, 0, overlay)
         if self._interactive:
-            sx = scaled.width() / max(self._pixmap.width(), 1)
-            sy = scaled.height() / max(self._pixmap.height(), 1)
             for x, y, lab in self._points:
                 if int(lab) == 1:
                     color = QtGui.QColor(0, 255, 120)
@@ -255,12 +286,15 @@ class _ImagePreview(QtWidgets.QLabel):
                     color = QtGui.QColor(255, 64, 64)
                 painter.setPen(QtGui.QPen(color, 2))
                 painter.setBrush(QtGui.QBrush(color))
-                painter.drawEllipse(QtCore.QPointF(x * sx, y * sy), 4, 4)
+                painter.drawEllipse(
+                    QtCore.QPointF(x * self._sx, y * self._sy), 4, 4
+                )
         painter.end()
         self.setPixmap(canvas)
 
     def resizeEvent(self, event) -> None:  # noqa: N802
         super().resizeEvent(event)
+        self._scaled = None
         self._refresh()
 
     def mousePressEvent(self, event) -> None:  # noqa: N802
@@ -294,7 +328,10 @@ class _ImagePreview(QtWidgets.QLabel):
         self.paint_at.emit(xy[0], xy[1], add)
 
     def mouseReleaseEvent(self, event) -> None:  # noqa: N802
-        if event.button() == QtCore.Qt.MouseButton.LeftButton:
+        if event.button() == QtCore.Qt.MouseButton.LeftButton and self._painting:
+            self._painting = False
+            self.paint_finished.emit()
+        elif event.button() == QtCore.Qt.MouseButton.LeftButton:
             self._painting = False
 
 
@@ -363,6 +400,10 @@ class MatAnyoneDialog(QtWidgets.QDialog):
         self._debounce.setSingleShot(True)
         self._debounce.setInterval(300)
         self._debounce.timeout.connect(self._run_sam2_preview)
+        self._paint_ui_timer = QtCore.QTimer(self)
+        self._paint_ui_timer.setSingleShot(True)
+        self._paint_ui_timer.setInterval(16)
+        self._paint_ui_timer.timeout.connect(self._flush_paint_ui)
         self._frame_debounce = QtCore.QTimer(self)
         self._frame_debounce.setSingleShot(True)
         self._frame_debounce.setInterval(250)
@@ -490,6 +531,7 @@ class MatAnyoneDialog(QtWidgets.QDialog):
         self._sam_preview = _ImagePreview(interactive=True)
         self._sam_preview.point_added.connect(self._on_point)
         self._sam_preview.paint_at.connect(self._on_paint)
+        self._sam_preview.paint_finished.connect(self._on_paint_finished)
         self._sam_preview.set_brush_radius(20)
         sam_l.addWidget(self._sam_preview, 1)
 
@@ -962,8 +1004,18 @@ class MatAnyoneDialog(QtWidgets.QDialog):
         r = float(self._brush_slider.value())
         sam.brush_edit_qimage(slot.edit, x, y, r, add=add)
         sam.brush_edit_qimage(slot.paint, x, y, r, add=add)
-        self._persist_slot(slot)
+        # Coalesce UI refresh (~60fps); never write PNG while dragging.
+        if not self._paint_ui_timer.isActive():
+            self._paint_ui_timer.start()
+
+    def _flush_paint_ui(self) -> None:
         self._refresh_sam_overlay()
+
+    def _on_paint_finished(self) -> None:
+        self._paint_ui_timer.stop()
+        self._flush_paint_ui()
+        slot = self._active_slot()
+        self._persist_slot(slot)
 
     def _clear_active_points(self) -> None:
         if self._sam_busy or self._finalizing:
@@ -981,6 +1033,10 @@ class MatAnyoneDialog(QtWidgets.QDialog):
         self._set_sam_busy(False)
 
     def _refresh_sam_overlay(self) -> None:
+        if len(self._objects) == 1:
+            slot = self._objects[0]
+            self._sam_preview.set_mask_image(slot.edit)
+            return
         combined = _or_edits(self._objects)
         self._sam_preview.set_mask_image(combined)
 
