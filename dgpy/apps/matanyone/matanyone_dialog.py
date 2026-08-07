@@ -1,18 +1,26 @@
-"""MatAnyone mask-prep dialog (PySide6) — Flame / SAM2 tabs + ref frame."""
+"""MatAnyone mask-prep dialog (PySide6) — Flame / SAM2 tabs + ref frame (v0.10)."""
 
 from __future__ import annotations
 
 import shutil
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
+import matanyone_sam2 as sam
 import matanyone_selection as selection
 
-__version__ = "0.9.1"
+__version__ = "0.10.0"
 
 _WINDOW: QtWidgets.QWidget | None = None
+
+_TOOL_POS = "pos"
+_TOOL_NEG = "neg"
+_TOOL_PAINT_ADD = "paint_add"
+_TOOL_PAINT_ERASE = "paint_erase"
+
+_PAINT_NEUTRAL = 128
 
 
 @dataclass
@@ -27,25 +35,110 @@ class DialogResult:
     ref_frame_index: int = 0
 
 
+@dataclass
+class _ObjSlot:
+    """One SAM2 object: points + base / paint / composed edit."""
+
+    name: str
+    index: int
+    points: list[tuple[float, float, int]] = field(default_factory=list)
+    base: QtGui.QImage | None = None
+    paint: QtGui.QImage | None = None
+    edit: QtGui.QImage | None = None
+
+    def obj_dir(self, work: Path) -> Path:
+        return work / "sam_obj" / str(self.index)
+
+    def paths(self, work: Path) -> tuple[Path, Path, Path]:
+        d = self.obj_dir(work)
+        return d / "base.png", d / "paint.png", d / "edit.png"
+
+    def has_positive(self) -> bool:
+        return any(int(p[2]) == 1 for p in self.points)
+
+    def paint_dirty(self) -> bool:
+        if self.paint is None or self.paint.isNull():
+            return False
+        img = self.paint
+        for y in range(0, img.height(), 8):
+            for x in range(0, img.width(), 8):
+                if img.pixelColor(x, y).value() != _PAINT_NEUTRAL:
+                    return True
+        return False
+
+
+def _blank_gray(w: int, h: int, value: int) -> QtGui.QImage:
+    img = QtGui.QImage(w, h, QtGui.QImage.Format.Format_Grayscale8)
+    img.fill(value)
+    return img
+
+
+def _compose_base_paint(base: QtGui.QImage, paint: QtGui.QImage) -> QtGui.QImage:
+    """Compose SAM base with paint overlay (128=neutral, 255=fg, 0=bg)."""
+    b = base.convertToFormat(QtGui.QImage.Format.Format_Grayscale8)
+    p = paint.convertToFormat(QtGui.QImage.Format.Format_Grayscale8)
+    w, h = b.width(), b.height()
+    if p.width() != w or p.height() != h:
+        p = p.scaled(
+            w,
+            h,
+            QtCore.Qt.AspectRatioMode.IgnoreAspectRatio,
+            QtCore.Qt.TransformationMode.FastTransformation,
+        )
+    out = b.copy()
+    for y in range(h):
+        for x in range(w):
+            pv = p.pixelColor(x, y).value()
+            if pv >= 250:
+                out.setPixelColor(x, y, QtGui.QColor(255, 255, 255))
+            elif pv <= 5:
+                out.setPixelColor(x, y, QtGui.QColor(0, 0, 0))
+    return out
+
+
+def _or_edits(slots: list[_ObjSlot]) -> QtGui.QImage | None:
+    images = [
+        s.edit
+        for s in slots
+        if s.edit is not None and not s.edit.isNull()
+    ]
+    if not images:
+        return None
+    if len(images) == 1:
+        return images[0]
+    return sam.or_qimages(images)
+
+
 class _ImagePreview(QtWidgets.QLabel):
-    """Image preview with optional clickable points and mask overlay."""
+    """Image preview with tool modes, ± points, paint drag, and mask overlay."""
 
-    point_added = QtCore.Signal(float, float)
+    point_added = QtCore.Signal(float, float, int)
+    paint_at = QtCore.Signal(float, float, bool)  # x, y, add
 
-    def __init__(self, *, clickable: bool = False, parent=None):
+    def __init__(self, *, interactive: bool = False, parent=None):
         super().__init__(parent)
         self.setMinimumSize(520, 292)
         self.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         self.setStyleSheet("background:#222; color:#aaa;")
         self.setText("No preview")
-        self._clickable = clickable
-        self._accept_clicks = clickable
+        self.setMouseTracking(True)
+        self._interactive = interactive
+        self._accept_input = interactive
         self._pixmap: QtGui.QPixmap | None = None
         self._mask_img: QtGui.QImage | None = None
-        self._points: list[tuple[float, float]] = []
+        self._points: list[tuple[float, float, int]] = []
+        self._tool = _TOOL_POS
+        self._brush_radius = 20.0
+        self._painting = False
 
-    def set_accept_clicks(self, enabled: bool) -> None:
-        self._accept_clicks = bool(enabled and self._clickable)
+    def set_accept_input(self, enabled: bool) -> None:
+        self._accept_input = bool(enabled and self._interactive)
+
+    def set_tool(self, tool: str) -> None:
+        self._tool = tool
+
+    def set_brush_radius(self, radius: float) -> None:
+        self._brush_radius = max(1.0, float(radius))
 
     def set_image_path(
         self, path: Path | None, *, clear_overlay: bool = True
@@ -65,7 +158,6 @@ class _ImagePreview(QtWidgets.QLabel):
         self._refresh()
 
     def set_mask_path(self, path: Path | None) -> None:
-        """Load an L/RGB mask; luminance becomes overlay alpha (not image alpha)."""
         if path is None or not path.is_file():
             self._mask_img = None
             self._refresh()
@@ -74,11 +166,26 @@ class _ImagePreview(QtWidgets.QLabel):
         if img.isNull():
             self._mask_img = None
         else:
-            self._mask_img = img.convertToFormat(QtGui.QImage.Format.Format_Grayscale8)
+            self._mask_img = img.convertToFormat(
+                QtGui.QImage.Format.Format_Grayscale8
+            )
         self._refresh()
 
-    def points(self) -> list[tuple[float, float]]:
+    def set_mask_image(self, img: QtGui.QImage | None) -> None:
+        if img is None or img.isNull():
+            self._mask_img = None
+        else:
+            self._mask_img = img.convertToFormat(
+                QtGui.QImage.Format.Format_Grayscale8
+            )
+        self._refresh()
+
+    def points(self) -> list[tuple[float, float, int]]:
         return list(self._points)
+
+    def set_points(self, points: list[tuple[float, float, int]]) -> None:
+        self._points = [(float(x), float(y), int(lab)) for x, y, lab in points]
+        self._refresh()
 
     def clear_points(self) -> None:
         self._points.clear()
@@ -96,7 +203,6 @@ class _ImagePreview(QtWidgets.QLabel):
         w, h = gray.width(), gray.height()
         overlay = QtGui.QImage(w, h, QtGui.QImage.Format.Format_ARGB32)
         overlay.fill(QtCore.Qt.GlobalColor.transparent)
-        # Preview-sized only (~520×292). Use pixelColor — safe under Flame's Qt.
         for y in range(h):
             for x in range(w):
                 v = gray.pixelColor(x, y).value()
@@ -105,6 +211,25 @@ class _ImagePreview(QtWidgets.QLabel):
                 a = min(200, int(v * 0.7))
                 overlay.setPixelColor(x, y, QtGui.QColor(0, 220, 120, a))
         return QtGui.QPixmap.fromImage(overlay)
+
+    def _image_xy(self, event) -> tuple[float, float] | None:
+        if self._pixmap is None or self._pixmap.isNull():
+            return None
+        scaled = self._pixmap.scaled(
+            self.size(),
+            QtCore.Qt.AspectRatioMode.KeepAspectRatio,
+            QtCore.Qt.TransformationMode.SmoothTransformation,
+        )
+        x_off = (self.width() - scaled.width()) / 2
+        y_off = (self.height() - scaled.height()) / 2
+        pos = event.position() if hasattr(event, "position") else event.localPos()
+        lx = float(pos.x()) - x_off
+        ly = float(pos.y()) - y_off
+        if lx < 0 or ly < 0 or lx > scaled.width() or ly > scaled.height():
+            return None
+        ix = lx * (self._pixmap.width() / max(scaled.width(), 1))
+        iy = ly * (self._pixmap.height() / max(scaled.height(), 1))
+        return ix, iy
 
     def _refresh(self) -> None:
         if self._pixmap is None or self._pixmap.isNull():
@@ -120,13 +245,16 @@ class _ImagePreview(QtWidgets.QLabel):
         overlay = self._mask_overlay(scaled.size())
         if overlay is not None:
             painter.drawPixmap(0, 0, overlay)
-        if self._clickable:
-            pen = QtGui.QPen(QtGui.QColor(0, 255, 120), 2)
-            painter.setPen(pen)
-            painter.setBrush(QtGui.QBrush(QtGui.QColor(0, 255, 120)))
+        if self._interactive:
             sx = scaled.width() / max(self._pixmap.width(), 1)
             sy = scaled.height() / max(self._pixmap.height(), 1)
-            for x, y in self._points:
+            for x, y, lab in self._points:
+                if int(lab) == 1:
+                    color = QtGui.QColor(0, 255, 120)
+                else:
+                    color = QtGui.QColor(255, 64, 64)
+                painter.setPen(QtGui.QPen(color, 2))
+                painter.setBrush(QtGui.QBrush(color))
                 painter.drawEllipse(QtCore.QPointF(x * sx, y * sy), 4, 4)
         painter.end()
         self.setPixmap(canvas)
@@ -136,84 +264,60 @@ class _ImagePreview(QtWidgets.QLabel):
         self._refresh()
 
     def mousePressEvent(self, event) -> None:  # noqa: N802
-        if not self._accept_clicks:
-            return
-        if self._pixmap is None or self._pixmap.isNull():
+        if not self._accept_input:
             return
         if event.button() != QtCore.Qt.MouseButton.LeftButton:
             return
-        scaled = self._pixmap.scaled(
-            self.size(),
-            QtCore.Qt.AspectRatioMode.KeepAspectRatio,
-            QtCore.Qt.TransformationMode.SmoothTransformation,
-        )
-        x_off = (self.width() - scaled.width()) / 2
-        y_off = (self.height() - scaled.height()) / 2
-        pos = event.position() if hasattr(event, "position") else event.localPos()
-        lx = float(pos.x()) - x_off
-        ly = float(pos.y()) - y_off
-        if lx < 0 or ly < 0 or lx > scaled.width() or ly > scaled.height():
+        xy = self._image_xy(event)
+        if xy is None:
             return
-        ix = lx * (self._pixmap.width() / max(scaled.width(), 1))
-        iy = ly * (self._pixmap.height() / max(scaled.height(), 1))
-        self._points.append((ix, iy))
+        ix, iy = xy
+        if self._tool in (_TOOL_PAINT_ADD, _TOOL_PAINT_ERASE):
+            self._painting = True
+            add = self._tool == _TOOL_PAINT_ADD
+            self.paint_at.emit(ix, iy, add)
+            return
+        label = 1 if self._tool == _TOOL_POS else 0
+        self._points.append((ix, iy, label))
         self._refresh()
-        self.point_added.emit(ix, iy)
+        self.point_added.emit(ix, iy, label)
+
+    def mouseMoveEvent(self, event) -> None:  # noqa: N802
+        if not self._painting or not self._accept_input:
+            return
+        if not (event.buttons() & QtCore.Qt.MouseButton.LeftButton):
+            return
+        xy = self._image_xy(event)
+        if xy is None:
+            return
+        add = self._tool == _TOOL_PAINT_ADD
+        self.paint_at.emit(xy[0], xy[1], add)
+
+    def mouseReleaseEvent(self, event) -> None:  # noqa: N802
+        if event.button() == QtCore.Qt.MouseButton.LeftButton:
+            self._painting = False
 
 
-class _SamMaskWorker(QtCore.QObject):
-    finished_ok = QtCore.Signal(object)  # Path
+class _BgCall(QtCore.QObject):
+    """Run a blocking callable on a QThread."""
+
+    finished_ok = QtCore.Signal(object)
     finished_err = QtCore.Signal(str)
 
-    def __init__(
-        self,
-        *,
-        still: Path,
-        points: list[tuple[float, float]],
-        out_mask: Path,
-        work: Path,
-    ):
-        super().__init__()
-        self._still = still
-        self._points = points
-        self._out = out_mask
-        self._work = work
+    def __init__(self, fn, parent=None):
+        super().__init__(parent)
+        self._fn = fn
 
     @QtCore.Slot()
     def run(self) -> None:
         try:
-            import matanyone_job as job
-            import matanyone_runtime_paths as rpaths
-            import matanyone_runtime_setup as rsetup
-
-            python = rpaths.resolve_python()
-            sam = rpaths.sam_script()
-            if not python or sam is None:
-                raise RuntimeError("SAM2 helper / python missing")
-            rsetup._write_sam_helper(sam)
-            logs: list[str] = []
-
-            def _log(m: str) -> None:
-                logs.append(m)
-
-            job.run_sam_mask(
-                python=python,
-                sam_script=sam,
-                image=self._still,
-                points=self._points,
-                out_mask=self._out,
-                checkpoint=rpaths.sam2_checkpoint_path(),
-                config=rpaths.sam2_config_id(),
-                cwd=self._work,
-                log=_log,
-            )
-            self.finished_ok.emit(self._out)
+            self.finished_ok.emit(self._fn())
         except Exception as exc:  # noqa: BLE001
             self.finished_err.emit(str(exc))
 
 
 class MatAnyoneDialog(QtWidgets.QDialog):
-    """Mask preparation after export."""
+    """Mask preparation after export (v0.10 SAM2 resident worker)."""
 
     def __init__(
         self,
@@ -227,7 +331,7 @@ class MatAnyoneDialog(QtWidgets.QDialog):
     ):
         super().__init__(parent)
         self.setWindowTitle("MatAnyone 2")
-        self.setMinimumWidth(640)
+        self.setMinimumWidth(720)
         self._result: DialogResult | None = None
         self._still = still_path
         self._video = source_video
@@ -239,14 +343,26 @@ class MatAnyoneDialog(QtWidgets.QDialog):
         self._flame_mask: Path | None = None
         self._sam_busy = False
         self._frame_busy = False
-        self._sam_thread: QtCore.QThread | None = None
-        self._sam_worker: _SamMaskWorker | None = None
+        self._finalizing = False
         self._pending_rerun = False
-        self._points_at_run: list[tuple[float, float]] = []
+        self._points_at_run: list[tuple[float, float, int]] = []
+        self._run_obj_index = 0
+        self._bg_thread: QtCore.QThread | None = None
+        self._bg_call: _BgCall | None = None
+
+        self._worker: sam.Sam2Worker | None = None
+        self._worker_ready = False
+        self._worker_starting = False
+        self._worker_failed = False
+        self._image_on_worker: Path | None = None
+
+        self._objects: list[_ObjSlot] = [_ObjSlot(name="Object 1", index=0)]
+        self._active = 0
+
         self._debounce = QtCore.QTimer(self)
         self._debounce.setSingleShot(True)
-        self._debounce.setInterval(900)
-        self._debounce.timeout.connect(self._run_sam2)
+        self._debounce.setInterval(300)
+        self._debounce.timeout.connect(self._run_sam2_preview)
         self._frame_debounce = QtCore.QTimer(self)
         self._frame_debounce.setSingleShot(True)
         self._frame_debounce.setInterval(250)
@@ -255,16 +371,20 @@ class MatAnyoneDialog(QtWidgets.QDialog):
         try:
             import matanyone_runtime_paths as rpaths
 
+            self._rpaths = rpaths
             self._sam2_ready = rpaths.is_sam2_ready()
             self._python = rpaths.resolve_python() or "python3"
         except Exception:  # noqa: BLE001
+            self._rpaths = None
             self._sam2_ready = False
             self._python = "python3"
 
         import matanyone_job as job
 
         try:
-            self._frame_count = max(1, job.probe_frame_count(source_video, python=self._python))
+            self._frame_count = max(
+                1, job.probe_frame_count(source_video, python=self._python)
+            )
         except Exception:  # noqa: BLE001
             self._frame_count = 1
 
@@ -310,20 +430,76 @@ class MatAnyoneDialog(QtWidgets.QDialog):
                 "Mask overlays the source. Scrub the reference frame until they align."
             )
         )
-        self._flame_preview = _ImagePreview(clickable=False)
+        self._flame_preview = _ImagePreview(interactive=False)
         flame_l.addWidget(self._flame_preview, 1)
         self._tabs.addTab(flame_page, "Flame")
 
         sam_page = QtWidgets.QWidget()
         sam_l = QtWidgets.QVBoxLayout(sam_page)
-        self._sam_preview = _ImagePreview(clickable=True)
+
+        obj_row = QtWidgets.QHBoxLayout()
+        obj_row.addWidget(QtWidgets.QLabel("Object"))
+        self._obj_combo = QtWidgets.QComboBox()
+        self._obj_combo.addItem("Object 1", 0)
+        self._obj_combo.currentIndexChanged.connect(self._on_obj_combo)
+        obj_row.addWidget(self._obj_combo, 1)
+        self._obj_add = QtWidgets.QPushButton("+")
+        self._obj_add.setFixedWidth(32)
+        self._obj_add.clicked.connect(self._add_object)
+        obj_row.addWidget(self._obj_add)
+        self._obj_del = QtWidgets.QPushButton("−")
+        self._obj_del.setFixedWidth(32)
+        self._obj_del.clicked.connect(self._remove_object)
+        obj_row.addWidget(self._obj_del)
+        sam_l.addLayout(obj_row)
+
+        tool_row = QtWidgets.QHBoxLayout()
+        self._tool_group = QtWidgets.QButtonGroup(self)
+        self._tool_group.setExclusive(True)
+        for text, tool, tip in (
+            ("+", _TOOL_POS, "Positive point"),
+            ("−", _TOOL_NEG, "Negative point"),
+            ("Paint Add", _TOOL_PAINT_ADD, "Paint foreground"),
+            ("Paint Erase", _TOOL_PAINT_ERASE, "Paint background"),
+        ):
+            btn = QtWidgets.QToolButton()
+            btn.setText(text)
+            btn.setCheckable(True)
+            btn.setToolTip(tip)
+            btn.setProperty("sam_tool", tool)
+            self._tool_group.addButton(btn)
+            tool_row.addWidget(btn)
+            if tool == _TOOL_POS:
+                btn.setChecked(True)
+        self._tool_group.buttonClicked.connect(self._on_tool_clicked)
+        tool_row.addStretch(1)
+        sam_l.addLayout(tool_row)
+
+        brush_row = QtWidgets.QHBoxLayout()
+        brush_row.addWidget(QtWidgets.QLabel("Brush"))
+        self._brush_slider = QtWidgets.QSlider(QtCore.Qt.Orientation.Horizontal)
+        self._brush_slider.setMinimum(2)
+        self._brush_slider.setMaximum(80)
+        self._brush_slider.setValue(20)
+        self._brush_slider.valueChanged.connect(self._on_brush)
+        brush_row.addWidget(self._brush_slider, 1)
+        self._brush_label = QtWidgets.QLabel("20")
+        brush_row.addWidget(self._brush_label)
+        sam_l.addLayout(brush_row)
+
+        self._sam_preview = _ImagePreview(interactive=True)
         self._sam_preview.point_added.connect(self._on_point)
+        self._sam_preview.paint_at.connect(self._on_paint)
+        self._sam_preview.set_brush_radius(20)
         sam_l.addWidget(self._sam_preview, 1)
-        clear_pts = QtWidgets.QPushButton("Clear points")
-        clear_pts.clicked.connect(self._clear_sam)
+
+        clear_pts = QtWidgets.QPushButton("Clear points (active object)")
+        clear_pts.clicked.connect(self._clear_active_points)
         sam_l.addWidget(clear_pts)
+        self._clear_btn = clear_pts
+
         self._sam_status = QtWidgets.QLabel(
-            "Click the subject. Mask updates automatically."
+            "SAM2: + / − points and paint. Preview uses tiny; OK finalizes with large."
             if self._sam2_ready
             else "SAM2 is not set up. Run DGpy → MatAnyone → SAM2 Setup…"
         )
@@ -335,6 +511,7 @@ class MatAnyoneDialog(QtWidgets.QDialog):
             self._tabs.setTabToolTip(
                 1, "Run DGpy → MatAnyone → SAM2 Setup… to enable this tab."
             )
+        self._tabs.currentChanged.connect(self._on_tab_changed)
         layout.addWidget(self._tabs, 1)
 
         out_box = QtWidgets.QGroupBox("Output")
@@ -362,16 +539,19 @@ class MatAnyoneDialog(QtWidgets.QDialog):
         buttons.accepted.connect(self._accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
-        self._clear_btn = clear_pts
         self._set_sam_busy(False)
 
-        # Seed previews from export still (frame 0) or extract if needed.
         if still_path.is_file():
             try:
                 shutil.copy2(still_path, self._ref_still)
             except OSError:
                 pass
         self._apply_ref_frame(force_index=0)
+
+        if self._sam2_ready:
+            QtCore.QTimer.singleShot(0, self._ensure_worker)
+
+    # --- ref frame ---------------------------------------------------------
 
     def _frame_caption(self, index: int) -> str:
         last = max(0, self._frame_count - 1)
@@ -406,24 +586,24 @@ class MatAnyoneDialog(QtWidgets.QDialog):
             self._frame_spin.blockSignals(False)
             self._frame_label.setText(self._frame_caption(index))
 
-        # Changing ref clears SAM points/mask (spec BE).
         self._debounce.stop()
         self._pending_rerun = False
-        self._sam_preview.clear_points()
+        self._reset_all_objects()
         if self._sam_mask.exists():
             try:
                 self._sam_mask.unlink()
             except OSError:
                 pass
-        if self._sam2_ready:
+        if self._sam2_ready and not self._worker_failed:
             self._sam_status.setText(
-                "Reference frame changed. Click the subject to generate a mask."
+                "Reference frame changed. Click + / − or paint to generate a mask."
             )
 
         self._frame_busy = True
-        if hasattr(self, "_ok_btn") and self._ok_btn is not None:
+        if self._ok_btn is not None:
             self._ok_btn.setEnabled(False)
         try:
+
             def _log(_m: str) -> None:
                 return
 
@@ -435,38 +615,279 @@ class MatAnyoneDialog(QtWidgets.QDialog):
                 log=_log,
             )
             self._still = self._ref_still
-            # Flame: keep mask overlay while swapping source.
             self._flame_preview.set_image_path(
                 self._ref_still, clear_overlay=False
             )
             if self._flame_mask is not None:
                 self._flame_preview.set_mask_path(self._flame_mask)
             self._sam_preview.set_image_path(self._ref_still, clear_overlay=True)
+            self._sam_preview.set_points([])
+            if self._worker_ready and self._worker is not None:
+                self._queue_set_image(self._still)
         except Exception as exc:  # noqa: BLE001
             QtWidgets.QMessageBox.warning(
                 self, "MatAnyone", f"Could not extract frame {index}:\n{exc}"
             )
         finally:
             self._frame_busy = False
-            if hasattr(self, "_ok_btn") and self._ok_btn is not None:
-                self._ok_btn.setEnabled(not self._sam_busy)
+            if self._ok_btn is not None:
+                self._ok_btn.setEnabled(
+                    not self._sam_busy and not self._finalizing
+                )
+
+    # --- objects / tools ---------------------------------------------------
+
+    def _active_slot(self) -> _ObjSlot:
+        if not self._objects:
+            self._objects = [_ObjSlot(name="Object 1", index=0)]
+            self._active = 0
+        self._active = max(0, min(self._active, len(self._objects) - 1))
+        return self._objects[self._active]
+
+    def _reset_all_objects(self) -> None:
+        self._objects = [_ObjSlot(name="Object 1", index=0)]
+        self._active = 0
+        self._refresh_obj_combo()
+        self._sam_preview.set_points([])
+        self._sam_preview.set_mask_image(None)
+        sam_root = self._work / "sam_obj"
+        if sam_root.is_dir():
+            try:
+                shutil.rmtree(sam_root)
+            except OSError:
+                pass
+
+    def _refresh_obj_combo(self) -> None:
+        self._obj_combo.blockSignals(True)
+        self._obj_combo.clear()
+        for i, slot in enumerate(self._objects):
+            self._obj_combo.addItem(slot.name, i)
+        self._obj_combo.setCurrentIndex(self._active)
+        self._obj_combo.blockSignals(False)
+        self._obj_add.setEnabled(len(self._objects) < sam.MAX_OBJECTS)
+        self._obj_del.setEnabled(len(self._objects) > 1)
+
+    def _on_obj_combo(self, index: int) -> None:
+        if index < 0 or index >= len(self._objects):
+            return
+        self._active = index
+        slot = self._active_slot()
+        self._sam_preview.set_points(slot.points)
+        self._refresh_sam_overlay()
+
+    def _add_object(self) -> None:
+        if len(self._objects) >= sam.MAX_OBJECTS:
+            return
+        used = {s.index for s in self._objects}
+        idx = 0
+        while idx in used:
+            idx += 1
+        n = len(self._objects) + 1
+        self._objects.append(_ObjSlot(name=f"Object {n}", index=idx))
+        # Renumber display names 1..N
+        for i, slot in enumerate(self._objects):
+            slot.name = f"Object {i + 1}"
+        self._active = len(self._objects) - 1
+        self._refresh_obj_combo()
+        self._sam_preview.set_points([])
+        self._refresh_sam_overlay()
+
+    def _remove_object(self) -> None:
+        if len(self._objects) <= 1:
+            return
+        del self._objects[self._active]
+        for i, slot in enumerate(self._objects):
+            slot.name = f"Object {i + 1}"
+        self._active = min(self._active, len(self._objects) - 1)
+        self._refresh_obj_combo()
+        slot = self._active_slot()
+        self._sam_preview.set_points(slot.points)
+        self._refresh_sam_overlay()
+
+    def _on_tool_clicked(self, btn) -> None:
+        tool = btn.property("sam_tool")
+        if tool:
+            self._sam_preview.set_tool(str(tool))
+
+    def _on_brush(self, value: int) -> None:
+        self._brush_label.setText(str(value))
+        self._sam_preview.set_brush_radius(float(value))
+
+    def _on_tab_changed(self, index: int) -> None:
+        if index == 1 and self._sam2_ready and not self._worker_ready:
+            self._ensure_worker()
+
+    # --- worker lifecycle --------------------------------------------------
+
+    def _ensure_worker(self) -> None:
+        if (
+            not self._sam2_ready
+            or self._worker_ready
+            or self._worker_starting
+            or self._worker_failed
+        ):
+            return
+        if self._rpaths is None:
+            self._disable_sam2_tab("SAM2 paths unavailable")
+            return
+        self._worker_starting = True
+        self._sam_status.setText("Starting SAM2 worker (tiny)…")
+        rpaths = self._rpaths
+        still = self._still
+
+        def work():
+            w = sam.Sam2Worker()
+            w.start()
+            w.init_model(
+                rpaths.sam2_checkpoint_path(size="tiny"),
+                rpaths.sam2_config_id(size="tiny"),
+            )
+            if still.is_file():
+                w.set_image(still)
+            return w
+
+        self._run_bg(work, self._on_worker_started, self._on_worker_start_err)
+
+    def _on_worker_started(self, worker: object) -> None:
+        self._worker_starting = False
+        self._worker = worker  # type: ignore[assignment]
+        self._worker_ready = True
+        self._image_on_worker = self._still if self._still.is_file() else None
+        self._sam_status.setText(
+            "SAM2 ready (tiny preview). Use + / − / paint, then OK for large."
+        )
+        self._set_sam_busy(False)
+
+    def _on_worker_start_err(self, message: str) -> None:
+        self._worker_starting = False
+        self._worker_failed = True
+        self._disable_sam2_tab(message)
+
+    def _disable_sam2_tab(self, message: str) -> None:
+        self._sam2_ready = False
+        self._tabs.setTabEnabled(1, False)
+        self._tabs.setTabToolTip(1, message)
+        self._sam_status.setText(f"SAM2 worker failed: {message}")
+        if self._tabs.currentIndex() == 1:
+            self._tabs.setCurrentIndex(0)
+        QtWidgets.QMessageBox.warning(
+            self, "MatAnyone", f"Could not start SAM2 worker:\n{message}"
+        )
+
+    def _shutdown_worker(self) -> None:
+        self._debounce.stop()
+        w = self._worker
+        self._worker = None
+        self._worker_ready = False
+        if w is not None:
+            try:
+                w.close()
+            except Exception:  # noqa: BLE001
+                pass
+
+    def _queue_set_image(self, path: Path) -> None:
+        if not self._worker_ready or self._worker is None:
+            return
+        if self._bg_thread is not None and self._bg_thread.isRunning():
+            return
+        worker = self._worker
+
+        def work():
+            worker.set_image(path)
+            return str(path)
+
+        def ok(_p: object) -> None:
+            self._image_on_worker = path
+
+        def err(msg: str) -> None:
+            if msg == "busy":
+                return
+            self._sam_status.setText(f"set_image failed: {msg}")
+
+        self._run_bg(work, ok, err)
+
+    def closeEvent(self, event) -> None:  # noqa: N802
+        self._shutdown_worker()
+        super().closeEvent(event)
+
+    def reject(self) -> None:
+        self._shutdown_worker()
+        super().reject()
+
+    # --- busy / bg ---------------------------------------------------------
 
     def _set_sam_busy(self, busy: bool) -> None:
         self._sam_busy = busy
-        # Always allow placing more points (queued regenerate). Only lock OK.
-        self._sam_preview.set_accept_clicks(self._sam2_ready)
-        if hasattr(self, "_clear_btn") and self._clear_btn is not None:
-            self._clear_btn.setEnabled(not busy)
-        if hasattr(self, "_ok_btn") and self._ok_btn is not None:
-            self._ok_btn.setEnabled(not busy and not self._frame_busy)
-        self._frame_slider.setEnabled(not busy)
-        self._frame_spin.setEnabled(not busy)
-        if busy:
+        lock = busy or self._finalizing or self._frame_busy
+        self._sam_preview.set_accept_input(
+            self._sam2_ready and self._worker_ready and not self._finalizing
+        )
+        if self._clear_btn is not None:
+            self._clear_btn.setEnabled(not lock)
+        if self._ok_btn is not None:
+            self._ok_btn.setEnabled(not lock)
+        self._frame_slider.setEnabled(not lock)
+        self._frame_spin.setEnabled(not lock)
+        self._obj_combo.setEnabled(not self._finalizing)
+        self._obj_add.setEnabled(
+            not lock and len(self._objects) < sam.MAX_OBJECTS
+        )
+        self._obj_del.setEnabled(not lock and len(self._objects) > 1)
+        if self._finalizing:
             self._tabs.setTabEnabled(0, False)
+            self._tabs.setTabEnabled(1, False)
         else:
-            self._tabs.setTabEnabled(0, True)
-            if not self._sam2_ready:
+            self._tabs.setTabEnabled(0, not busy)
+            if self._sam2_ready and not self._worker_failed:
+                self._tabs.setTabEnabled(1, True)
+            else:
                 self._tabs.setTabEnabled(1, False)
+
+    def _run_bg(self, fn, on_ok, on_err) -> None:
+        """Serialize background calls (one QThread at a time)."""
+        if self._bg_thread is not None and self._bg_thread.isRunning():
+            on_err("busy")
+            return
+        self._bg_on_ok = on_ok
+        self._bg_on_err = on_err
+        thread = QtCore.QThread(self)
+        call = _BgCall(fn)
+        call.moveToThread(thread)
+        thread.started.connect(call.run)
+        call.finished_ok.connect(self._bg_finished_ok)
+        call.finished_err.connect(self._bg_finished_err)
+        call.finished_ok.connect(thread.quit)
+        call.finished_err.connect(thread.quit)
+        thread.finished.connect(call.deleteLater)
+        thread.finished.connect(thread.deleteLater)
+
+        def _clear() -> None:
+            if self._bg_thread is thread:
+                self._bg_thread = None
+                self._bg_call = None
+
+        thread.finished.connect(_clear)
+        self._bg_thread = thread
+        self._bg_call = call
+        thread.start()
+
+    @QtCore.Slot(object)
+    def _bg_finished_ok(self, result: object) -> None:
+        cb = getattr(self, "_bg_on_ok", None)
+        self._bg_on_ok = None
+        self._bg_on_err = None
+        if cb is not None:
+            cb(result)
+
+    @QtCore.Slot(str)
+    def _bg_finished_err(self, message: str) -> None:
+        cb = getattr(self, "_bg_on_err", None)
+        self._bg_on_ok = None
+        self._bg_on_err = None
+        if cb is not None:
+            cb(message)
+
+    # --- SAM preview / paint -----------------------------------------------
 
     def _browse_mask(self) -> None:
         path, _ = QtWidgets.QFileDialog.getOpenFileName(
@@ -479,15 +900,18 @@ class MatAnyoneDialog(QtWidgets.QDialog):
             return
         self._mask_edit.setText(path)
         self._flame_mask = Path(path)
-        # Source stays; mask becomes overlay.
         if self._still.is_file():
             self._flame_preview.set_image_path(self._still, clear_overlay=False)
         self._flame_preview.set_mask_path(self._flame_mask)
 
-    def _on_point(self, _x: float, _y: float) -> None:
-        if not self._sam2_ready:
+    def _on_point(self, x: float, y: float, label: int) -> None:
+        if not self._worker_ready:
             return
-        n = len(self._sam_preview.points())
+        slot = self._active_slot()
+        slot.points = self._sam_preview.points()
+        # Re-SAM clears paint for this object (BY).
+        self._reset_paint(slot)
+        n = len(slot.points)
         if self._sam_busy:
             self._pending_rerun = True
             self._sam_status.setText(
@@ -495,74 +919,173 @@ class MatAnyoneDialog(QtWidgets.QDialog):
             )
             return
         self._sam_status.setText(
-            f"SAM2: {n} point(s) — mask updates after you pause clicking…"
+            f"SAM2: {n} point(s) — mask updates after you pause…"
         )
         self._debounce.start()
 
-    def _clear_sam(self) -> None:
-        if self._sam_busy:
+    def _reset_paint(self, slot: _ObjSlot) -> None:
+        if slot.base is not None and not slot.base.isNull():
+            w, h = slot.base.width(), slot.base.height()
+            slot.paint = _blank_gray(w, h, _PAINT_NEUTRAL)
+            slot.edit = slot.base.copy()
+        else:
+            slot.paint = None
+            slot.edit = None
+        self._refresh_sam_overlay()
+
+    def _ensure_paint_layers(self, slot: _ObjSlot) -> bool:
+        """Ensure base/paint/edit exist for painting. Returns False if no size."""
+        if slot.edit is not None and not slot.edit.isNull():
+            if slot.paint is None or slot.paint.isNull():
+                slot.paint = _blank_gray(
+                    slot.edit.width(), slot.edit.height(), _PAINT_NEUTRAL
+                )
+            if slot.base is None or slot.base.isNull():
+                slot.base = _blank_gray(slot.edit.width(), slot.edit.height(), 0)
+            return True
+        if self._sam_preview._pixmap is None or self._sam_preview._pixmap.isNull():
+            return False
+        w = self._sam_preview._pixmap.width()
+        h = self._sam_preview._pixmap.height()
+        slot.base = _blank_gray(w, h, 0)
+        slot.paint = _blank_gray(w, h, _PAINT_NEUTRAL)
+        slot.edit = _blank_gray(w, h, 0)
+        return True
+
+    def _on_paint(self, x: float, y: float, add: bool) -> None:
+        if not self._worker_ready or self._finalizing:
+            return
+        slot = self._active_slot()
+        if not self._ensure_paint_layers(slot):
+            return
+        assert slot.edit is not None and slot.paint is not None
+        r = float(self._brush_slider.value())
+        sam.brush_edit_qimage(slot.edit, x, y, r, add=add)
+        sam.brush_edit_qimage(slot.paint, x, y, r, add=add)
+        self._persist_slot(slot)
+        self._refresh_sam_overlay()
+
+    def _clear_active_points(self) -> None:
+        if self._sam_busy or self._finalizing:
             return
         self._debounce.stop()
         self._pending_rerun = False
-        self._sam_preview.clear_points()
-        if self._sam_mask.exists():
-            try:
-                self._sam_mask.unlink()
-            except OSError:
-                pass
-        self._sam_status.setText("Click the subject. Mask updates automatically.")
+        slot = self._active_slot()
+        slot.points.clear()
+        slot.base = None
+        slot.paint = None
+        slot.edit = None
+        self._sam_preview.set_points([])
+        self._refresh_sam_overlay()
+        self._sam_status.setText("Points cleared. Click + / − or paint.")
         self._set_sam_busy(False)
 
-    def _run_sam2(self) -> None:
-        points = self._sam_preview.points()
-        if not points:
+    def _refresh_sam_overlay(self) -> None:
+        combined = _or_edits(self._objects)
+        self._sam_preview.set_mask_image(combined)
+
+    def _persist_slot(self, slot: _ObjSlot) -> None:
+        base_p, paint_p, edit_p = slot.paths(self._work)
+        try:
+            if slot.base is not None and not slot.base.isNull():
+                sam.save_qimage_l(slot.base, base_p)
+            if slot.paint is not None and not slot.paint.isNull():
+                sam.save_qimage_l(slot.paint, paint_p)
+            if slot.edit is not None and not slot.edit.isNull():
+                sam.save_qimage_l(slot.edit, edit_p)
+        except Exception:  # noqa: BLE001
+            pass
+
+    def _run_sam2_preview(self) -> None:
+        slot = self._active_slot()
+        points = list(slot.points)
+        if not points or not slot.has_positive():
             self._set_sam_busy(False)
+            if points and not slot.has_positive():
+                self._sam_status.setText(
+                    "Add at least one positive (+) point before SAM predicts."
+                )
             return
-        if self._sam_busy:
+        if not self._worker_ready or self._worker is None:
+            self._ensure_worker()
+            self._pending_rerun = True
+            return
+        if self._sam_busy or (
+            self._bg_thread is not None and self._bg_thread.isRunning()
+        ):
             self._pending_rerun = True
             return
         self._points_at_run = list(points)
+        self._run_obj_index = self._active
         self._pending_rerun = False
-        self._sam_status.setText(f"SAM2: generating mask ({len(points)} points)…")
-        self._set_sam_busy(True)
-        self._sam_thread = QtCore.QThread(self)
-        self._sam_worker = _SamMaskWorker(
-            still=self._still,
-            points=points,
-            out_mask=self._sam_mask,
-            work=self._work,
+        self._sam_status.setText(
+            f"SAM2: generating preview ({len(points)} points)…"
         )
-        self._sam_worker.moveToThread(self._sam_thread)
-        self._sam_thread.started.connect(self._sam_worker.run)
-        self._sam_worker.finished_ok.connect(self._on_sam_ok)
-        self._sam_worker.finished_err.connect(self._on_sam_err)
-        self._sam_worker.finished_ok.connect(self._sam_thread.quit)
-        self._sam_worker.finished_err.connect(self._sam_thread.quit)
-        self._sam_thread.finished.connect(self._sam_worker.deleteLater)
-        self._sam_thread.start()
+        self._set_sam_busy(True)
+        worker = self._worker
+        still = self._still
+        out = slot.paths(self._work)[0]
+        out.parent.mkdir(parents=True, exist_ok=True)
+        need_set = self._image_on_worker != still
 
-    @QtCore.Slot(object)
-    def _on_sam_ok(self, path: object) -> None:
-        mask = Path(str(path))
-        self._sam_preview.set_mask_path(mask if mask.is_file() else None)
+        def work():
+            if need_set:
+                worker.set_image(still)
+            return worker.predict(points, out)
+
+        def ok(path: object) -> None:
+            self._image_on_worker = still
+            self._on_preview_ok(Path(str(path)))
+
+        def err(message: str) -> None:
+            if message == "busy":
+                self._pending_rerun = True
+                return
+            self._on_preview_err(message)
+
+        self._run_bg(work, ok, err)
+
+    def _on_preview_ok(self, path: Path) -> None:
+        idx = self._run_obj_index
+        if 0 <= idx < len(self._objects):
+            slot = self._objects[idx]
+            try:
+                base = sam.load_qimage_l(path)
+            except Exception as exc:  # noqa: BLE001
+                self._on_preview_err(str(exc))
+                return
+            slot.base = base
+            # Paint was reset on point change; keep neutral overlay.
+            slot.paint = _blank_gray(base.width(), base.height(), _PAINT_NEUTRAL)
+            slot.edit = base.copy()
+            self._persist_slot(slot)
+        self._refresh_sam_overlay()
         self._set_sam_busy(False)
-        current = self._sam_preview.points()
-        if self._pending_rerun or current != getattr(self, "_points_at_run", current):
+        slot_now = self._active_slot()
+        current = list(slot_now.points)
+        if self._pending_rerun or current != getattr(
+            self, "_points_at_run", current
+        ):
             self._pending_rerun = False
             self._sam_status.setText("SAM2: points changed — regenerating…")
-            QtCore.QTimer.singleShot(0, self._run_sam2)
+            QtCore.QTimer.singleShot(0, self._run_sam2_preview)
             return
-        self._sam_status.setText("SAM2 mask ready. Add points to refine, then OK.")
+        self._sam_status.setText(
+            "SAM2 preview ready. Refine with ± / paint, then OK (large)."
+        )
 
-    @QtCore.Slot(str)
-    def _on_sam_err(self, message: str) -> None:
+    def _on_preview_err(self, message: str) -> None:
         self._pending_rerun = False
         self._sam_status.setText(f"SAM2 failed: {message}")
         self._set_sam_busy(False)
-        QtWidgets.QMessageBox.warning(self, "MatAnyone", f"SAM2 mask failed:\n{message}")
+        QtWidgets.QMessageBox.warning(
+            self, "MatAnyone", f"SAM2 mask failed:\n{message}"
+        )
+
+    # --- accept / finalize -------------------------------------------------
 
     def _accept(self) -> None:
-        if self._sam_busy or self._frame_busy:
+        if self._sam_busy or self._frame_busy or self._finalizing:
             QtWidgets.QMessageBox.information(
                 self, "MatAnyone", "Still busy. Wait a moment."
             )
@@ -581,25 +1104,105 @@ class MatAnyoneDialog(QtWidgets.QDialog):
                 shutil.copy2(src, dest)
             mask_source = "flame"
             points: list[tuple[float, float]] = []
-        else:
-            if not self._sam2_ready:
-                QtWidgets.QMessageBox.warning(
-                    self,
-                    "MatAnyone",
-                    "SAM2 is not set up.\nRun DGpy → MatAnyone → SAM2 Setup…",
-                )
-                return
-            if not self._sam_mask.is_file():
-                QtWidgets.QMessageBox.warning(
-                    self,
-                    "MatAnyone",
-                    "Generate a SAM2 mask first (click points on the preview).",
-                )
-                return
-            shutil.copy2(self._sam_mask, dest)
-            mask_source = "sam2"
-            points = self._sam_preview.points()
+            self._finish_accept(mask_source, dest, points)
+            return
 
+        if not self._sam2_ready or not self._worker_ready or self._worker is None:
+            QtWidgets.QMessageBox.warning(
+                self,
+                "MatAnyone",
+                "SAM2 is not ready.\nRun DGpy → MatAnyone → SAM2 Setup…",
+            )
+            return
+        usable = [
+            s
+            for s in self._objects
+            if s.has_positive()
+            or (s.edit is not None and not s.edit.isNull())
+        ]
+        if not usable:
+            QtWidgets.QMessageBox.warning(
+                self,
+                "MatAnyone",
+                "Generate a SAM2 mask first (+ points and/or paint).",
+            )
+            return
+
+        self._finalizing = True
+        self._set_sam_busy(True)
+        self._sam_status.setText("Finalizing mask (large)…")
+        worker = self._worker
+        rpaths = self._rpaths
+        still = self._still
+        slots_snapshot = list(self._objects)
+        work = self._work
+
+        def work_fn():
+            assert rpaths is not None
+            worker.switch_model(
+                rpaths.sam2_checkpoint_path(size="large"),
+                rpaths.sam2_config_id(size="large"),
+            )
+            worker.set_image(still)
+            edits: list[QtGui.QImage] = []
+            for slot in slots_snapshot:
+                base_p, paint_p, edit_p = slot.paths(work)
+                base_p.parent.mkdir(parents=True, exist_ok=True)
+                if slot.has_positive():
+                    worker.predict(list(slot.points), base_p)
+                    base = sam.load_qimage_l(base_p)
+                    if slot.paint is not None and not slot.paint.isNull():
+                        paint = slot.paint
+                    elif paint_p.is_file():
+                        paint = sam.load_qimage_l(paint_p)
+                    else:
+                        paint = _blank_gray(
+                            base.width(), base.height(), _PAINT_NEUTRAL
+                        )
+                    edit = _compose_base_paint(base, paint)
+                    sam.save_qimage_l(base, base_p)
+                    sam.save_qimage_l(paint, paint_p)
+                    sam.save_qimage_l(edit, edit_p)
+                    edits.append(edit)
+                elif slot.edit is not None and not slot.edit.isNull():
+                    sam.save_qimage_l(slot.edit, edit_p)
+                    edits.append(slot.edit)
+            if not edits:
+                raise RuntimeError("no object masks to combine")
+            combined = edits[0] if len(edits) == 1 else sam.or_qimages(edits)
+            out = work / "mask.png"
+            sam.save_qimage_l(combined, out)
+            sam.save_qimage_l(combined, work / "mask_sam2.png")
+            return out
+
+        def ok(path: object) -> None:
+            self._finalizing = False
+            dest_path = Path(str(path))
+            # Positives from active object for JobOptions compat (xy only).
+            active = self._active_slot()
+            points = [
+                (float(x), float(y))
+                for x, y, lab in active.points
+                if int(lab) == 1
+            ]
+            self._finish_accept("sam2", dest_path, points)
+
+        def err(message: str) -> None:
+            self._finalizing = False
+            self._set_sam_busy(False)
+            self._sam_status.setText(f"Finalize failed: {message}")
+            QtWidgets.QMessageBox.warning(
+                self, "MatAnyone", f"Final mask (large) failed:\n{message}"
+            )
+
+        self._run_bg(work_fn, ok, err)
+
+    def _finish_accept(
+        self,
+        mask_source: str,
+        dest: Path,
+        points: list[tuple[float, float]],
+    ) -> None:
         self._result = DialogResult(
             mask_source=mask_source,
             mask_path=dest,
@@ -610,6 +1213,7 @@ class MatAnyoneDialog(QtWidgets.QDialog):
             work_dir=self._work,
             ref_frame_index=int(self._frame_slider.value()),
         )
+        self._shutdown_worker()
         self.accept()
 
     def result_data(self) -> DialogResult | None:
@@ -633,6 +1237,11 @@ def open_mask_dialog(
         ignored_count=ignored_count,
     )
     _WINDOW = dlg
-    if dlg.exec() != QtWidgets.QDialog.DialogCode.Accepted:
-        return None
-    return dlg.result_data()
+    try:
+        if dlg.exec() != QtWidgets.QDialog.DialogCode.Accepted:
+            return None
+        return dlg.result_data()
+    finally:
+        # Belt-and-suspenders if reject path missed shutdown.
+        if hasattr(dlg, "_shutdown_worker"):
+            dlg._shutdown_worker()

@@ -18,7 +18,7 @@ from typing import Any, Callable
 
 import dgpy_paths
 
-__version__ = "0.9.1"
+__version__ = "0.10.0"
 
 ProgressCb = Callable[[str], None]
 StepCb = Callable[[int, int, str], None]

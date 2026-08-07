@@ -12,7 +12,7 @@ from typing import Callable
 
 import matanyone_runtime_paths as paths
 
-__version__ = "0.5.2"
+__version__ = "0.10.0"
 
 LogFn = Callable[[str], None]
 StepFn = Callable[[int, int, str], None]
@@ -328,12 +328,14 @@ def _write_sam_helper(dest: Path) -> None:
     """SAM2 point-mask helper (runs inside the isolated runtime venv)."""
     dest.write_text(
         '''#!/usr/bin/env python3
-"""Make a binary mask PNG from an RGB image + foreground click points (SAM2).
+"""Make a binary mask PNG from an RGB image + click points (SAM2).
 
 Usage:
-  python sam2_make_mask.py --image frame.png --points "x1,y1;x2,y2" --out mask.png \\
+  python sam2_make_mask.py --image frame.png --points "x1,y1;x2,y2,0" --out mask.png \\
       --checkpoint /path/to/sam2.1_hiera_large.pt \\
       --config configs/sam2.1/sam2.1_hiera_l.yaml
+
+Points: ``x,y`` or ``x,y,label`` (label 1=positive / 0=negative; default 1).
 """
 from __future__ import annotations
 
@@ -369,21 +371,39 @@ def _unshadow_sam2_package() -> None:
 
 def _parse_points(raw: str):
     pts = []
+    labels = []
     for part in raw.split(";"):
         part = part.strip()
         if not part:
             continue
-        x_s, y_s = part.split(",", 1)
+        bits = part.split(",")
+        if len(bits) == 2:
+            x_s, y_s = bits
+            label = 1
+        elif len(bits) == 3:
+            x_s, y_s, lab_s = bits
+            label = int(lab_s)
+        else:
+            raise SystemExit(f"Bad point token: {part!r} (want x,y or x,y,label)")
+        if label not in (0, 1):
+            raise SystemExit(f"label must be 0 or 1, got {label}")
         pts.append((float(x_s), float(y_s)))
+        labels.append(label)
     if not pts:
         raise SystemExit("No points given")
-    return pts
+    if 1 not in labels:
+        raise SystemExit("Need at least one positive point (label=1)")
+    return pts, labels
 
 
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--image", required=True)
-    ap.add_argument("--points", required=True, help="x,y;x,y … foreground clicks")
+    ap.add_argument(
+        "--points",
+        required=True,
+        help="x,y or x,y,label; … (label 1=fg / 0=bg; default 1)",
+    )
     ap.add_argument("--out", required=True)
     ap.add_argument("--checkpoint", default=os.environ.get("SAM2_CHECKPOINT", ""))
     ap.add_argument(
@@ -415,9 +435,9 @@ def main() -> int:
 
     try:
         image = np.array(Image.open(args.image).convert("RGB"))
-        points = _parse_points(args.points)
+        points, labels = _parse_points(args.points)
         point_coords = np.array(points, dtype=np.float32)
-        point_labels = np.ones(len(points), dtype=np.int32)
+        point_labels = np.array(labels, dtype=np.int32)
 
         device = "cuda" if torch.cuda.is_available() else "cpu"
         print(
@@ -462,12 +482,16 @@ SAM2_CKPT_URL = (
     "https://dl.fbaipublicfiles.com/segment_anything_2/092824/"
     "sam2.1_hiera_large.pt"
 )
+SAM2_CKPT_TINY_URL = (
+    "https://dl.fbaipublicfiles.com/segment_anything_2/092824/"
+    "sam2.1_hiera_tiny.pt"
+)
 
 SAM2_SETUP_STEPS: list[tuple[str, int]] = [
     ("Check MatAnyone 2 runtime", 1),
     ("Clone SAM2 repository", 2),
     ("Install SAM2 into runtime venv", 4),
-    ("Download SAM2.1 large checkpoint", 5),
+    ("Download SAM2.1 large + tiny checkpoints", 5),
     ("Write helper + READY.sam2", 1),
 ]
 
@@ -485,7 +509,9 @@ def sam2_setup_step_label(index: int) -> str:
 def _update_ready_sam2(
     *,
     checkpoint: Path,
+    checkpoint_tiny: Path,
     config: str,
+    config_tiny: str,
     repo: Path,
     log: LogFn | None = None,
 ) -> None:
@@ -496,14 +522,59 @@ def _update_ready_sam2(
         "ready": True,
         "repo": str(repo),
         "checkpoint": str(checkpoint),
+        "checkpoint_tiny": str(checkpoint_tiny),
         "config": config,
+        "config_tiny": config_tiny,
     }
     helper = paths.runtime_root() / "sam2_make_mask.py"
     data["sam_script"] = str(helper)
     paths.ready_path().write_text(
         json.dumps(data, indent=2) + "\n", encoding="utf-8"
     )
-    _log(log, f"READY.sam2 updated → {checkpoint}")
+    _log(log, f"READY.sam2 updated → large={checkpoint} tiny={checkpoint_tiny}")
+
+
+def _download_ckpt(
+    url: str,
+    dest: Path,
+    *,
+    min_bytes: int,
+    force: bool,
+    log: LogFn | None = None,
+) -> None:
+    import urllib.request
+
+    if force and dest.exists():
+        try:
+            dest.unlink()
+        except OSError:
+            pass
+    if dest.is_file() and dest.stat().st_size >= min_bytes:
+        _log(log, f"Checkpoint already present: {dest}")
+        return
+    _log(log, f"Downloading SAM2 checkpoint: {url}")
+    tmp = dest.with_suffix(dest.suffix + ".partial")
+    try:
+        urllib.request.urlretrieve(url, str(tmp))
+        tmp.replace(dest)
+    except Exception as exc:  # noqa: BLE001
+        if tmp.exists():
+            try:
+                tmp.unlink()
+            except OSError:
+                pass
+        raise RuntimeError(f"Failed to download SAM2 checkpoint: {exc}") from exc
+    _log(log, f"Checkpoint saved: {dest} ({dest.stat().st_size} bytes)")
+
+
+def _large_ckpt_ok(root: Path | None = None) -> bool:
+    ckpt = paths.sam2_checkpoint_path(root, size="large")
+    return ckpt.is_file() and ckpt.stat().st_size >= 1_000_000
+
+
+def _tiny_ckpt_ok(root: Path | None = None) -> bool:
+    ckpt = paths.sam2_checkpoint_path(root, size="tiny")
+    return ckpt.is_file() and ckpt.stat().st_size >= 100_000
 
 
 def setup_sam2(
@@ -512,9 +583,10 @@ def setup_sam2(
     step: StepFn | None = None,
     force: bool = False,
 ) -> Path:
-    """Install facebookresearch/sam2 + checkpoint into the MatAnyone runtime.
+    """Install facebookresearch/sam2 + checkpoints into the MatAnyone runtime.
 
     Stays under dgpy_runtimes/matanyone — no OS packages, no …/python/**.
+    Downloads both large (OK final) and tiny (preview) weights.
     """
     paths.migrate_legacy_runtime_if_needed(log=log)
     root = paths.runtime_root()
@@ -536,6 +608,47 @@ def setup_sam2(
     if paths.is_sam2_ready() and not force:
         _log(log, f"SAM2 already ready: {paths.sam2_checkpoint_path()}")
         _s(len(SAM2_SETUP_STEPS) - 1, "Already ready")
+        return root
+
+    # Soft repair: previous Setup left large ready but tiny missing.
+    helper_path = root / "sam2_make_mask.py"
+    data = paths.load_ready()
+    sam2_meta = data.get("sam2") if isinstance(data.get("sam2"), dict) else {}
+    mostly_ready = (
+        not force
+        and isinstance(sam2_meta, dict)
+        and bool(sam2_meta.get("ready"))
+        and _large_ckpt_ok()
+        and helper_path.is_file()
+        and not _tiny_ckpt_ok()
+    )
+    if mostly_ready:
+        _s(3, "Download SAM2.1 tiny checkpoint (repair)")
+        ckpt_dir = root / paths.SAM2_CKPT_DIRNAME
+        ckpt_dir.mkdir(parents=True, exist_ok=True)
+        ckpt = ckpt_dir / paths.SAM2_CKPT_NAME
+        ckpt_tiny = ckpt_dir / paths.SAM2_CKPT_TINY
+        _download_ckpt(
+            SAM2_CKPT_TINY_URL,
+            ckpt_tiny,
+            min_bytes=100_000,
+            force=False,
+            log=log,
+        )
+        _s(4)
+        _write_sam_helper(helper_path)
+        repo = paths.sam2_repo_dir()
+        _update_ready_sam2(
+            checkpoint=ckpt if ckpt.is_file() else paths.sam2_checkpoint_path(size="large"),
+            checkpoint_tiny=ckpt_tiny,
+            config=paths.SAM2_CONFIG,
+            config_tiny=paths.SAM2_CONFIG_TINY,
+            repo=repo,
+            log=log,
+        )
+        if not paths.is_sam2_ready():
+            raise RuntimeError("SAM2 tiny repair finished but is_sam2_ready() is still False")
+        _log(log, "SAM2 tiny checkpoint repair complete")
         return root
 
     _s(1)
@@ -573,36 +686,30 @@ def setup_sam2(
     ckpt_dir = root / paths.SAM2_CKPT_DIRNAME
     ckpt_dir.mkdir(parents=True, exist_ok=True)
     ckpt = ckpt_dir / paths.SAM2_CKPT_NAME
-    if force and ckpt.exists():
-        try:
-            ckpt.unlink()
-        except OSError:
-            pass
-    if not ckpt.is_file() or ckpt.stat().st_size < 1_000_000:
-        import urllib.request
-
-        _log(log, f"Downloading SAM2 checkpoint: {SAM2_CKPT_URL}")
-        tmp = ckpt.with_suffix(".pt.partial")
-        try:
-            urllib.request.urlretrieve(SAM2_CKPT_URL, str(tmp))
-            tmp.replace(ckpt)
-        except Exception as exc:  # noqa: BLE001
-            if tmp.exists():
-                try:
-                    tmp.unlink()
-                except OSError:
-                    pass
-            raise RuntimeError(f"Failed to download SAM2 checkpoint: {exc}") from exc
-        _log(log, f"Checkpoint saved: {ckpt} ({ckpt.stat().st_size} bytes)")
-    else:
-        _log(log, f"Checkpoint already present: {ckpt}")
+    ckpt_tiny = ckpt_dir / paths.SAM2_CKPT_TINY
+    _download_ckpt(
+        SAM2_CKPT_URL,
+        ckpt,
+        min_bytes=1_000_000,
+        force=force,
+        log=log,
+    )
+    _download_ckpt(
+        SAM2_CKPT_TINY_URL,
+        ckpt_tiny,
+        min_bytes=100_000,
+        force=force,
+        log=log,
+    )
 
     _s(4)
     helper = root / "sam2_make_mask.py"
     _write_sam_helper(helper)
     _update_ready_sam2(
         checkpoint=ckpt,
+        checkpoint_tiny=ckpt_tiny,
         config=paths.SAM2_CONFIG,
+        config_tiny=paths.SAM2_CONFIG_TINY,
         repo=repo,
         log=log,
     )
