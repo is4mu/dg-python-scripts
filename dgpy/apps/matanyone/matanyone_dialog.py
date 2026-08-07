@@ -10,7 +10,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 
 import matanyone_selection as selection
 
-__version__ = "0.6.1"
+__version__ = "0.6.2"
 
 _WINDOW: QtWidgets.QWidget | None = None
 
@@ -88,15 +88,13 @@ class _ImagePreview(QtWidgets.QLabel):
             size,
             QtCore.Qt.AspectRatioMode.IgnoreAspectRatio,
             QtCore.Qt.TransformationMode.FastTransformation,
-        )
-        # Grayscale PNG has opaque alpha — do NOT use SourceIn on the pixmap.
-        # Use luminance as the green overlay's alpha instead.
+        ).convertToFormat(QtGui.QImage.Format.Format_Grayscale8)
         w, h = gray.width(), gray.height()
-        overlay = QtGui.QImage(w, h, QtGui.QImage.Format.Format_ARGB32_Premultiplied)
+        overlay = QtGui.QImage(w, h, QtGui.QImage.Format.Format_ARGB32)
         overlay.fill(QtCore.Qt.GlobalColor.transparent)
+        # Preview-sized only (~520×292). Use pixelColor — safe under Flame's Qt.
         for y in range(h):
             for x in range(w):
-                # Format_Grayscale8: pixel is 0..255 gray
                 v = gray.pixelColor(x, y).value()
                 if v < 16:
                     continue
@@ -233,9 +231,11 @@ class MatAnyoneDialog(QtWidgets.QDialog):
         self._sam_busy = False
         self._sam_thread: QtCore.QThread | None = None
         self._sam_worker: _SamMaskWorker | None = None
+        self._pending_rerun = False
+        self._points_at_run: list[tuple[float, float]] = []
         self._debounce = QtCore.QTimer(self)
         self._debounce.setSingleShot(True)
-        self._debounce.setInterval(350)
+        self._debounce.setInterval(900)
         self._debounce.timeout.connect(self._run_sam2)
 
         try:
@@ -321,7 +321,8 @@ class MatAnyoneDialog(QtWidgets.QDialog):
 
     def _set_sam_busy(self, busy: bool) -> None:
         self._sam_busy = busy
-        self._sam_preview.set_accept_clicks(self._sam2_ready and not busy)
+        # Always allow placing more points (queued regenerate). Only lock OK.
+        self._sam_preview.set_accept_clicks(self._sam2_ready)
         if hasattr(self, "_clear_btn") and self._clear_btn is not None:
             self._clear_btn.setEnabled(not busy)
         if hasattr(self, "_ok_btn") and self._ok_btn is not None:
@@ -347,16 +348,26 @@ class MatAnyoneDialog(QtWidgets.QDialog):
         self._flame_preview.set_image_path(self._flame_mask)
 
     def _on_point(self, _x: float, _y: float) -> None:
-        if not self._sam2_ready or self._sam_busy:
+        if not self._sam2_ready:
             return
-        self._sam_status.setText("SAM2: updating mask…")
-        self._set_sam_busy(True)
-        self._debounce.start()
+        n = len(self._sam_preview.points())
+        if self._sam_busy:
+            self._pending_rerun = True
+            self._sam_status.setText(
+                f"SAM2: {n} point(s) — will regenerate after current run…"
+            )
+            return
+        # Keep accepting more clicks while debouncing — do not lock yet.
+        self._sam_status.setText(
+            f"SAM2: {n} point(s) — mask updates after you pause clicking…"
+        )
+        self._debounce.start()  # restarts timer on each click
 
     def _clear_sam(self) -> None:
         if self._sam_busy:
             return
         self._debounce.stop()
+        self._pending_rerun = False
         self._sam_preview.clear_points()
         if self._sam_mask.exists():
             try:
@@ -371,7 +382,13 @@ class MatAnyoneDialog(QtWidgets.QDialog):
         if not points:
             self._set_sam_busy(False)
             return
-        self._sam_status.setText("SAM2: generating mask…")
+        if self._sam_busy:
+            # Generation in flight — rerun with latest points when it finishes.
+            self._pending_rerun = True
+            return
+        self._points_at_run = list(points)
+        self._pending_rerun = False
+        self._sam_status.setText(f"SAM2: generating mask ({len(points)} points)…")
         self._set_sam_busy(True)
         self._sam_thread = QtCore.QThread(self)
         self._sam_worker = _SamMaskWorker(
@@ -393,11 +410,19 @@ class MatAnyoneDialog(QtWidgets.QDialog):
     def _on_sam_ok(self, path: object) -> None:
         mask = Path(str(path))
         self._sam_preview.set_mask_path(mask if mask.is_file() else None)
-        self._sam_status.setText("SAM2 mask ready. Add points to refine, then OK.")
         self._set_sam_busy(False)
+        # If the user added points during generation, or points differ, regenerate.
+        current = self._sam_preview.points()
+        if self._pending_rerun or current != getattr(self, "_points_at_run", current):
+            self._pending_rerun = False
+            self._sam_status.setText("SAM2: points changed — regenerating…")
+            QtCore.QTimer.singleShot(0, self._run_sam2)
+            return
+        self._sam_status.setText("SAM2 mask ready. Add points to refine, then OK.")
 
     @QtCore.Slot(str)
     def _on_sam_err(self, message: str) -> None:
+        self._pending_rerun = False
         self._sam_status.setText(f"SAM2 failed: {message}")
         self._set_sam_busy(False)
         QtWidgets.QMessageBox.warning(self, "MatAnyone", f"SAM2 mask failed:\n{message}")

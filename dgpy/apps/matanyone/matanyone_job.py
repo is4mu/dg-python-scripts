@@ -18,7 +18,7 @@ from typing import Any, Callable
 
 import dgpy_paths
 
-__version__ = "0.6.1"
+__version__ = "0.6.2"
 
 ProgressCb = Callable[[str], None]
 StepCb = Callable[[int, int, str], None]
@@ -311,23 +311,47 @@ def extract_first_frame(
     cancel: threading.Event | None = None,
     holder: _ProcHolder | None = None,
 ) -> Path:
+    """Write first frame PNG. Prefer ffmpeg (avoids OpenCV in the pipeline)."""
+    import shutil
+
     still.parent.mkdir(parents=True, exist_ok=True)
-    code = (
-        "import sys\n"
-        "import cv2\n"
-        "cap=cv2.VideoCapture(sys.argv[1])\n"
-        "ok,frame=cap.read()\n"
-        "cap.release()\n"
-        "if not ok: raise SystemExit('failed to read frame')\n"
-        "cv2.imwrite(sys.argv[2], frame)\n"
-    )
     log(f"Extract first frame → {still}")
-    _run_streaming(
-        [python, "-c", code, str(video), str(still)],
-        log=log,
-        cancel=cancel,
-        holder=holder,
-    )
+    ffmpeg = shutil.which("ffmpeg")
+    if ffmpeg:
+        _run_streaming(
+            [
+                ffmpeg,
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-y",
+                "-i",
+                str(video),
+                "-frames:v",
+                "1",
+                str(still),
+            ],
+            log=log,
+            cancel=cancel,
+            holder=holder,
+        )
+    else:
+        # Fallback: runtime venv + OpenCV (may fail on some codecs).
+        code = (
+            "import sys\n"
+            "import cv2\n"
+            "cap=cv2.VideoCapture(sys.argv[1])\n"
+            "ok,frame=cap.read()\n"
+            "cap.release()\n"
+            "if not ok: raise SystemExit('failed to read frame')\n"
+            "cv2.imwrite(sys.argv[2], frame)\n"
+        )
+        _run_streaming(
+            [python, "-c", code, str(video), str(still)],
+            log=log,
+            cancel=cancel,
+            holder=holder,
+        )
     if not still.is_file():
         raise RuntimeError("First-frame extract produced no file")
     return still

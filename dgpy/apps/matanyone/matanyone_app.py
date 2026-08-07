@@ -9,13 +9,14 @@ import matanyone_job as job
 import matanyone_job_progress as job_progress
 import matanyone_selection as selection
 
-__version__ = "0.6.1"
+__version__ = "0.6.2"
 
 
 def run_from_selection(selection_items) -> None:
     import dgpy_gui
     import dgpy_log
     import matanyone_runtime_paths as rpaths
+    from PySide6 import QtCore
 
     logger = dgpy_log.setup()
     if job_progress.job_is_running():
@@ -71,24 +72,42 @@ def run_from_selection(selection_items) -> None:
             dgpy_gui.info(None, "MatAnyone", msg)
 
     def _start_infer(opts_ui: dialog.DialogResult, video: Path) -> None:
-        started = job_progress.start_job_nonblocking(
-            job.JobOptions(
-                clip=clip,
-                phase="infer",
-                mask_source=opts_ui.mask_source,
-                mask_path=opts_ui.mask_path,
-                sam_points=list(opts_ui.sam_points),
-                output_kind=opts_ui.output_kind,
-                write_foreground=opts_ui.write_foreground,
-                import_to_flame=opts_ui.import_to_flame,
-                work_dir=opts_ui.work_dir or work,
-                source_video=video,
-            ),
-            logger=logger,
-            on_finished=_on_infer_finished,
+        def _go() -> None:
+            job_progress.close_finished_progress()
+            started = job_progress.start_job_nonblocking(
+                job.JobOptions(
+                    clip=clip,
+                    phase="infer",
+                    mask_source=opts_ui.mask_source,
+                    mask_path=opts_ui.mask_path,
+                    sam_points=list(opts_ui.sam_points),
+                    output_kind=opts_ui.output_kind,
+                    write_foreground=opts_ui.write_foreground,
+                    import_to_flame=opts_ui.import_to_flame,
+                    work_dir=opts_ui.work_dir or work,
+                    source_video=video,
+                ),
+                logger=logger,
+                on_finished=_on_infer_finished,
+            )
+            if not started:
+                logger.info("MatAnyone infer already running")
+
+        # Defer so the mask dialog can finish tearing down (avoids Flame segfaults).
+        QtCore.QTimer.singleShot(0, _go)
+
+    def _open_mask_then_infer(
+        video: Path, still: Path, work_dir: Path
+    ) -> None:
+        opts_ui = dialog.open_mask_dialog(
+            clip,
+            still_path=still,
+            work_dir=work_dir,
+            ignored_count=ignored,
         )
-        if not started:
-            logger.info("MatAnyone infer already running")
+        if opts_ui is None:
+            return
+        _start_infer(opts_ui, video)
 
     def _on_export_finished(result: job.JobResult) -> None:
         if result.cancelled:
@@ -103,15 +122,13 @@ def run_from_selection(selection_items) -> None:
         if video is None or still is None or not video.is_file():
             dgpy_gui.error(None, "MatAnyone", "Export finished but files are missing.")
             return
-        opts_ui = dialog.open_mask_dialog(
-            clip,
-            still_path=still,
-            work_dir=work_dir,
-            ignored_count=ignored,
-        )
-        if opts_ui is None:
-            return
-        _start_infer(opts_ui, video)
+
+        def _go() -> None:
+            job_progress.close_finished_progress()
+            _open_mask_then_infer(video, still, work_dir)
+
+        # Let the export progress window close before opening the mask dialog.
+        QtCore.QTimer.singleShot(50, _go)
 
     started = job_progress.start_job_nonblocking(
         job.JobOptions(

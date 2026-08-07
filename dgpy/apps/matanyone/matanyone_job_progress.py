@@ -10,7 +10,7 @@ from PySide6 import QtCore, QtWidgets
 
 import matanyone_job as job
 
-__version__ = "0.6.1"
+__version__ = "0.6.2"
 
 _ACTIVE: JobProgressDialog | None = None
 
@@ -63,9 +63,21 @@ class JobProgressDialog(QtWidgets.QDialog):
         self.setMinimumSize(640, 420)
         self.setModal(False)
         self.setWindowModality(QtCore.Qt.WindowModality.NonModal)
-        flags = self.windowFlags()
-        flags |= QtCore.Qt.WindowType.Tool
-        self.setWindowFlags(flags)
+        # Avoid WindowType.Tool — under Flame it often paints blank / unstable.
+        self.setWindowFlags(
+            QtCore.Qt.WindowType.Window
+            | QtCore.Qt.WindowType.WindowStaysOnTopHint
+        )
+        self.setStyleSheet(
+            "QDialog { background-color: #2b2b2b; color: #e6e6e6; }"
+            "QLabel { color: #e6e6e6; }"
+            "QTextEdit { background-color: #1e1e1e; color: #d0d0d0; "
+            "border: 1px solid #444; }"
+            "QProgressBar { text-align: center; color: #eee; "
+            "border: 1px solid #555; background: #1e1e1e; }"
+            "QProgressBar::chunk { background-color: #3d7a4a; }"
+            "QPushButton { min-height: 24px; }"
+        )
 
         self._opts = opts
         self._logger = logger
@@ -202,11 +214,20 @@ class JobProgressDialog(QtWidgets.QDialog):
             self._step_label.setText("Failed")
             self._on_log("— failed —")
             self._on_log(result.message)
-        self.show()
-        self.raise_()
-        self.activateWindow()
-        if self._on_finished is not None:
-            self._on_finished(result)
+        # For export success, close immediately so the mask dialog is not buried.
+        auto_close = result.ok and self._opts.phase == "export"
+        if auto_close:
+            self.hide()
+        else:
+            self.show()
+            self.raise_()
+            self.activateWindow()
+        cb = self._on_finished
+        self._on_finished = None
+        if cb is not None:
+            cb(result)
+        if auto_close:
+            QtCore.QTimer.singleShot(0, self.close)
 
     def closeEvent(self, event) -> None:  # noqa: N802
         global _ACTIVE
@@ -231,6 +252,19 @@ def raise_job_window() -> None:
     _ACTIVE.activateWindow()
 
 
+def close_finished_progress() -> None:
+    """Close a finished progress dialog (e.g. before opening another stage)."""
+    global _ACTIVE
+    dlg = _ACTIVE
+    if dlg is None:
+        return
+    if dlg._thread is not None and dlg._thread.isRunning() and not dlg._finished:
+        return
+    _ACTIVE = None
+    dlg.hide()
+    dlg.close()
+
+
 def start_job_nonblocking(
     opts: job.JobOptions,
     *,
@@ -245,6 +279,12 @@ def start_job_nonblocking(
         _ACTIVE.raise_()
         _ACTIVE.activateWindow()
         return False
+    # Replace a finished leftover window (export Done) if still open.
+    if _ACTIVE is not None and _ACTIVE._finished:
+        old = _ACTIVE
+        _ACTIVE = None
+        old.hide()
+        old.close()
     dlg = JobProgressDialog(opts, logger=logger, on_finished=on_finished)
     _ACTIVE = dlg
     dlg.start()
