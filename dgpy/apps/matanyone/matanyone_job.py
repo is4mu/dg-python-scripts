@@ -18,7 +18,7 @@ from typing import Any, Callable
 
 import dgpy_paths
 
-__version__ = "0.6.2"
+__version__ = "0.7.0"
 
 ProgressCb = Callable[[str], None]
 StepCb = Callable[[int, int, str], None]
@@ -72,6 +72,7 @@ class JobOptions:
     work_dir: Path | None = None
     phase: str = "full"  # export | infer | full
     source_video: Path | None = None
+    result_basename: str = "clip"  # sanitized source name without _Alpha
 
 
 @dataclass
@@ -485,6 +486,89 @@ def sequence_pattern(pha_dir: Path) -> str | None:
     return str(pha_dir / f"{prefix}[{start:0{width}d}-{end:0{width}d}]{suffix}")
 
 
+def _rename_movie(src: Path, stem: str) -> Path:
+    dest = src.with_name(f"{stem}{src.suffix}")
+    if dest.resolve() == src.resolve():
+        return src
+    if dest.exists():
+        dest.unlink()
+    src.rename(dest)
+    return dest
+
+
+def _rename_sequence_dir(pha_dir: Path, stem: str) -> Path:
+    """Rename pha/ → stem/ and frames to stem.####.ext for Flame-friendly names."""
+    parent = pha_dir.parent
+    dest_dir = parent / stem
+    if dest_dir.resolve() != pha_dir.resolve():
+        if dest_dir.exists():
+            raise RuntimeError(f"Rename target already exists: {dest_dir}")
+        pha_dir.rename(dest_dir)
+    else:
+        dest_dir = pha_dir
+    frames = sorted(
+        [p for p in dest_dir.iterdir() if p.is_file() and p.suffix.lower() in {".png", ".exr"}]
+    )
+    for frame in frames:
+        m = re.match(r"^(.*?)(\d+)(\.[^.]+)$", frame.name)
+        if not m:
+            continue
+        digits, suffix = m.group(2), m.group(3)
+        new_name = f"{stem}.{digits}{suffix}"
+        target = frame.with_name(new_name)
+        if target.resolve() == frame.resolve():
+            continue
+        if target.exists():
+            target.unlink()
+        frame.rename(target)
+    return dest_dir
+
+
+def prepare_named_outputs(
+    *,
+    out_dir: Path,
+    output_kind: str,
+    write_foreground: bool,
+    basename: str,
+    log: ProgressCb,
+) -> tuple[Path | None, Path | None, list[str]]:
+    """Rename MatAnyone outputs to <basename>_Alpha / _Foreground. Return paths + import list."""
+    pha_mov, fgr_mov, pha_dir = _find_outputs(out_dir)
+    alpha_stem = f"{basename}_Alpha"
+    fgr_stem = f"{basename}_Foreground"
+    alpha: Path | None = None
+    import_candidates: list[str] = []
+
+    if output_kind == "alpha_sequence":
+        if pha_dir is None and pha_mov is None:
+            raise RuntimeError("Alpha sequence folder (pha/) not found")
+        if pha_dir is not None:
+            alpha = _rename_sequence_dir(pha_dir, alpha_stem)
+            log(f"Renamed sequence → {alpha}")
+            patterned = sequence_pattern(alpha)
+            if patterned:
+                import_candidates.append(patterned)
+        if pha_mov is not None:
+            mov = _rename_movie(pha_mov, alpha_stem)
+            if alpha is None:
+                alpha = mov
+            import_candidates.append(str(mov))
+            log(f"Renamed alpha movie → {mov}")
+    else:
+        if pha_mov is None:
+            raise RuntimeError("Alpha movie (*_pha.mp4) not found")
+        alpha = _rename_movie(pha_mov, alpha_stem)
+        import_candidates.append(str(alpha))
+        log(f"Renamed alpha movie → {alpha}")
+
+    fgr_path: Path | None = None
+    if write_foreground and fgr_mov is not None:
+        fgr_path = _rename_movie(fgr_mov, fgr_stem)
+        log(f"Renamed foreground → {fgr_path}")
+
+    return alpha, fgr_path, import_candidates
+
+
 def import_path(path_str: str, destination) -> None:
     import flame
 
@@ -679,6 +763,7 @@ def run_infer(
                     "output_kind": opts.output_kind,
                     "write_foreground": opts.write_foreground,
                     "import_to_flame": opts.import_to_flame,
+                    "result_basename": opts.result_basename,
                     "max_size": MAX_SIZE,
                     "mask_path": str(mask_path),
                     "source_video": str(video),
@@ -706,28 +791,14 @@ def run_infer(
             holder=holder,
         )
 
-        pha_mov, fgr_mov, pha_dir = _find_outputs(out_dir)
-        alpha: Path | None = None
-        import_candidates: list[str] = []
-        if opts.output_kind == "alpha_sequence":
-            if pha_dir is None and pha_mov is None:
-                raise RuntimeError("Alpha sequence folder (pha/) not found")
-            if pha_dir is not None:
-                alpha = pha_dir
-                patterned = sequence_pattern(pha_dir)
-                if patterned:
-                    import_candidates.append(patterned)
-            if pha_mov is not None:
-                if alpha is None:
-                    alpha = pha_mov
-                import_candidates.append(str(pha_mov))
-        else:
-            if pha_mov is None:
-                raise RuntimeError("Alpha movie (*_pha.mp4) not found")
-            alpha = pha_mov
-            import_candidates.append(str(pha_mov))
-
-        fgr_path = fgr_mov if opts.write_foreground else None
+        basename = (opts.result_basename or "clip").strip() or "clip"
+        alpha, fgr_path, import_candidates = prepare_named_outputs(
+            out_dir=out_dir,
+            output_kind=opts.output_kind,
+            write_foreground=opts.write_foreground,
+            basename=basename,
+            log=log,
+        )
         imported = False
         import_errors: list[str] = []
 

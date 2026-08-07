@@ -9,7 +9,7 @@ import matanyone_job as job
 import matanyone_job_progress as job_progress
 import matanyone_selection as selection
 
-__version__ = "0.6.2"
+__version__ = "0.7.0"
 
 
 def run_from_selection(selection_items) -> None:
@@ -48,6 +48,10 @@ def run_from_selection(selection_items) -> None:
     if ignored:
         logger.info("MatAnyone: using first clip only; ignoring %s", ignored)
 
+    # Capture while clip is still live (export/infer may outlive selection).
+    result_basename = selection.safe_basename(clip)
+    import_destination = selection.import_destination_for(clip, logger=logger)
+
     warn = job.gpu_vram_warning()
     if warn and not dgpy_gui.confirm(None, "MatAnyone", warn):
         return
@@ -84,6 +88,8 @@ def run_from_selection(selection_items) -> None:
                     output_kind=opts_ui.output_kind,
                     write_foreground=opts_ui.write_foreground,
                     import_to_flame=opts_ui.import_to_flame,
+                    import_destination=import_destination,
+                    result_basename=result_basename,
                     work_dir=opts_ui.work_dir or work,
                     source_video=video,
                 ),

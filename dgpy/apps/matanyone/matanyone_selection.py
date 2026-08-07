@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 import dgpy_flame_types
 
-__version__ = "0.6.2"
+__version__ = "0.7.0"
 
 
 def direct_clips(selection) -> list:
@@ -33,3 +34,34 @@ def clip_label(clip) -> str:
         except Exception:  # noqa: BLE001
             return str(name)
     return str(name)
+
+
+def safe_basename(clip) -> str:
+    """Filesystem-/Flame-safe stem from clip name (no suffix)."""
+    raw = clip_label(clip).strip() or "clip"
+    cleaned = re.sub(r"[^\w.\-]+", "_", raw, flags=re.UNICODE)
+    cleaned = cleaned.strip("._") or "clip"
+    return cleaned
+
+
+def import_destination_for(clip, *, logger=None) -> Any | None:
+    """Return Reel/Folder/Library parent of the source clip, or None."""
+    parent = getattr(clip, "parent", None)
+    if parent is None:
+        if logger:
+            logger.warning("MatAnyone: clip has no parent; import will use Desktop reel")
+        return None
+    if dgpy_flame_types.is_media_container(parent):
+        if logger:
+            logger.info(
+                "MatAnyone: import destination %s",
+                dgpy_flame_types.item_label(parent),
+            )
+        return parent
+    if logger:
+        logger.warning(
+            "MatAnyone: parent is not Reel/Folder/Library (%s); "
+            "import will use Desktop reel",
+            dgpy_flame_types.item_label(parent),
+        )
+    return None
