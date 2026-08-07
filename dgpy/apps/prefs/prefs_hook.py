@@ -1,7 +1,7 @@
 """
-Flame main-menu: DGpy Preferences.
+Flame main-menu: DGpy Preferences + Manual.
 
-Menu: DGpy → Preferences… (bottom of DGpy)
+Menus: DGpy → Manual… / Preferences…
 """
 
 from __future__ import annotations
@@ -16,10 +16,16 @@ for _p in (_DGPY_ROOT, _APP_DIR):
         sys.path.insert(0, _p)
 
 
-def _run(_selection=None):
+def _run_prefs(_selection=None):
     import prefs_app
 
     prefs_app.open_preferences()
+
+
+def _run_manual(_selection=None):
+    import prefs_app
+
+    prefs_app.open_manual()
 
 
 def get_main_menu_custom_ui_actions():
@@ -28,13 +34,19 @@ def get_main_menu_custom_ui_actions():
             "hierarchy": ["DGpy"],
             "actions": [
                 {
-                    "name": "Preferences…",
-                    # Bottom of DGpy (Script Manager=0, List Plugins=50, Archive TOC=100).
-                    "order": 900,
+                    "name": "Manual…",
+                    # Above Preferences… (900).
+                    "order": 800,
                     "separator": "above",
-                    "execute": _run,
+                    "execute": _run_manual,
                     "minimumVersion": "2025",
-                }
+                },
+                {
+                    "name": "Preferences…",
+                    "order": 900,
+                    "execute": _run_prefs,
+                    "minimumVersion": "2025",
+                },
             ],
         }
     ]

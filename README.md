@@ -57,3 +57,10 @@ Media Panel などのコンテキストメニュー（接頭辞 **`DG2:`**）お
 ## ライセンス・サポート
 
 社内／個人利用向けの配布物です。問題があればリポジトリの Issues（利用可能な場合）または配布元の担当者へ連絡してください。
+
+## User manual
+
+- [Manual (index)](manual/README.md)
+- [Getting started](manual/getting-started.md)
+
+In Flame: **DGpy → Manual…** (or Preferences → Open Manual…).

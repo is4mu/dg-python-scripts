@@ -15,9 +15,25 @@ import dgpy_paths
 import dgpy_prefs
 import dgpy_tools
 
-__version__ = "0.1.4"
+__version__ = "0.1.5"
 
 _WINDOW: QtWidgets.QWidget | None = None
+
+# Public user manual (always Public repo — not -dev).
+MANUAL_INDEX_URL = (
+    "https://github.com/is4mu/dg-python-scripts/blob/main/manual/README.md"
+)
+
+
+def open_manual() -> None:
+    """Open the Public Markdown manual index in the default browser."""
+    ok = QtGui.QDesktopServices.openUrl(QtCore.QUrl(MANUAL_INDEX_URL))
+    if not ok:
+        dgpy_gui.warning(
+            None,
+            "DGpy Manual",
+            f"Could not open browser.\n{MANUAL_INDEX_URL}",
+        )
 
 
 def _open_path(path: Path) -> None:
@@ -114,6 +130,9 @@ class PreferencesDialog(QtWidgets.QDialog):
         refresh = QtWidgets.QPushButton("Refresh")
         refresh.clicked.connect(self.refresh)
         row.addWidget(refresh)
+        manual_btn = QtWidgets.QPushButton("Open Manual…")
+        manual_btn.clicked.connect(open_manual)
+        row.addWidget(manual_btn)
         row.addStretch(1)
         close = QtWidgets.QPushButton("Close")
         close.clicked.connect(self.close)
