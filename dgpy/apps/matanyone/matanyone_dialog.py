@@ -10,7 +10,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 
 import matanyone_selection as selection
 
-__version__ = "0.9.0"
+__version__ = "0.9.1"
 
 _WINDOW: QtWidgets.QWidget | None = None
 

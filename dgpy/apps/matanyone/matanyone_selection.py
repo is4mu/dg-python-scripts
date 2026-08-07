@@ -7,7 +7,7 @@ from typing import Any
 
 import dgpy_flame_types
 
-__version__ = "0.9.0"
+__version__ = "0.9.1"
 
 
 def direct_clips(selection) -> list:

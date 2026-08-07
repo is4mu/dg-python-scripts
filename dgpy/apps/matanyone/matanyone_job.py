@@ -18,7 +18,7 @@ from typing import Any, Callable
 
 import dgpy_paths
 
-__version__ = "0.9.0"
+__version__ = "0.9.1"
 
 ProgressCb = Callable[[str], None]
 StepCb = Callable[[int, int, str], None]
@@ -465,13 +465,125 @@ def extract_frame_at(
     return still
 
 
-def _ffmpeg_or_raise() -> str:
+def _which_ffmpeg() -> str | None:
     import shutil
 
-    ffmpeg = shutil.which("ffmpeg")
-    if not ffmpeg:
-        raise RuntimeError("ffmpeg is required for reference-frame segmenting")
-    return ffmpeg
+    return shutil.which("ffmpeg")
+
+
+def _opencv_video_tool(
+    python: str,
+    code: str,
+    args: list[str],
+    *,
+    log: ProgressCb,
+    cancel: threading.Event | None = None,
+    holder: _ProcHolder | None = None,
+) -> None:
+    """Run a small OpenCV helper in the MatAnyone runtime venv."""
+    _run_streaming(
+        [python, "-c", code, *args],
+        log=log,
+        cancel=cancel,
+        holder=holder,
+    )
+
+
+_CV_FORWARD = (
+    "import sys,cv2\n"
+    "src,dst,start=sys.argv[1],sys.argv[2],int(sys.argv[3])\n"
+    "cap=cv2.VideoCapture(src)\n"
+    "if not cap.isOpened(): raise SystemExit('open failed')\n"
+    "fps=cap.get(cv2.CAP_PROP_FPS) or 24.0\n"
+    "w=int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)); h=int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))\n"
+    "cap.set(cv2.CAP_PROP_POS_FRAMES, start)\n"
+    "fourcc=cv2.VideoWriter_fourcc(*'mp4v')\n"
+    "wr=cv2.VideoWriter(dst,fourcc,fps,(w,h),True)\n"
+    "if not wr.isOpened(): raise SystemExit('writer open failed')\n"
+    "n=0\n"
+    "while True:\n"
+    "    ok,frame=cap.read()\n"
+    "    if not ok: break\n"
+    "    wr.write(frame); n+=1\n"
+    "cap.release(); wr.release()\n"
+    "if n<1: raise SystemExit('no frames written')\n"
+    "print(f'wrote {n} frames')\n"
+)
+
+_CV_BACKWARD_IN = (
+    "import sys,cv2\n"
+    "src,dst,end=sys.argv[1],sys.argv[2],int(sys.argv[3])\n"
+    "cap=cv2.VideoCapture(src)\n"
+    "if not cap.isOpened(): raise SystemExit('open failed')\n"
+    "fps=cap.get(cv2.CAP_PROP_FPS) or 24.0\n"
+    "w=int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)); h=int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))\n"
+    "frames=[]\n"
+    "for i in range(end+1):\n"
+    "    cap.set(cv2.CAP_PROP_POS_FRAMES, i)\n"
+    "    ok,frame=cap.read()\n"
+    "    if not ok: raise SystemExit(f'read failed at {i}')\n"
+    "    frames.append(frame)\n"
+    "cap.release()\n"
+    "frames.reverse()\n"
+    "fourcc=cv2.VideoWriter_fourcc(*'mp4v')\n"
+    "wr=cv2.VideoWriter(dst,fourcc,fps,(w,h),True)\n"
+    "if not wr.isOpened(): raise SystemExit('writer open failed')\n"
+    "for frame in frames: wr.write(frame)\n"
+    "wr.release()\n"
+    "print(f'wrote {len(frames)} frames')\n"
+)
+
+_CV_REVERSE = (
+    "import sys,cv2\n"
+    "src,dst=sys.argv[1],sys.argv[2]\n"
+    "cap=cv2.VideoCapture(src)\n"
+    "if not cap.isOpened(): raise SystemExit('open failed')\n"
+    "fps=cap.get(cv2.CAP_PROP_FPS) or 24.0\n"
+    "w=int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)); h=int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))\n"
+    "frames=[]\n"
+    "while True:\n"
+    "    ok,frame=cap.read()\n"
+    "    if not ok: break\n"
+    "    frames.append(frame)\n"
+    "cap.release()\n"
+    "if not frames: raise SystemExit('no frames')\n"
+    "frames.reverse()\n"
+    "fourcc=cv2.VideoWriter_fourcc(*'mp4v')\n"
+    "wr=cv2.VideoWriter(dst,fourcc,fps,(w,h),True)\n"
+    "if not wr.isOpened(): raise SystemExit('writer open failed')\n"
+    "for frame in frames: wr.write(frame)\n"
+    "wr.release()\n"
+    "print(f'reversed {len(frames)} frames')\n"
+)
+
+_CV_JOIN = (
+    "import sys,cv2\n"
+    "a,b,dst,n=sys.argv[1],sys.argv[2],sys.argv[3],int(sys.argv[4])\n"
+    "ca=cv2.VideoCapture(a); cb=cv2.VideoCapture(b)\n"
+    "if not ca.isOpened() or not cb.isOpened(): raise SystemExit('open failed')\n"
+    "fps=ca.get(cv2.CAP_PROP_FPS) or cb.get(cv2.CAP_PROP_FPS) or 24.0\n"
+    "w=int(ca.get(cv2.CAP_PROP_FRAME_WIDTH)); h=int(ca.get(cv2.CAP_PROP_FRAME_HEIGHT))\n"
+    "fourcc=cv2.VideoWriter_fourcc(*'mp4v')\n"
+    "wr=cv2.VideoWriter(dst,fourcc,fps,(w,h),True)\n"
+    "if not wr.isOpened(): raise SystemExit('writer open failed')\n"
+    "count=0\n"
+    "for i in range(n):\n"
+    "    ok,frame=ca.read()\n"
+    "    if not ok: raise SystemExit(f'bwd short at {i}')\n"
+    "    if frame.shape[1]!=w or frame.shape[0]!=h:\n"
+    "        frame=cv2.resize(frame,(w,h),interpolation=cv2.INTER_LANCZOS4)\n"
+    "    wr.write(frame); count+=1\n"
+    "ca.release()\n"
+    "while True:\n"
+    "    ok,frame=cb.read()\n"
+    "    if not ok: break\n"
+    "    if frame.shape[1]!=w or frame.shape[0]!=h:\n"
+    "        frame=cv2.resize(frame,(w,h),interpolation=cv2.INTER_LANCZOS4)\n"
+    "    wr.write(frame); count+=1\n"
+    "cb.release(); wr.release()\n"
+    "if count<1: raise SystemExit('no frames joined')\n"
+    "print(f'joined {count} frames')\n"
+)
 
 
 def make_forward_segment(
@@ -479,38 +591,50 @@ def make_forward_segment(
     ref_index: int,
     out_mp4: Path,
     *,
+    python: str,
     log: ProgressCb,
     cancel: threading.Event | None = None,
     holder: _ProcHolder | None = None,
 ) -> Path:
     """Write MP4 of frames ref_index…end (frame 0 of result = ref)."""
-    ffmpeg = _ffmpeg_or_raise()
     out_mp4.parent.mkdir(parents=True, exist_ok=True)
     log(f"Build forward segment from frame {ref_index} → {out_mp4.name}")
-    _run_streaming(
-        [
-            ffmpeg,
-            "-hide_banner",
-            "-loglevel",
-            "error",
-            "-y",
-            "-i",
-            str(video),
-            "-vf",
-            f"select='gte(n\\,{ref_index})',setpts=N/FRAME_RATE/TB",
-            "-an",
-            "-c:v",
-            "libx264",
-            "-crf",
-            "15",
-            "-pix_fmt",
-            "yuv420p",
-            str(out_mp4),
-        ],
-        log=log,
-        cancel=cancel,
-        holder=holder,
-    )
+    ffmpeg = _which_ffmpeg()
+    if ffmpeg:
+        _run_streaming(
+            [
+                ffmpeg,
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-y",
+                "-i",
+                str(video),
+                "-vf",
+                f"select='gte(n\\,{ref_index})',setpts=N/FRAME_RATE/TB",
+                "-an",
+                "-c:v",
+                "libx264",
+                "-crf",
+                "15",
+                "-pix_fmt",
+                "yuv420p",
+                str(out_mp4),
+            ],
+            log=log,
+            cancel=cancel,
+            holder=holder,
+        )
+    else:
+        log("ffmpeg not found; using OpenCV for forward segment")
+        _opencv_video_tool(
+            python,
+            _CV_FORWARD,
+            [str(video), str(out_mp4), str(ref_index)],
+            log=log,
+            cancel=cancel,
+            holder=holder,
+        )
     if not out_mp4.is_file():
         raise RuntimeError("Forward segment missing")
     return out_mp4
@@ -521,38 +645,50 @@ def make_backward_input_segment(
     ref_index: int,
     out_mp4: Path,
     *,
+    python: str,
     log: ProgressCb,
     cancel: threading.Event | None = None,
     holder: _ProcHolder | None = None,
 ) -> Path:
     """Write MP4 of frames ref…0 in reverse (frame 0 of result = ref)."""
-    ffmpeg = _ffmpeg_or_raise()
     out_mp4.parent.mkdir(parents=True, exist_ok=True)
     log(f"Build backward-input segment (reverse 0…{ref_index}) → {out_mp4.name}")
-    _run_streaming(
-        [
-            ffmpeg,
-            "-hide_banner",
-            "-loglevel",
-            "error",
-            "-y",
-            "-i",
-            str(video),
-            "-vf",
-            f"select='lte(n\\,{ref_index})',setpts=N/FRAME_RATE/TB,reverse",
-            "-an",
-            "-c:v",
-            "libx264",
-            "-crf",
-            "15",
-            "-pix_fmt",
-            "yuv420p",
-            str(out_mp4),
-        ],
-        log=log,
-        cancel=cancel,
-        holder=holder,
-    )
+    ffmpeg = _which_ffmpeg()
+    if ffmpeg:
+        _run_streaming(
+            [
+                ffmpeg,
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-y",
+                "-i",
+                str(video),
+                "-vf",
+                f"select='lte(n\\,{ref_index})',setpts=N/FRAME_RATE/TB,reverse",
+                "-an",
+                "-c:v",
+                "libx264",
+                "-crf",
+                "15",
+                "-pix_fmt",
+                "yuv420p",
+                str(out_mp4),
+            ],
+            log=log,
+            cancel=cancel,
+            holder=holder,
+        )
+    else:
+        log("ffmpeg not found; using OpenCV for backward-input segment")
+        _opencv_video_tool(
+            python,
+            _CV_BACKWARD_IN,
+            [str(video), str(out_mp4), str(ref_index)],
+            log=log,
+            cancel=cancel,
+            holder=holder,
+        )
     if not out_mp4.is_file():
         raise RuntimeError("Backward input segment missing")
     return out_mp4
@@ -562,37 +698,49 @@ def _reverse_movie(
     src: Path,
     dest: Path,
     *,
+    python: str,
     log: ProgressCb,
     cancel: threading.Event | None = None,
     holder: _ProcHolder | None = None,
 ) -> Path:
-    ffmpeg = _ffmpeg_or_raise()
     dest.parent.mkdir(parents=True, exist_ok=True)
     log(f"Reverse movie {src.name} → {dest.name}")
-    _run_streaming(
-        [
-            ffmpeg,
-            "-hide_banner",
-            "-loglevel",
-            "error",
-            "-y",
-            "-i",
-            str(src),
-            "-vf",
-            "reverse",
-            "-an",
-            "-c:v",
-            "libx264",
-            "-crf",
-            "15",
-            "-pix_fmt",
-            "yuv420p",
-            str(dest),
-        ],
-        log=log,
-        cancel=cancel,
-        holder=holder,
-    )
+    ffmpeg = _which_ffmpeg()
+    if ffmpeg:
+        _run_streaming(
+            [
+                ffmpeg,
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-y",
+                "-i",
+                str(src),
+                "-vf",
+                "reverse",
+                "-an",
+                "-c:v",
+                "libx264",
+                "-crf",
+                "15",
+                "-pix_fmt",
+                "yuv420p",
+                str(dest),
+            ],
+            log=log,
+            cancel=cancel,
+            holder=holder,
+        )
+    else:
+        log("ffmpeg not found; using OpenCV to reverse movie")
+        _opencv_video_tool(
+            python,
+            _CV_REVERSE,
+            [str(src), str(dest)],
+            log=log,
+            cancel=cancel,
+            holder=holder,
+        )
     if not dest.is_file():
         raise RuntimeError(f"Reverse movie failed: {dest}")
     return dest
@@ -632,6 +780,7 @@ def reverse_matanyone_outputs(
     src_out: Path,
     dest_out: Path,
     *,
+    python: str,
     log: ProgressCb,
     cancel: threading.Event | None = None,
     holder: _ProcHolder | None = None,
@@ -647,14 +796,18 @@ def reverse_matanyone_outputs(
         _reverse_sequence_dir(pha_dir, dest_out / "pha", log=log)
     if pha_mov is not None:
         tmp = dest_out / f".{pha_mov.name}.rev.mp4"
-        _reverse_movie(pha_mov, tmp, log=log, cancel=cancel, holder=holder)
+        _reverse_movie(
+            pha_mov, tmp, python=python, log=log, cancel=cancel, holder=holder
+        )
         final = dest_out / pha_mov.name
         if final.exists():
             final.unlink()
         tmp.rename(final)
     if fgr_mov is not None:
         tmp = dest_out / f".{fgr_mov.name}.rev.mp4"
-        _reverse_movie(fgr_mov, tmp, log=log, cancel=cancel, holder=holder)
+        _reverse_movie(
+            fgr_mov, tmp, python=python, log=log, cancel=cancel, holder=holder
+        )
         final = dest_out / fgr_mov.name
         if final.exists():
             final.unlink()
@@ -694,6 +847,7 @@ def _join_movies(
     *,
     ref_index: int,
     dest: Path,
+    python: str,
     log: ProgressCb,
     cancel: threading.Event | None = None,
     holder: _ProcHolder | None = None,
@@ -701,68 +855,79 @@ def _join_movies(
     """Concat first ref_index frames of bwd with all of fwd."""
     import shutil
 
-    ffmpeg = _ffmpeg_or_raise()
     dest.parent.mkdir(parents=True, exist_ok=True)
     if ref_index <= 0:
         shutil.copy2(fwd_mov, dest)
         return dest
-    part_a = dest.with_name(f".{dest.stem}_a{dest.suffix}")
     log(f"Join movies: bwd[0…{ref_index - 1}] + fwd")
-    _run_streaming(
-        [
-            ffmpeg,
-            "-hide_banner",
-            "-loglevel",
-            "error",
-            "-y",
-            "-i",
-            str(bwd_mov),
-            "-vf",
-            f"select='lt(n\\,{ref_index})',setpts=N/FRAME_RATE/TB",
-            "-an",
-            "-c:v",
-            "libx264",
-            "-crf",
-            "15",
-            "-pix_fmt",
-            "yuv420p",
-            str(part_a),
-        ],
-        log=log,
-        cancel=cancel,
-        holder=holder,
-    )
-    _run_streaming(
-        [
-            ffmpeg,
-            "-hide_banner",
-            "-loglevel",
-            "error",
-            "-y",
-            "-i",
-            str(part_a),
-            "-i",
-            str(fwd_mov),
-            "-filter_complex",
-            "[0:v][1:v]concat=n=2:v=1:a=0[v]",
-            "-map",
-            "[v]",
-            "-c:v",
-            "libx264",
-            "-crf",
-            "15",
-            "-pix_fmt",
-            "yuv420p",
-            str(dest),
-        ],
-        log=log,
-        cancel=cancel,
-        holder=holder,
-    )
-    try:
-        part_a.unlink()
-    except OSError:
-        pass
+    ffmpeg = _which_ffmpeg()
+    if ffmpeg:
+        part_a = dest.with_name(f".{dest.stem}_a{dest.suffix}")
+        _run_streaming(
+            [
+                ffmpeg,
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-y",
+                "-i",
+                str(bwd_mov),
+                "-vf",
+                f"select='lt(n\\,{ref_index})',setpts=N/FRAME_RATE/TB",
+                "-an",
+                "-c:v",
+                "libx264",
+                "-crf",
+                "15",
+                "-pix_fmt",
+                "yuv420p",
+                str(part_a),
+            ],
+            log=log,
+            cancel=cancel,
+            holder=holder,
+        )
+        _run_streaming(
+            [
+                ffmpeg,
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-y",
+                "-i",
+                str(part_a),
+                "-i",
+                str(fwd_mov),
+                "-filter_complex",
+                "[0:v][1:v]concat=n=2:v=1:a=0[v]",
+                "-map",
+                "[v]",
+                "-c:v",
+                "libx264",
+                "-crf",
+                "15",
+                "-pix_fmt",
+                "yuv420p",
+                str(dest),
+            ],
+            log=log,
+            cancel=cancel,
+            holder=holder,
+        )
+        try:
+            part_a.unlink()
+        except OSError:
+            pass
+    else:
+        log("ffmpeg not found; using OpenCV to join movies")
+        _opencv_video_tool(
+            python,
+            _CV_JOIN,
+            [str(bwd_mov), str(fwd_mov), str(dest), str(ref_index)],
+            log=log,
+            cancel=cancel,
+            holder=holder,
+        )
     if not dest.is_file():
         raise RuntimeError("Joined movie missing")
     return dest
@@ -775,6 +940,7 @@ def join_matanyone_outputs(
     ref_index: int,
     dest_out: Path,
     write_foreground: bool,
+    python: str,
     log: ProgressCb,
     cancel: threading.Event | None = None,
     holder: _ProcHolder | None = None,
@@ -798,6 +964,7 @@ def join_matanyone_outputs(
             f_pha,
             ref_index=ref_index,
             dest=dest_out / "clip_pha.mp4",
+            python=python,
             log=log,
             cancel=cancel,
             holder=holder,
@@ -811,6 +978,7 @@ def join_matanyone_outputs(
             f_fgr,
             ref_index=ref_index,
             dest=dest_out / "clip_fgr.mp4",
+            python=python,
             log=log,
             cancel=cancel,
             holder=holder,
@@ -1526,6 +1694,7 @@ def run_infer(
                 video,
                 ref_n,
                 seg / "forward.mp4",
+                python=python,
                 log=log,
                 cancel=cancel,
                 holder=holder,
@@ -1549,6 +1718,7 @@ def run_infer(
                 video,
                 ref_n,
                 seg / "backward_in.mp4",
+                python=python,
                 log=log,
                 cancel=cancel,
                 holder=holder,
@@ -1568,6 +1738,7 @@ def run_infer(
             reverse_matanyone_outputs(
                 work / "out_bwd_raw",
                 work / "out_bwd",
+                python=python,
                 log=log,
                 cancel=cancel,
                 holder=holder,
@@ -1581,6 +1752,7 @@ def run_infer(
                 ref_index=ref_n,
                 dest_out=out_dir,
                 write_foreground=opts.write_foreground,
+                python=python,
                 log=log,
                 cancel=cancel,
                 holder=holder,
