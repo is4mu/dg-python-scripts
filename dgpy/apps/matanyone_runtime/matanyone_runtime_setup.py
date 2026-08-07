@@ -12,7 +12,7 @@ from typing import Callable
 
 import matanyone_runtime_paths as paths
 
-__version__ = "0.11.1"
+__version__ = "0.11.2"
 
 LogFn = Callable[[str], None]
 StepFn = Callable[[int, int, str], None]
@@ -27,17 +27,17 @@ WEIGHT_URL = (
 )
 MIN_PY = (3, 10)
 
-# Deterministic steps for the progress bar (weights are relative).
-SETUP_STEPS: list[tuple[str, int]] = [
-    ("Prepare folders", 1),
-    ("Ensure Miniforge Python >= 3.10", 3),
-    ("Clone MatAnyone 2 repository", 2),
-    ("Create Python venv", 1),
-    ("Upgrade pip / wheel", 1),
-    ("Install PyTorch (largest download)", 8),
-    ("Install MatAnyone 2 package", 3),
-    ("Fetch weights / image helpers", 2),
-    ("Write READY marker", 1),
+# Deterministic steps for the progress bar.
+SETUP_STEPS: list[str] = [
+    "Prepare folders",
+    "Ensure Miniforge Python >= 3.10",
+    "Clone MatAnyone 2 repository",
+    "Create Python venv",
+    "Upgrade pip / wheel",
+    "Install PyTorch (largest download)",
+    "Install MatAnyone 2 package",
+    "Fetch weights / image helpers",
+    "Write READY marker",
 ]
 
 
@@ -47,7 +47,7 @@ def setup_step_count() -> int:
 
 def setup_step_label(index: int) -> str:
     if 0 <= index < len(SETUP_STEPS):
-        return SETUP_STEPS[index][0]
+        return SETUP_STEPS[index]
     return ""
 
 
@@ -59,6 +59,13 @@ def _log(cb: LogFn | None, message: str) -> None:
 def _step(cb: StepFn | None, index: int, label: str | None = None) -> None:
     if cb:
         cb(index, len(SETUP_STEPS), label or setup_step_label(index))
+
+
+def _remove_step(
+    cb: StepFn | None, index: int, total: int, label: str
+) -> None:
+    if cb:
+        cb(index, total, label)
 
 
 def _run(
@@ -159,11 +166,6 @@ def try_find_host_python(*, log: LogFn | None = None) -> str | None:
         _log(log, f"Using Python: {path} ({ver[0]}.{ver[1]})")
         return path
     return None
-
-
-def find_host_python(*, log: LogFn | None = None) -> str:
-    """Return Python >=3.10 via Miniforge (or MATANYONE_PYTHON)."""
-    return ensure_host_python(log=log)
 
 
 def _miniforge_installer() -> tuple[str, str]:
@@ -564,12 +566,12 @@ SAM2_CKPT_TINY_URL = (
     "sam2.1_hiera_tiny.pt"
 )
 
-SAM2_SETUP_STEPS: list[tuple[str, int]] = [
-    ("Check MatAnyone 2 runtime", 1),
-    ("Clone SAM2 repository", 2),
-    ("Install SAM2 into runtime venv", 4),
-    ("Download SAM2.1 tiny checkpoint", 5),
-    ("Write helper + READY.sam2", 1),
+SAM2_SETUP_STEPS: list[str] = [
+    "Check MatAnyone 2 runtime",
+    "Clone SAM2 repository",
+    "Install SAM2 into runtime venv",
+    "Download SAM2.1 tiny checkpoint",
+    "Write helper + READY.sam2",
 ]
 
 
@@ -579,7 +581,7 @@ def sam2_setup_step_count() -> int:
 
 def sam2_setup_step_label(index: int) -> str:
     if 0 <= index < len(SAM2_SETUP_STEPS):
-        return SAM2_SETUP_STEPS[index][0]
+        return SAM2_SETUP_STEPS[index]
     return ""
 
 
@@ -987,12 +989,12 @@ def remove_runtime(
     targets = _remove_targets()
     total = max(len(targets), 1)
     if not targets:
-        _step(step, 0, "Nothing to remove")
+        _remove_step(step, 0, total, "Nothing to remove")
         _log(log, f"Nothing to remove (checked {paths.runtime_root()})")
         return
 
     for index, target in enumerate(targets):
-        _step(step, index, f"Removing {target}")
+        _remove_step(step, index, total, f"Removing {target}")
         _log(log, f"Removing {target}")
         shutil.rmtree(target, ignore_errors=False)
         # Clean empty parent (e.g. dgpy_runtimes/) when safe.
@@ -1004,7 +1006,7 @@ def remove_runtime(
         except OSError:
             pass
 
-    _step(step, total - 1, "Done")
+    _remove_step(step, total - 1, total, "Done")
     _log(log, "Remove finished")
 
 

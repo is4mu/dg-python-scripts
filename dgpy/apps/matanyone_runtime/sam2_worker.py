@@ -121,12 +121,6 @@ class _Session:
         Image.fromarray(np.ascontiguousarray(binary), mode="L").save(out_path)
         return str(out_path)
 
-    def switch_model(self, checkpoint: str, config: str) -> None:
-        prev_path = self._image_path
-        self.init_model(checkpoint, config)
-        if prev_path:
-            self.set_image(prev_path)
-
 
 def _handle(session: _Session, msg: dict[str, Any]) -> None:
     req_id = msg.get("id")
@@ -144,9 +138,6 @@ def _handle(session: _Session, msg: dict[str, Any]) -> None:
                 raise TypeError("points must be a list")
             out = session.predict(points, str(msg["out"]))
             _reply({"id": req_id, "ok": True, "out": out})
-        elif op == "switch_model":
-            session.switch_model(str(msg["checkpoint"]), str(msg["config"]))
-            _reply({"id": req_id, "ok": True})
         elif op == "shutdown":
             _reply({"id": req_id, "ok": True})
             raise SystemExit(0)

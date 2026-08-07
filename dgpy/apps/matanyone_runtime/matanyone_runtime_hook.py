@@ -13,7 +13,7 @@ for _p in (_DGPY_ROOT, _APP_DIR):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
-__version__ = "0.11.1"
+__version__ = "0.11.2"
 
 
 def _setup(_selection=None) -> None:

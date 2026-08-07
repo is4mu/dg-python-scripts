@@ -9,7 +9,7 @@ import matanyone_job as job
 import matanyone_job_progress as job_progress
 import matanyone_selection as selection
 
-__version__ = "0.12.4"
+__version__ = "0.12.5"
 
 
 def run_from_selection(selection_items) -> None:
@@ -91,9 +91,7 @@ def run_from_selection(selection_items) -> None:
                 job.JobOptions(
                     clip=clip,
                     phase="infer",
-                    mask_source=opts_ui.mask_source,
                     mask_path=opts_ui.mask_path,
-                    sam_points=list(opts_ui.sam_points),
                     output_kind=opts_ui.output_kind,
                     write_foreground=opts_ui.write_foreground,
                     import_to_flame=opts_ui.import_to_flame,

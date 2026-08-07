@@ -9,7 +9,7 @@ from typing import Callable
 
 import dgpy_paths
 
-__version__ = "0.11.1"
+__version__ = "0.11.2"
 
 RUNTIME_NAME = "matanyone"
 READY_NAME = "READY.json"
@@ -46,22 +46,9 @@ def legacy_runtime_roots(root: Path | None = None) -> list[Path]:
     ]
 
 
-def legacy_runtime_root(root: Path | None = None) -> Path:
-    return legacy_runtime_roots(root)[0]
-
-
 def runtime_root(root: Path | None = None) -> Path:
-    """Outside Flame's python hook tree entirely.
-
-    dgpy is typically:
-      /opt/Autodesk/shared/python/dgpy  →  /opt/Autodesk/shared/dgpy_runtimes/matanyone
-      ~/flame/python/dgpy               →  ~/flame/dgpy_runtimes/matanyone
-    """
-    dgpy = _dgpy(root)
-    python_dir = dgpy.parent
-    if python_dir.name == "python":
-        return python_dir.parent / "dgpy_runtimes" / RUNTIME_NAME
-    return dgpy.parent.parent / "dgpy_runtimes" / RUNTIME_NAME
+    """MatAnyone tree under dgpy_runtimes (outside Flame python scan)."""
+    return dgpy_paths.dgpy_runtimes_root(root) / RUNTIME_NAME
 
 
 def _rewrite_ready_paths(dest: Path, *, old_prefix: Path, log: LogFn | None = None) -> None:

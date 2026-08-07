@@ -1,17 +1,16 @@
-"""SAM2 resident-worker client and mask-edit helpers for MatAnyone (v0.10)."""
+"""SAM2 resident-worker client and mask-edit helpers for MatAnyone."""
 
 from __future__ import annotations
 
 import json
 import sys
 import threading
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 from PySide6 import QtCore, QtGui
 
-__version__ = "0.12.4"
+__version__ = "0.12.5"
 
 MAX_OBJECTS = 8
 
@@ -37,16 +36,6 @@ def worker_script_path() -> Path:
     if candidate.is_file():
         return candidate
     return _WORKER
-
-
-@dataclass
-class SamObject:
-    """One object slot: points + optional SAM base / paint edit masks."""
-
-    name: str
-    points: list[tuple[float, float, int]] = field(default_factory=list)
-    base_mask_path: Path | None = None
-    edit_mask_path: Path | None = None
 
 
 class Sam2Worker:
@@ -151,15 +140,6 @@ class Sam2Worker:
         if not result.is_file():
             raise RuntimeError(f"SAM2 predict did not write {result}")
         return result
-
-    def switch_model(self, checkpoint: str | Path, config: str) -> None:
-        self._call(
-            {
-                "op": "switch_model",
-                "checkpoint": str(checkpoint),
-                "config": str(config),
-            }
-        )
 
     def _call(self, body: dict[str, Any]) -> dict[str, Any]:
         with self._lock:

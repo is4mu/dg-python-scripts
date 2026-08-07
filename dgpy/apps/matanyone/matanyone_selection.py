@@ -3,11 +3,10 @@
 from __future__ import annotations
 
 import re
-from typing import Any
 
 import dgpy_flame_types
 
-__version__ = "0.12.4"
+__version__ = "0.12.5"
 
 
 def direct_clips(selection) -> list:
@@ -17,11 +16,6 @@ def direct_clips(selection) -> list:
         if dgpy_flame_types.is_clip(item) or dgpy_flame_types.is_sequence(item):
             out.append(item)
     return out
-
-
-def first_clip(selection) -> Any | None:
-    clips = direct_clips(selection)
-    return clips[0] if clips else None
 
 
 def clip_label(clip) -> str:
@@ -44,7 +38,7 @@ def safe_basename(clip) -> str:
     return cleaned
 
 
-def import_destination_for(clip, *, logger=None) -> Any | None:
+def import_destination_for(clip, *, logger=None):
     """Return Reel/Folder/Library parent of the source clip, or None."""
     parent = getattr(clip, "parent", None)
     if parent is None:

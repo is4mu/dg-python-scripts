@@ -12,9 +12,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 import matanyone_sam2 as sam
 import matanyone_selection as selection
 
-__version__ = "0.12.4"
-
-_WINDOW: QtWidgets.QWidget | None = None
+__version__ = "0.12.5"
 
 _TOOL_POS = "pos"
 _TOOL_NEG = "neg"
@@ -26,9 +24,7 @@ _PAINT_NEUTRAL = 128
 
 @dataclass
 class DialogResult:
-    mask_source: str
     mask_path: Path
-    sam_points: list[tuple[float, float]]
     output_kind: str
     write_foreground: bool
     import_to_flame: bool
@@ -56,16 +52,6 @@ class _ObjSlot:
 
     def has_positive(self) -> bool:
         return any(int(p[2]) == 1 for p in self.points)
-
-    def paint_dirty(self) -> bool:
-        if self.paint is None or self.paint.isNull():
-            return False
-        img = self.paint
-        for y in range(0, img.height(), 8):
-            for x in range(0, img.width(), 8):
-                if img.pixelColor(x, y).value() != _PAINT_NEUTRAL:
-                    return True
-        return False
 
 
 def _blank_gray(w: int, h: int, value: int) -> QtGui.QImage:
@@ -506,7 +492,9 @@ class MatAnyoneDialog(QtWidgets.QDialog):
         if ignored_count:
             src += f"  (ignoring {ignored_count} other)"
         layout.addWidget(QtWidgets.QLabel(f"Source: {src} (exported)"))
-        layout.addWidget(QtWidgets.QLabel("Max size: short side ≤ 1080 (fixed)"))
+        layout.addWidget(
+            QtWidgets.QLabel(f"Max size: short side ≤ {job.MAX_SIZE} (fixed)")
+        )
 
         ref_row = QtWidgets.QHBoxLayout()
         ref_row.addWidget(QtWidgets.QLabel("Reference frame"))
@@ -525,9 +513,6 @@ class MatAnyoneDialog(QtWidgets.QDialog):
         ref_row.addWidget(self._frame_label)
         layout.addLayout(ref_row)
 
-        sam_page = QtWidgets.QWidget()
-        sam_l = QtWidgets.QVBoxLayout(sam_page)
-
         obj_row = QtWidgets.QHBoxLayout()
         obj_row.addWidget(QtWidgets.QLabel("Object"))
         self._obj_combo = QtWidgets.QComboBox()
@@ -542,7 +527,7 @@ class MatAnyoneDialog(QtWidgets.QDialog):
         self._obj_del.setFixedWidth(32)
         self._obj_del.clicked.connect(self._remove_object)
         obj_row.addWidget(self._obj_del)
-        sam_l.addLayout(obj_row)
+        layout.addLayout(obj_row)
 
         tool_row = QtWidgets.QHBoxLayout()
         self._tool_group = QtWidgets.QButtonGroup(self)
@@ -564,7 +549,7 @@ class MatAnyoneDialog(QtWidgets.QDialog):
                 btn.setChecked(True)
         self._tool_group.buttonClicked.connect(self._on_tool_clicked)
         tool_row.addStretch(1)
-        sam_l.addLayout(tool_row)
+        layout.addLayout(tool_row)
 
         brush_row = QtWidgets.QHBoxLayout()
         brush_row.addWidget(QtWidgets.QLabel("Brush"))
@@ -576,18 +561,18 @@ class MatAnyoneDialog(QtWidgets.QDialog):
         brush_row.addWidget(self._brush_slider, 1)
         self._brush_label = QtWidgets.QLabel("20")
         brush_row.addWidget(self._brush_label)
-        sam_l.addLayout(brush_row)
+        layout.addLayout(brush_row)
 
         self._sam_preview = _ImagePreview(interactive=True)
         self._sam_preview.point_added.connect(self._on_point)
         self._sam_preview.paint_at.connect(self._on_paint)
         self._sam_preview.paint_finished.connect(self._on_paint_finished)
         self._sam_preview.set_brush_radius(20)
-        sam_l.addWidget(self._sam_preview, 1)
+        layout.addWidget(self._sam_preview, 1)
 
         clear_pts = QtWidgets.QPushButton("Clear points (active object)")
         clear_pts.clicked.connect(self._clear_active_points)
-        sam_l.addWidget(clear_pts)
+        layout.addWidget(clear_pts)
         self._clear_btn = clear_pts
 
         self._sam_status = QtWidgets.QLabel(
@@ -596,8 +581,7 @@ class MatAnyoneDialog(QtWidgets.QDialog):
             else "SAM2 is not set up. Run DGpy → MatAnyone → SAM2 Setup…"
         )
         self._sam_status.setWordWrap(True)
-        sam_l.addWidget(self._sam_status)
-        layout.addWidget(sam_page, 1)
+        layout.addWidget(self._sam_status)
 
         out_box = QtWidgets.QGroupBox("Output")
         out_layout = QtWidgets.QFormLayout(out_box)
@@ -1403,15 +1387,7 @@ class MatAnyoneDialog(QtWidgets.QDialog):
             self._finalizing = False
             if need_set:
                 self._image_on_worker = still
-            dest_path = Path(str(path))
-            # Positives from active object for JobOptions compat (xy only).
-            active = self._active_slot()
-            points = [
-                (float(x), float(y))
-                for x, y, lab in active.points
-                if int(lab) == 1
-            ]
-            self._finish_accept("sam2", dest_path, points)
+            self._finish_accept(Path(str(path)))
 
         def err(message: str) -> None:
             self._finalizing = False
@@ -1423,16 +1399,9 @@ class MatAnyoneDialog(QtWidgets.QDialog):
 
         self._run_bg(work_fn, ok, err)
 
-    def _finish_accept(
-        self,
-        mask_source: str,
-        dest: Path,
-        points: list[tuple[float, float]],
-    ) -> None:
+    def _finish_accept(self, dest: Path) -> None:
         self._result = DialogResult(
-            mask_source=mask_source,
             mask_path=dest,
-            sam_points=points,
             output_kind=str(self._kind.currentData()),
             write_foreground=self._fgr.isChecked(),
             import_to_flame=self._import.isChecked(),
@@ -1454,7 +1423,6 @@ def open_mask_dialog(
     work_dir: Path,
     ignored_count: int = 0,
 ) -> DialogResult | None:
-    global _WINDOW
     dlg = MatAnyoneDialog(
         clip,
         still_path=still_path,
@@ -1462,7 +1430,6 @@ def open_mask_dialog(
         work_dir=work_dir,
         ignored_count=ignored_count,
     )
-    _WINDOW = dlg
     try:
         if dlg.exec() != QtWidgets.QDialog.DialogCode.Accepted:
             return None

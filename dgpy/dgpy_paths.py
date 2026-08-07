@@ -7,12 +7,31 @@ import platform
 import sys
 from pathlib import Path
 
-__version__ = "0.3.25"
+__version__ = "0.3.26"
 
 
 def dgpy_root() -> Path:
     """Return the install root (.../dgpy)."""
     return Path(__file__).resolve().parent
+
+
+def dgpy_runtimes_root(root: Path | None = None) -> Path:
+    """Heavy data root outside Flame's python hook scan.
+
+    Examples:
+      /opt/Autodesk/shared/python/dgpy → /opt/Autodesk/shared/dgpy_runtimes
+      ~/…/python/dgpy               → ~/…/dgpy_runtimes
+    """
+    dgpy = (root or dgpy_root()).resolve()
+    python_dir = dgpy.parent
+    if python_dir.name == "python":
+        return python_dir.parent / "dgpy_runtimes"
+    return dgpy.parent.parent / "dgpy_runtimes"
+
+
+def runtimes_bin_dir(root: Path | None = None) -> Path:
+    """Bundled tools (ffmpeg / ffprobe) live here — binaries only, no venv."""
+    return dgpy_runtimes_root(root) / "bin"
 
 
 def host_platform_id() -> str:

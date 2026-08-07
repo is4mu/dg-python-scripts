@@ -11,7 +11,7 @@ from PySide6 import QtCore, QtWidgets
 
 import matanyone_runtime_setup as setup
 
-__version__ = "0.11.1"
+__version__ = "0.11.2"
 
 # Keep alive while the background job runs (menu callback returns immediately).
 _ACTIVE_SETUP: SetupProgressDialog | None = None
@@ -92,9 +92,11 @@ class _ProgressDialogBase(QtWidgets.QDialog):
         self.setMinimumSize(640, 420)
         self.setModal(False)
         self.setWindowModality(QtCore.Qt.WindowModality.NonModal)
-        flags = self.windowFlags()
-        flags |= QtCore.Qt.WindowType.Tool
-        self.setWindowFlags(flags)
+        # Avoid WindowType.Tool — under Flame it often paints blank / unstable.
+        self.setWindowFlags(
+            QtCore.Qt.WindowType.Window
+            | QtCore.Qt.WindowType.WindowStaysOnTopHint
+        )
         self._finished = False
         self._ok = False
         self._error = ""

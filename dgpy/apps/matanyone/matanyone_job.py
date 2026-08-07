@@ -1,4 +1,4 @@
-"""MatAnyone job: export → (optional SAM) → infer → import.
+"""MatAnyone job: export → infer → import.
 
 Heavy subprocess work streams logs and respects cancel. Flame API calls
 (export / import) are marshalled to the Qt main thread when needed.
@@ -8,46 +8,59 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
 import subprocess
 import threading
 import time
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
 
 import dgpy_paths
 
-__version__ = "0.12.4"
+__version__ = "0.12.5"
 
 ProgressCb = Callable[[str], None]
 StepCb = Callable[[int, int, str], None]
 MAX_SIZE = 1080
 
-JOB_STEPS: list[tuple[str, int]] = [
-    ("Prepare work dir", 1),
-    ("Export source", 3),
-    ("Prepare mask", 2),
-    ("MatAnyone 2 infer", 8),
-    ("Import to Flame", 2),
-    ("Done", 1),
+EXPORT_STEPS: list[str] = [
+    "Prepare work dir",
+    "Export source",
+    "Extract first frame",
+    "Done",
 ]
 
-EXPORT_STEPS: list[tuple[str, int]] = [
-    ("Prepare work dir", 1),
-    ("Export source", 4),
-    ("Extract first frame", 2),
-    ("Done", 1),
+INFER_STEPS: list[str] = [
+    "Prepare",
+    "Forward MatAnyone",
+    "Backward MatAnyone",
+    "Join + upscale",
+    "Import to Flame",
+    "Done",
 ]
 
-INFER_STEPS: list[tuple[str, int]] = [
-    ("Prepare", 1),
-    ("Forward MatAnyone", 6),
-    ("Backward MatAnyone", 6),
-    ("Join + upscale", 3),
-    ("Import to Flame", 2),
-    ("Done", 1),
-]
+PROXY_SHORT_SIDE = 480
+
+
+def _which_ffmpeg() -> str | None:
+    try:
+        import dgpy_tools
+
+        return dgpy_tools.ffmpeg_path()
+    except Exception:  # noqa: BLE001
+        return shutil.which("ffmpeg")
+
+
+def _which_ffprobe() -> str | None:
+    try:
+        import dgpy_tools
+
+        return dgpy_tools.ffprobe_path()
+    except Exception:  # noqa: BLE001
+        return shutil.which("ffprobe")
+
 
 _WARN_FLAGS = (
     "warn_on_mixed_colour_space",
@@ -63,16 +76,13 @@ _WARN_FLAGS = (
 @dataclass
 class JobOptions:
     clip: Any
-    mask_source: str = "sam2"  # "sam2" (legacy "flame" unused in UI)
     mask_path: Path | None = None
-    sam_points: list[tuple[float, float]] = field(default_factory=list)
-    sam_points_provider: Callable[[Path], list[tuple[float, float]] | None] | None = None
     output_kind: str = "alpha_sequence"  # alpha_sequence | alpha_movie
     write_foreground: bool = False
     import_to_flame: bool = True
     import_destination: Any | None = None
     work_dir: Path | None = None
-    phase: str = "full"  # export | infer | full
+    phase: str = "export"  # export | infer
     source_video: Path | None = None
     result_basename: str = "clip"  # sanitized source name without _Alpha
     ref_frame_index: int = 0  # mask applies to this frame; bidirectional when > 0
@@ -95,22 +105,22 @@ class JobCancelled(Exception):
     """Raised when the operator cancels a running job."""
 
 
-def _steps_for(phase: str) -> list[tuple[str, int]]:
+def _steps_for(phase: str) -> list[str]:
     if phase == "export":
         return EXPORT_STEPS
     if phase == "infer":
         return INFER_STEPS
-    return JOB_STEPS
+    return []
 
 
-def job_step_count(phase: str = "full") -> int:
-    return len(_steps_for(phase))
+def job_step_count(phase: str = "export") -> int:
+    return max(len(_steps_for(phase)), 1)
 
 
-def job_step_label(index: int, phase: str = "full") -> str:
+def job_step_label(index: int, phase: str = "export") -> str:
     steps = _steps_for(phase)
     if 0 <= index < len(steps):
-        return steps[index][0]
+        return steps[index]
     return ""
 
 
@@ -334,9 +344,7 @@ def extract_first_frame(
 
 def probe_frame_count(video: Path, *, python: str | None = None) -> int:
     """Best-effort frame count for the intermediate export video."""
-    import shutil
-
-    ffprobe = shutil.which("ffprobe")
+    ffprobe = _which_ffprobe()
     if ffprobe:
         proc = subprocess.run(
             [
@@ -426,8 +434,6 @@ def extract_frame_at(
     Tries OpenCV seek first, then ffmpeg with ``-ss`` (fast scrub). Optional
     ``max_short_side`` downscales for proxy previews.
     """
-    import shutil
-
     if frame_index < 0:
         raise RuntimeError(f"Invalid frame index: {frame_index}")
     still.parent.mkdir(parents=True, exist_ok=True)
@@ -477,7 +483,7 @@ def extract_frame_at(
         errors.append(f"opencv: {detail}")
 
     # --- ffmpeg -ss (much faster than select=eq for scrubbing) -------------
-    ffmpeg = shutil.which("ffmpeg")
+    ffmpeg = _which_ffmpeg()
     if not ffmpeg:
         raise RuntimeError(
             f"Frame extract failed (index={frame_index}): "
@@ -519,9 +525,7 @@ def extract_frame_at(
 
 
 def _probe_fps(video: Path, *, python: str) -> float:
-    import shutil
-
-    ffprobe = shutil.which("ffprobe")
+    ffprobe = _which_ffprobe()
     if ffprobe:
         proc = subprocess.run(
             [
@@ -573,15 +577,6 @@ def _probe_fps(video: Path, *, python: str) -> float:
         except ValueError:
             pass
     return 24.0
-
-
-PROXY_SHORT_SIDE = 480
-
-
-def _which_ffmpeg() -> str | None:
-    import shutil
-
-    return shutil.which("ffmpeg")
 
 
 def _opencv_video_tool(
@@ -876,8 +871,6 @@ def _reverse_sequence_dir(
     if not frames:
         raise RuntimeError(f"No frames to reverse in {src_dir}")
     if dest_dir.exists():
-        import shutil
-
         shutil.rmtree(dest_dir)
     dest_dir.mkdir(parents=True, exist_ok=True)
     log(f"Reverse sequence ({len(frames)} frames) → {dest_dir.name}")
@@ -899,8 +892,6 @@ def reverse_matanyone_outputs(
     holder: _ProcHolder | None = None,
 ) -> None:
     """Time-reverse pha/fgr movies and pha/ sequence under a MatAnyone out dir."""
-    import shutil
-
     if dest_out.exists():
         shutil.rmtree(dest_out)
     dest_out.mkdir(parents=True, exist_ok=True)
@@ -942,8 +933,6 @@ def _join_sequence_dirs(
     head = bwd[:ref_index]
     combined = head + fwd
     if dest_dir.exists():
-        import shutil
-
         shutil.rmtree(dest_dir)
     dest_dir.mkdir(parents=True, exist_ok=True)
     width = max(4, len(str(max(len(combined) - 1, 0))))
@@ -966,8 +955,6 @@ def _join_movies(
     holder: _ProcHolder | None = None,
 ) -> Path:
     """Concat first ref_index frames of bwd with all of fwd."""
-    import shutil
-
     dest.parent.mkdir(parents=True, exist_ok=True)
     if ref_index <= 0:
         shutil.copy2(fwd_mov, dest)
@@ -1059,8 +1046,6 @@ def join_matanyone_outputs(
     holder: _ProcHolder | None = None,
 ) -> None:
     """Join reversed-backward + forward into dest_out (pha / *_pha / *_fgr)."""
-    import shutil
-
     if dest_out.exists():
         shutil.rmtree(dest_out)
     dest_out.mkdir(parents=True, exist_ok=True)
@@ -1098,60 +1083,6 @@ def join_matanyone_outputs(
         )
     elif write_foreground and f_fgr is not None and ref_index == 0:
         shutil.copy2(f_fgr, dest_out / f_fgr.name)
-
-
-def run_sam_mask(
-    *,
-    python: str,
-    sam_script: Path,
-    image: Path,
-    points: list[tuple[float, float]],
-    out_mask: Path,
-    checkpoint: Path,
-    config: str,
-    cwd: Path | None = None,
-    log: ProgressCb,
-    cancel: threading.Event | None = None,
-    holder: _ProcHolder | None = None,
-) -> Path:
-    if not points:
-        raise RuntimeError("SAM2 mode needs at least one foreground point")
-    # Refresh helper so path-unshadow fix applies without full SAM2 reinstall.
-    try:
-        import matanyone_runtime_setup as rsetup
-
-        rsetup._write_sam_helper(sam_script)
-    except Exception as exc:  # noqa: BLE001
-        log(f"Warning: could not refresh SAM2 helper: {exc}")
-    pts = ";".join(f"{x},{y}" for x, y in points)
-    out_mask.parent.mkdir(parents=True, exist_ok=True)
-    cmd = [
-        python,
-        str(sam_script),
-        "--image",
-        str(image),
-        "--points",
-        pts,
-        "--out",
-        str(out_mask),
-        "--checkpoint",
-        str(checkpoint),
-        "--config",
-        config,
-    ]
-    try:
-        # cwd must NOT be the runtime root (parent of a clone named sam2/).
-        # Prefer an unrelated work dir; None uses Flame's cwd.
-        _run_streaming(cmd, cwd=cwd, log=log, cancel=cancel, holder=holder)
-    except RuntimeError as exc:
-        raise RuntimeError(
-            "SAM2 mask failed. Use Flame mask, or re-run "
-            "DGpy → MatAnyone → SAM2 Setup…\n"
-            f"{exc}"
-        ) from exc
-    if not out_mask.is_file():
-        raise RuntimeError("SAM2 mask produced no file")
-    return out_mask
 
 
 def run_matanyone(
@@ -1205,8 +1136,6 @@ def run_matanyone(
 
 
 def _clear_dir(path: Path) -> None:
-    import shutil
-
     if path.exists():
         shutil.rmtree(path, ignore_errors=True)
 
@@ -1306,9 +1235,7 @@ def _find_outputs(out_dir: Path) -> tuple[Path | None, Path | None, Path | None]
 
 
 def _probe_size_ffprobe(path: Path) -> tuple[int, int] | None:
-    import shutil
-
-    ffprobe = shutil.which("ffprobe")
+    ffprobe = _which_ffprobe()
     if not ffprobe:
         return None
     proc = subprocess.run(
@@ -1383,9 +1310,7 @@ def probe_media_size(path: Path, *, python: str) -> tuple[int, int]:
 
 
 def _first_sequence_frame(seq_dir: Path) -> Path | None:
-    frames = sorted(seq_dir.glob("*.png"))
-    if not frames:
-        frames = sorted(seq_dir.glob("*.exr"))
+    frames = _list_seq_frames(seq_dir)
     return frames[0] if frames else None
 
 
@@ -1446,12 +1371,10 @@ def _resize_movie_lanczos(
         log(f"Movie already {target_w}x{target_h}; skip resize ({movie.name})")
         return
     log(f"Resizing movie {cur_w}x{cur_h} → {target_w}x{target_h} (lanczos): {movie.name}")
-    import shutil
-
     tmp = movie.with_name(f".{movie.stem}_upscale{movie.suffix}")
     if tmp.exists():
         tmp.unlink()
-    ffmpeg = shutil.which("ffmpeg")
+    ffmpeg = _which_ffmpeg()
     if ffmpeg:
         _run_streaming(
             [
@@ -1861,7 +1784,7 @@ def run_infer(
         (work / "options.json").write_text(
             json.dumps(
                 {
-                    "mask_source": opts.mask_source,
+                    "mask_source": "sam2",
                     "output_kind": opts.output_kind,
                     "write_foreground": opts.write_foreground,
                     "import_to_flame": opts.import_to_flame,
@@ -2045,13 +1968,32 @@ def run_infer(
                     log(f"Importing {target}")
                     import_path(target, opts.import_destination)
                     imported = True
-                    if fgr_path is not None:
-                        import_path(str(fgr_path), opts.import_destination)
                     break
                 except Exception as exc:  # noqa: BLE001
                     last_err = exc
                     import_errors.append(f"{target}: {exc}")
                     log(f"Import failed, trying next candidate: {exc}")
+            if imported and fgr_path is not None:
+                try:
+                    log(f"Importing {fgr_path}")
+                    import_path(str(fgr_path), opts.import_destination)
+                except Exception as exc:  # noqa: BLE001
+                    import_errors.append(f"{fgr_path}: {exc}")
+                    log(f"Foreground import failed: {exc}")
+                    set_step(5)
+                    return JobResult(
+                        ok=True,
+                        message=(
+                            "Alpha imported but foreground import failed.\n"
+                            f"Files are on disk under:\n{out_dir}\n\n"
+                            + "\n".join(import_errors)
+                        ),
+                        work_dir=work,
+                        alpha_path=alpha,
+                        foreground_path=fgr_path,
+                        imported=True,
+                        video_path=video,
+                    )
             if not imported and last_err is not None:
                 detail = "\n".join(import_errors)
                 set_step(5)
