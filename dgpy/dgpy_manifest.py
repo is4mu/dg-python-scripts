@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
@@ -10,7 +11,14 @@ from typing import Any
 import dgpy_config
 import dgpy_http
 
-__version__ = "0.3.3"
+__version__ = "0.3.28"
+
+DEV_REPO = "is4mu/dg-python-scripts-dev"
+PUBLIC_REPO = dgpy_config.DEFAULT_REPO
+
+_CONTENTS_REPO_RE = re.compile(
+    r"(https://api\.github\.com/repos/)[^/]+/[^/]+(/contents/)"
+)
 
 
 @dataclass
@@ -59,6 +67,34 @@ class Manifest:
         return {p.package_id: p for p in self.packages}
 
 
+def repo_for_channel(cfg: dgpy_config.Config) -> str:
+    """GitHub owner/name for the active channel."""
+    if cfg.channel == "dev":
+        return DEV_REPO
+    return (cfg.github_repo or PUBLIC_REPO).strip() or PUBLIC_REPO
+
+
+def ref_for_channel(cfg: dgpy_config.Config) -> str:
+    if cfg.channel == "stable":
+        return "stable"
+    return "main"
+
+
+def rewrite_contents_url(url: str, repo: str) -> str:
+    """Point a Contents API URL at ``repo`` (leave Release/raw URLs alone)."""
+    if "api.github.com" not in url or "/contents/" not in url:
+        return url
+    return _CONTENTS_REPO_RE.sub(rf"\1{repo}\2", url, count=1)
+
+
+def rewrite_manifest_urls(manifest: Manifest, repo: str) -> Manifest:
+    """Rewrite package file Contents URLs to ``repo`` (channel=dev)."""
+    for pkg in manifest.packages:
+        for f in pkg.files:
+            f.url = rewrite_contents_url(f.url, repo)
+    return manifest
+
+
 def default_manifest_url(cfg: dgpy_config.Config) -> str:
     """Manifest URL for the active channel.
 
@@ -67,12 +103,27 @@ def default_manifest_url(cfg: dgpy_config.Config) -> str:
     """
     if cfg.manifest_url:
         return cfg.manifest_url
-    repo = cfg.github_repo or dgpy_config.DEFAULT_REPO
-    # latest -> main; stable -> tag/branch named stable
-    ref = "main" if cfg.channel != "stable" else "stable"
+    repo = repo_for_channel(cfg)
+    ref = ref_for_channel(cfg)
     return (
         f"https://api.github.com/repos/{repo}/contents/dist/manifest.json"
         f"?ref={ref}"
+    )
+
+
+def require_token_for_channel(cfg: dgpy_config.Config) -> None:
+    """Raise if channel=dev and no GitHub token is configured."""
+    if cfg.channel != "dev":
+        return
+    import dgpy_prefs
+
+    if dgpy_prefs.github_token():
+        return
+    raise RuntimeError(
+        "channel=dev needs a GitHub token for private "
+        f"{DEV_REPO}.\n"
+        "Set it in DGpy → Preferences… (User prefs), "
+        f"or export ${dgpy_prefs.ENV_GITHUB_TOKEN}."
     )
 
 
@@ -122,10 +173,16 @@ def parse_manifest(data: dict[str, Any]) -> Manifest:
 
 
 def fetch_manifest(cfg: dgpy_config.Config) -> Manifest:
+    require_token_for_channel(cfg)
     url = default_manifest_url(cfg)
     raw = dgpy_http.fetch_bytes(url)
     data = json.loads(raw.decode("utf-8"))
-    return parse_manifest(data)
+    manifest = parse_manifest(data)
+    if cfg.channel == "dev":
+        repo = DEV_REPO
+        manifest.repo = repo
+        rewrite_manifest_urls(manifest, repo)
+    return manifest
 
 
 def utc_now_iso() -> str:

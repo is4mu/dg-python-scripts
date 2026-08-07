@@ -12,7 +12,7 @@ import dgpy_manifest
 import dgpy_paths
 import dgpy_sync
 
-__version__ = "0.3.16"
+__version__ = "0.3.17"
 
 _WINDOW: QtWidgets.QWidget | None = None
 
@@ -51,7 +51,7 @@ class ManagerWindow(QtWidgets.QDialog):
         channel_row = QtWidgets.QHBoxLayout()
         channel_row.addWidget(QtWidgets.QLabel("Channel:"))
         self._channel = QtWidgets.QComboBox()
-        self._channel.addItems(["latest", "stable"])
+        self._channel.addItems(["latest", "stable", "dev"])
         idx = self._channel.findText(self._cfg.channel)
         self._channel.setCurrentIndex(idx if idx >= 0 else 0)
         self._channel.currentTextChanged.connect(self._on_channel_changed)
@@ -127,11 +127,16 @@ class ManagerWindow(QtWidgets.QDialog):
     ) -> None:
         manifest_url = dgpy_manifest.default_manifest_url(self._cfg)
         write_state = "writable" if writable else "READ-ONLY"
+        effective_repo = dgpy_manifest.repo_for_channel(self._cfg)
         text = (
             f"Install root: {root}  [{kind}, {write_state}]\n"
-            f"Channel: {self._cfg.channel}  |  Repo: {self._cfg.github_repo}\n"
+            f"Channel: {self._cfg.channel}  |  Repo: {effective_repo}\n"
             f"Manifest: {manifest_url}"
         )
+        if self._cfg.channel == "dev":
+            import dgpy_prefs
+
+            text += f"\nDev token: {dgpy_prefs.token_status_label()}"
         if not writable and write_msg:
             text += f"\n⚠ {write_msg}"
         self._info.setText(text)
@@ -206,8 +211,10 @@ class ManagerWindow(QtWidgets.QDialog):
                     self,
                     "DG Script Manager",
                     f"マニフェストを取得できませんでした。\n{exc}\n\n"
-                    "channel=stable の場合は tag/Release があるか確認してください。"
-                    "開発中は channel=latest を推奨します。",
+                    "channel=dev は Private -dev 用です。"
+                    "DGpy → Preferences… で GitHub token を設定してください。\n"
+                    "channel=stable は tag/branch が必要です。"
+                    "通常は channel=latest を使います。",
                 )
 
             self._table.setRowCount(len(self._rows))

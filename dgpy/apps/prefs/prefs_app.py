@@ -14,7 +14,7 @@ import dgpy_paths
 import dgpy_prefs
 import dgpy_tools
 
-__version__ = "0.1.2"
+__version__ = "0.1.3"
 
 _WINDOW: QtWidgets.QWidget | None = None
 
@@ -87,8 +87,8 @@ class PreferencesDialog(QtWidgets.QDialog):
         root = QtWidgets.QVBoxLayout(self)
 
         note = QtWidgets.QLabel(
-            "Read-only overview (Phase A). Heavy data stays in dgpy_runtimes "
-            "(outside Flame python scan)."
+            "Paths and runtime status. User prefs (token, Import/Export) "
+            "are under …/flame/dgpy/prefs.json (outside python scan)."
         )
         note.setWordWrap(True)
         root.addWidget(note)
@@ -107,7 +107,7 @@ class PreferencesDialog(QtWidgets.QDialog):
         self._matanyone_box = self._section("MatAnyone")
         self._tools_box = self._section("Tools")
         self._log_box = self._section("Log")
-        self._prefs_box = self._section("User prefs")
+        self._build_prefs_section()
 
         row = QtWidgets.QHBoxLayout()
         refresh = QtWidgets.QPushButton("Refresh")
@@ -289,15 +289,142 @@ class PreferencesDialog(QtWidgets.QDialog):
         form.addRow("dgpy.log", _row_open(log_path))
 
     def _fill_prefs_paths(self) -> None:
-        form = self._prefs_box
-        self._clear_form(form)
-        form.addRow("prefs.json", _row_open(dgpy_prefs.user_prefs_path()))
+        self._prefs_path_label.setText(str(dgpy_prefs.user_prefs_path()))
+        prefs = dgpy_prefs.load()
+        # Env wins for HTTP; still show prefs file value in the editor.
+        self._token_edit.setText(prefs.github_token)
+        self._token_status.setText(dgpy_prefs.token_status_label())
+
+    def _build_prefs_section(self) -> None:
+        box = QtWidgets.QGroupBox("User prefs")
+        form = QtWidgets.QFormLayout(box)
+
+        self._prefs_path_host = QtWidgets.QWidget()
+        path_row = QtWidgets.QHBoxLayout(self._prefs_path_host)
+        path_row.setContentsMargins(0, 0, 0, 0)
+        path_lab = _mono(str(dgpy_prefs.user_prefs_path()))
+        self._prefs_path_label = path_lab
+        path_row.addWidget(path_lab, 1)
+        open_btn = QtWidgets.QPushButton("Open")
+        open_btn.setFixedWidth(64)
+        open_btn.clicked.connect(
+            lambda: _open_path(dgpy_prefs.user_prefs_path())
+        )
+        path_row.addWidget(open_btn)
+        form.addRow("prefs.json", self._prefs_path_host)
+
+        token_wrap = QtWidgets.QWidget()
+        token_col = QtWidgets.QVBoxLayout(token_wrap)
+        token_col.setContentsMargins(0, 0, 0, 0)
+        token_row = QtWidgets.QHBoxLayout()
+        self._token_edit = QtWidgets.QLineEdit()
+        self._token_edit.setEchoMode(QtWidgets.QLineEdit.EchoMode.Password)
+        self._token_edit.setPlaceholderText(
+            "GitHub PAT (Contents: Read on -dev)"
+        )
+        token_row.addWidget(self._token_edit, 1)
+        self._token_show = QtWidgets.QCheckBox("Show")
+        self._token_show.toggled.connect(self._on_token_show)
+        token_row.addWidget(self._token_show)
+        token_col.addLayout(token_row)
+        self._token_status = _mono(dgpy_prefs.token_status_label())
+        token_col.addWidget(self._token_status)
+        form.addRow("GitHub token", token_wrap)
+
+        btn_row = QtWidgets.QHBoxLayout()
+        save_btn = QtWidgets.QPushButton("Save token")
+        save_btn.clicked.connect(self._on_save_token)
+        btn_row.addWidget(save_btn)
+        export_btn = QtWidgets.QPushButton("Export…")
+        export_btn.clicked.connect(self._on_export_prefs)
+        btn_row.addWidget(export_btn)
+        import_btn = QtWidgets.QPushButton("Import…")
+        import_btn.clicked.connect(self._on_import_prefs)
+        btn_row.addWidget(import_btn)
+        btn_row.addStretch(1)
+        btn_host = QtWidgets.QWidget()
+        btn_host.setLayout(btn_row)
+        form.addRow("actions", btn_host)
+
         form.addRow(
             "note",
             _mono(
-                "Outside Flame python/ (not hook-scanned). "
-                "Editing lands in Phase B — no machine prefs file."
+                f"Env ${dgpy_prefs.ENV_GITHUB_TOKEN} overrides prefs for HTTP. "
+                "channel=dev in Script Manager needs a token. "
+                "Export includes the token — handle the file carefully."
             ),
+        )
+        self._body.addWidget(box)
+
+    def _on_token_show(self, checked: bool) -> None:
+        mode = (
+            QtWidgets.QLineEdit.EchoMode.Normal
+            if checked
+            else QtWidgets.QLineEdit.EchoMode.Password
+        )
+        self._token_edit.setEchoMode(mode)
+
+    def _on_save_token(self) -> None:
+        prefs = dgpy_prefs.load()
+        prefs.github_token = self._token_edit.text().strip()
+        path = dgpy_prefs.save(prefs)
+        self._token_status.setText(dgpy_prefs.token_status_label())
+        self._logger.info("Saved user prefs → %s", path)
+        dgpy_gui.info(
+            self,
+            "DGpy Preferences",
+            f"Saved.\n{path}\n\nToken: {dgpy_prefs.token_status_label()}",
+        )
+
+    def _on_export_prefs(self) -> None:
+        if not dgpy_gui.confirm(
+            self,
+            "DGpy Preferences",
+            "Export copies prefs.json including the GitHub token.\n"
+            "Do not put the file on a shared drive.\n\nContinue?",
+        ):
+            return
+        path, _ = QtWidgets.QFileDialog.getSaveFileName(
+            self,
+            "Export prefs.json",
+            str(Path.home() / "dgpy-prefs.json"),
+            "JSON (*.json)",
+        )
+        if not path:
+            return
+        try:
+            dgpy_prefs.export_prefs(Path(path))
+        except OSError as exc:
+            dgpy_gui.error(self, "DGpy Preferences", f"Export failed:\n{exc}")
+            return
+        dgpy_gui.info(self, "DGpy Preferences", f"Exported to:\n{path}")
+
+    def _on_import_prefs(self) -> None:
+        path, _ = QtWidgets.QFileDialog.getOpenFileName(
+            self,
+            "Import prefs.json",
+            str(Path.home()),
+            "JSON (*.json)",
+        )
+        if not path:
+            return
+        if not dgpy_gui.confirm(
+            self,
+            "DGpy Preferences",
+            f"Replace current prefs.json with:\n{path}\n\nContinue?",
+        ):
+            return
+        try:
+            dgpy_prefs.import_prefs(Path(path))
+        except (OSError, ValueError) as exc:
+            dgpy_gui.error(self, "DGpy Preferences", f"Import failed:\n{exc}")
+            return
+        self._fill_prefs_paths()
+        dgpy_gui.info(
+            self,
+            "DGpy Preferences",
+            f"Imported.\n{dgpy_prefs.user_prefs_path()}\n"
+            f"Token: {dgpy_prefs.token_status_label()}",
         )
 
 

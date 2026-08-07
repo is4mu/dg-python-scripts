@@ -7,7 +7,7 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-__version__ = "0.3.3"
+__version__ = "0.3.28"
 
 _TIMEOUT_SEC = 30
 
@@ -17,6 +17,8 @@ def fetch_bytes(url: str, timeout: int = _TIMEOUT_SEC) -> bytes:
 
     For GitHub Contents API URLs, sends Accept: application/vnd.github.raw so the
     response body is the file bytes (not the JSON metadata envelope).
+    When a GitHub token is available (prefs / DGPY_GITHUB_TOKEN), sends Bearer auth
+    for api.github.com (required for private -dev).
     """
     if url.startswith("file://"):
         path = Path(url[7:])
@@ -35,12 +37,23 @@ def fetch_bytes(url: str, timeout: int = _TIMEOUT_SEC) -> bytes:
     if "api.github.com" in url and "/contents/" in url:
         headers["Accept"] = "application/vnd.github.raw"
 
+    if "api.github.com" in url:
+        try:
+            import dgpy_prefs
+
+            token = dgpy_prefs.github_token()
+        except Exception:  # noqa: BLE001
+            token = None
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
+
     req = urllib.request.Request(url, headers=headers, method="GET")
     context = ssl.create_default_context()
     try:
         with urllib.request.urlopen(req, timeout=timeout, context=context) as resp:
             return resp.read()
     except urllib.error.HTTPError as exc:
+        # Do not echo Authorization; URL alone is enough.
         raise RuntimeError(f"HTTP {exc.code} for {url}") from exc
     except urllib.error.URLError as exc:
         raise RuntimeError(f"Network error for {url}: {exc.reason}") from exc
