@@ -204,3 +204,8 @@ def open_runtime_remove(_selection=None) -> None:
 _setup = open_runtime_setup
 _setup_sam2 = open_sam2_setup
 _remove = open_runtime_remove
+
+
+def get_main_menu_custom_ui_actions():
+    """No Main Menu items — Setup lives under DGpy → Preferences…."""
+    return []
