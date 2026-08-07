@@ -9,7 +9,7 @@ import matanyone_job as job
 import matanyone_job_progress as job_progress
 import matanyone_selection as selection
 
-__version__ = "0.12.5"
+__version__ = "0.12.6"
 
 
 def run_from_selection(selection_items) -> None:
@@ -34,7 +34,7 @@ def run_from_selection(selection_items) -> None:
             None,
             "MatAnyone",
             "MatAnyone 2 runtime is not set up.\n"
-            "Run DGpy → MatAnyone → Runtime Setup… first.",
+            "Open DGpy → Preferences… and run Runtime Setup… first.",
         )
         return
 
@@ -43,7 +43,7 @@ def run_from_selection(selection_items) -> None:
             None,
             "MatAnyone",
             "SAM2 is not set up.\n"
-            "Run DGpy → MatAnyone → SAM2 Setup… first.",
+            "Open DGpy → Preferences… and run SAM2 Setup… first.",
         )
         return
 

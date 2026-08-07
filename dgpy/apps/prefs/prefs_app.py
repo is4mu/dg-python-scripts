@@ -14,7 +14,7 @@ import dgpy_paths
 import dgpy_prefs
 import dgpy_tools
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 _WINDOW: QtWidgets.QWidget | None = None
 
@@ -246,13 +246,13 @@ class PreferencesDialog(QtWidgets.QDialog):
         fn()
 
     def _on_runtime_setup(self) -> None:
-        self._call_runtime_hook("_setup")
+        self._call_runtime_hook("open_runtime_setup")
 
     def _on_sam2_setup(self) -> None:
-        self._call_runtime_hook("_setup_sam2")
+        self._call_runtime_hook("open_sam2_setup")
 
     def _on_runtime_remove(self) -> None:
-        self._call_runtime_hook("_remove")
+        self._call_runtime_hook("open_runtime_remove")
 
     def _fill_tools(self) -> None:
         form = self._tools_box

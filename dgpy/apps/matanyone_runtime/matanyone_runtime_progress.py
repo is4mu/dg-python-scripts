@@ -11,7 +11,7 @@ from PySide6 import QtCore, QtWidgets
 
 import matanyone_runtime_setup as setup
 
-__version__ = "0.11.2"
+__version__ = "0.11.3"
 
 # Keep alive while the background job runs (menu callback returns immediately).
 _ACTIVE_SETUP: SetupProgressDialog | None = None

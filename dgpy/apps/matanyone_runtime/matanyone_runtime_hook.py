@@ -1,5 +1,7 @@
 """
-Flame main menu: DGpy → MatAnyone → Runtime / SAM2 / Remove All.
+MatAnyone runtime Setup / SAM2 / Remove entry points.
+
+Main-menu items live under DGpy → Preferences… (no DGpy → MatAnyone submenu).
 """
 
 from __future__ import annotations
@@ -13,10 +15,10 @@ for _p in (_DGPY_ROOT, _APP_DIR):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
-__version__ = "0.11.2"
+__version__ = "0.11.3"
 
 
-def _setup(_selection=None) -> None:
+def open_runtime_setup(_selection=None) -> None:
     import dgpy_gui
     import dgpy_log
     import matanyone_runtime_paths as paths
@@ -83,7 +85,7 @@ def _setup(_selection=None) -> None:
     logger.info("MatAnyone 2 runtime setup started (non-modal; Flame stays usable)")
 
 
-def _setup_sam2(_selection=None) -> None:
+def open_sam2_setup(_selection=None) -> None:
     import dgpy_gui
     import dgpy_log
     import matanyone_runtime_paths as paths
@@ -112,7 +114,7 @@ def _setup_sam2(_selection=None) -> None:
             None,
             "MatAnyone",
             "MatAnyone 2 runtime is not ready.\n"
-            "Run DGpy → MatAnyone → Runtime Setup… first.",
+            "Open DGpy → Preferences… and run Runtime Setup… first.",
         )
         return
 
@@ -146,7 +148,7 @@ def _setup_sam2(_selection=None) -> None:
     logger.info("MatAnyone SAM2 setup started (non-modal)")
 
 
-def _remove(_selection=None) -> None:
+def open_runtime_remove(_selection=None) -> None:
     import dgpy_gui
     import dgpy_log
     import matanyone_runtime_paths as paths
@@ -198,29 +200,7 @@ def _remove(_selection=None) -> None:
     logger.info("MatAnyone runtime remove started (non-modal; Flame stays usable)")
 
 
-def get_main_menu_custom_ui_actions():
-    return [
-        {
-            "hierarchy": ["DGpy", "MatAnyone"],
-            "actions": [
-                {
-                    "name": "Runtime Setup…",
-                    "order": 10,
-                    "execute": _setup,
-                    "minimumVersion": "2025",
-                },
-                {
-                    "name": "SAM2 Setup…",
-                    "order": 20,
-                    "execute": _setup_sam2,
-                    "minimumVersion": "2025",
-                },
-                {
-                    "name": "Remove All…",
-                    "order": 30,
-                    "execute": _remove,
-                    "minimumVersion": "2025",
-                },
-            ],
-        }
-    ]
+# Compat aliases (Preferences / older call sites).
+_setup = open_runtime_setup
+_setup_sam2 = open_sam2_setup
+_remove = open_runtime_remove

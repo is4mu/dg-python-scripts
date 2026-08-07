@@ -10,7 +10,7 @@ from typing import Any
 
 from PySide6 import QtCore, QtGui
 
-__version__ = "0.12.5"
+__version__ = "0.12.6"
 
 MAX_OBJECTS = 8
 

@@ -9,7 +9,7 @@ from typing import Callable
 
 import dgpy_paths
 
-__version__ = "0.11.2"
+__version__ = "0.11.3"
 
 RUNTIME_NAME = "matanyone"
 READY_NAME = "READY.json"

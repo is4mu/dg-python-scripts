@@ -1,7 +1,7 @@
 """
 Flame main-menu: DGpy Preferences.
 
-Menu: DGpy → Preferences…
+Menu: DGpy → Preferences… (bottom of DGpy)
 """
 
 from __future__ import annotations
@@ -29,8 +29,9 @@ def get_main_menu_custom_ui_actions():
             "actions": [
                 {
                     "name": "Preferences…",
-                    # After Script Manager (order 0 + separator); before List Plugins (50).
-                    "order": 10,
+                    # Bottom of DGpy (Script Manager=0, List Plugins=50, Archive TOC=100).
+                    "order": 900,
+                    "separator": "above",
                     "execute": _run,
                     "minimumVersion": "2025",
                 }

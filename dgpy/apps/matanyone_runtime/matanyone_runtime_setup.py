@@ -12,7 +12,7 @@ from typing import Callable
 
 import matanyone_runtime_paths as paths
 
-__version__ = "0.11.2"
+__version__ = "0.11.3"
 
 LogFn = Callable[[str], None]
 StepFn = Callable[[int, int, str], None]
@@ -498,7 +498,7 @@ def main() -> int:
     ckpt = str(args.checkpoint or "").strip()
     if not ckpt or not Path(ckpt).is_file():
         print(
-            "SAM2 checkpoint missing. Run DGpy → MatAnyone → SAM2 Setup…",
+            "SAM2 checkpoint missing. Open DGpy → Preferences… → SAM2 Setup…",
             file=sys.stderr,
         )
         return 2
@@ -510,7 +510,7 @@ def main() -> int:
     except Exception as exc:  # noqa: BLE001
         print(
             "sam2 package not importable in this Python. "
-            "Run DGpy → MatAnyone → SAM2 Setup…\\n"
+            "Open DGpy → Preferences… → SAM2 Setup…\\n"
             f"{exc}\\n{traceback.format_exc()}",
             file=sys.stderr,
         )
@@ -596,7 +596,7 @@ def _update_ready_sam2(
 ) -> None:
     data = paths.load_ready()
     if not data:
-        raise RuntimeError("READY.json missing — run DGpy → MatAnyone → Runtime Setup first")
+        raise RuntimeError("READY.json missing — open DGpy → Preferences… and run Runtime Setup first")
     data["sam2"] = {
         "ready": True,
         "repo": str(repo),
@@ -673,7 +673,7 @@ def setup_sam2(
     if not paths.is_ready():
         raise RuntimeError(
             "MatAnyone 2 runtime is not ready.\n"
-            "Run DGpy → MatAnyone → Runtime Setup… first."
+            "Open DGpy → Preferences… and run Runtime Setup… first."
         )
     py = paths.resolve_python()
     if not py:

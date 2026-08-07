@@ -19,7 +19,7 @@ from typing import Any, Callable
 
 import dgpy_paths
 
-__version__ = "0.12.5"
+__version__ = "0.12.6"
 
 ProgressCb = Callable[[str], None]
 StepCb = Callable[[int, int, str], None]
@@ -1688,7 +1688,7 @@ def run_export(
             ok=False,
             message=(
                 "MatAnyone 2 runtime is not set up.\n"
-                "Use DGpy → MatAnyone → Runtime Setup… first."
+                "Open DGpy → Preferences… and run Runtime Setup… first."
             ),
         )
     python = rpaths.resolve_python()
@@ -1760,7 +1760,7 @@ def run_infer(
             ok=False,
             message=(
                 "MatAnyone 2 runtime is not set up.\n"
-                "Use DGpy → MatAnyone → Runtime Setup… first."
+                "Open DGpy → Preferences… and run Runtime Setup… first."
             ),
         )
     python = rpaths.resolve_python()

@@ -12,7 +12,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 import matanyone_sam2 as sam
 import matanyone_selection as selection
 
-__version__ = "0.12.5"
+__version__ = "0.12.6"
 
 _TOOL_POS = "pos"
 _TOOL_NEG = "neg"
@@ -578,7 +578,7 @@ class MatAnyoneDialog(QtWidgets.QDialog):
         self._sam_status = QtWidgets.QLabel(
             "SAM2: + / − points and paint (tiny). OK combines object masks."
             if self._sam2_ready
-            else "SAM2 is not set up. Run DGpy → MatAnyone → SAM2 Setup…"
+            else "SAM2 is not set up. Open DGpy → Preferences… → SAM2 Setup…"
         )
         self._sam_status.setWordWrap(True)
         layout.addWidget(self._sam_status)
@@ -1319,7 +1319,7 @@ class MatAnyoneDialog(QtWidgets.QDialog):
             QtWidgets.QMessageBox.warning(
                 self,
                 "MatAnyone",
-                "SAM2 is not ready.\nRun DGpy → MatAnyone → SAM2 Setup…",
+                "SAM2 is not ready.\nOpen DGpy → Preferences… → SAM2 Setup…",
             )
             return
         usable = [
