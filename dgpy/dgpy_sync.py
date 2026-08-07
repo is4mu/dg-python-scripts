@@ -17,7 +17,7 @@ import dgpy_semver
 from dgpy_http import download_asset_to, download_to
 from dgpy_manifest import Manifest, ManifestPackage
 
-__version__ = "0.3.15"
+__version__ = "0.3.16"
 
 STATUS_NEW = "New"
 STATUS_UPDATE = "Update"
@@ -47,12 +47,20 @@ class PackageRow:
 
 
 def actionable(rows: list[PackageRow]) -> list[PackageRow]:
-    """Rows that Install / Update All should process (New or Update with remote pkg)."""
-    return [
-        r
-        for r in rows
-        if r.status in (STATUS_NEW, STATUS_UPDATE) and r.remote_pkg is not None
-    ]
+    """Rows that Install / Update All should process (New or Update with remote pkg).
+
+    Packages with ``auto_install=False`` are listed in Script Manager but skipped
+    while status is New (manual Install required). Already-installed Updates
+    remain eligible.
+    """
+    out: list[PackageRow] = []
+    for r in rows:
+        if r.status not in (STATUS_NEW, STATUS_UPDATE) or r.remote_pkg is None:
+            continue
+        if r.status == STATUS_NEW and not r.remote_pkg.auto_install:
+            continue
+        out.append(r)
+    return out
 
 
 def _sha256_file(path: Path) -> str:

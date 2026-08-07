@@ -1,6 +1,6 @@
-"""Progress dialog for MatAnyone runtime setup (PySide6).
+"""Progress dialogs for MatAnyone runtime Setup / Remove (PySide6).
 
-Non-modal so Flame stays interactive while setup runs on a QThread.
+Non-modal so Flame stays interactive while work runs on a QThread.
 """
 
 from __future__ import annotations
@@ -11,10 +11,11 @@ from PySide6 import QtCore, QtWidgets
 
 import matanyone_runtime_setup as setup
 
-__version__ = "0.1.8"
+__version__ = "0.2.1"
 
 # Keep alive while the background job runs (menu callback returns immediately).
-_ACTIVE: SetupProgressDialog | None = None
+_ACTIVE_SETUP: SetupProgressDialog | None = None
+_ACTIVE_REMOVE: RemoveProgressDialog | None = None
 
 
 class _SetupWorker(QtCore.QObject):
@@ -40,49 +41,59 @@ class _SetupWorker(QtCore.QObject):
             self.finished_err.emit(str(exc))
 
 
-class SetupProgressDialog(QtWidgets.QDialog):
-    """Non-modal progress UI. Work runs on a QThread."""
+class _RemoveWorker(QtCore.QObject):
+    log_line = QtCore.Signal(str)
+    step_changed = QtCore.Signal(int, int, str)
+    finished_ok = QtCore.Signal()
+    finished_err = QtCore.Signal(str)
 
-    def __init__(self, *, force: bool, parent=None):
+    @QtCore.Slot()
+    def run(self) -> None:
+        try:
+            setup.remove_runtime(
+                log=lambda m: self.log_line.emit(m),
+                step=lambda i, t, label: self.step_changed.emit(i, t, label),
+            )
+            self.finished_ok.emit()
+        except Exception as exc:  # noqa: BLE001
+            self.finished_err.emit(str(exc))
+
+
+class _ProgressDialogBase(QtWidgets.QDialog):
+    """Shared non-modal shell: step bar + log + elapsed + Hide."""
+
+    def __init__(self, title: str, note: str, *, steps: int, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("MatAnyone Runtime Setup")
+        self.setWindowTitle(title)
         self.setMinimumSize(640, 420)
         self.setModal(False)
         self.setWindowModality(QtCore.Qt.WindowModality.NonModal)
-        # Tool window: stays handy without blocking Flame's main window.
         flags = self.windowFlags()
         flags |= QtCore.Qt.WindowType.Tool
         self.setWindowFlags(flags)
-        self._force = force
         self._finished = False
         self._ok = False
         self._error = ""
         self._started = time.monotonic()
         self._thread: QtCore.QThread | None = None
-        self._worker: _SetupWorker | None = None
+        self._eta_hint = note
 
         layout = QtWidgets.QVBoxLayout(self)
 
-        note = QtWidgets.QLabel(
-            "Flame stays usable while setup runs. You can keep editing; "
-            "this window is non-modal (Hide to tuck it away)."
-        )
-        note.setWordWrap(True)
-        layout.addWidget(note)
+        note_lbl = QtWidgets.QLabel(note)
+        note_lbl.setWordWrap(True)
+        layout.addWidget(note_lbl)
 
         self._step_label = QtWidgets.QLabel("Starting…")
         layout.addWidget(self._step_label)
 
         self._bar = QtWidgets.QProgressBar()
-        self._bar.setRange(0, setup.setup_step_count())
+        self._bar.setRange(0, max(steps, 1))
         self._bar.setValue(0)
         self._bar.setFormat("%v / %m steps")
         layout.addWidget(self._bar)
 
-        self._eta = QtWidgets.QLabel(
-            "Typical total: ~10–40 min. "
-            "Miniforge (if needed) then PyTorch are the long steps."
-        )
+        self._eta = QtWidgets.QLabel("")
         self._eta.setWordWrap(True)
         layout.addWidget(self._eta)
 
@@ -98,7 +109,7 @@ class SetupProgressDialog(QtWidgets.QDialog):
 
         row = QtWidgets.QHBoxLayout()
         self._hide_btn = QtWidgets.QPushButton("Hide")
-        self._hide_btn.setToolTip("Hide this window; setup keeps running")
+        self._hide_btn.setToolTip("Hide this window; work keeps running")
         self._hide_btn.clicked.connect(self.hide)
         self._close_btn = QtWidgets.QPushButton("Close")
         self._close_btn.setEnabled(False)
@@ -112,6 +123,68 @@ class SetupProgressDialog(QtWidgets.QDialog):
         self._elapsed_timer.setInterval(1000)
         self._elapsed_timer.timeout.connect(self._tick_elapsed)
         self._elapsed_timer.start()
+
+    def _tick_elapsed(self) -> None:
+        secs = int(time.monotonic() - self._started)
+        mm, ss = divmod(secs, 60)
+        self._eta.setText(f"{self._eta_hint}\nElapsed: {mm:02d}:{ss:02d}")
+
+    @QtCore.Slot(str)
+    def _on_log(self, line: str) -> None:
+        self._log.append(line)
+        cursor = self._log.textCursor()
+        cursor.movePosition(cursor.MoveOperation.End)
+        self._log.setTextCursor(cursor)
+
+    @QtCore.Slot(int, int, str)
+    def _on_step(self, index: int, total: int, label: str) -> None:
+        self._bar.setMaximum(max(total, 1))
+        self._bar.setValue(min(index + 1, total))
+        self._step_label.setText(f"Step {index + 1}/{total}: {label}")
+
+    def _mark_done_ui(self, *, ok: bool, label: str) -> None:
+        self._finished = True
+        self._ok = ok
+        self._elapsed_timer.stop()
+        if ok:
+            self._bar.setValue(self._bar.maximum())
+        self._step_label.setText(label)
+        self._hide_btn.setEnabled(False)
+        self._close_btn.setEnabled(True)
+        self.show()
+        self.raise_()
+        self.activateWindow()
+
+    def closeEvent(self, event) -> None:  # noqa: N802
+        if self._thread is not None and self._thread.isRunning() and not self._finished:
+            event.ignore()
+            self.hide()
+            return
+        super().closeEvent(event)
+
+    @property
+    def succeeded(self) -> bool:
+        return self._ok
+
+    @property
+    def error_message(self) -> str:
+        return self._error
+
+
+class SetupProgressDialog(_ProgressDialogBase):
+    """Non-modal Setup UI. Work runs on a QThread."""
+
+    def __init__(self, *, force: bool, parent=None):
+        super().__init__(
+            "MatAnyone Runtime Setup",
+            "Flame stays usable while setup runs. You can keep editing; "
+            "this window is non-modal (Hide to tuck it away).\n"
+            "Typical total: ~10–40 min (Miniforge + PyTorch).",
+            steps=setup.setup_step_count(),
+            parent=parent,
+        )
+        self._force = force
+        self._worker: _SetupWorker | None = None
 
     def start(self) -> None:
         self._thread = QtCore.QThread(self)
@@ -127,44 +200,13 @@ class SetupProgressDialog(QtWidgets.QDialog):
         self._thread.finished.connect(self._worker.deleteLater)
         self._thread.start()
 
-    def _tick_elapsed(self) -> None:
-        secs = int(time.monotonic() - self._started)
-        mm, ss = divmod(secs, 60)
-        base = (
-            "Typical total: ~10–40 min. "
-            "Miniforge (if needed) then PyTorch are the long steps."
-        )
-        self._eta.setText(f"{base}\nElapsed: {mm:02d}:{ss:02d}")
-
-    @QtCore.Slot(str)
-    def _on_log(self, line: str) -> None:
-        self._log.append(line)
-        cursor = self._log.textCursor()
-        cursor.movePosition(cursor.MoveOperation.End)
-        self._log.setTextCursor(cursor)
-
-    @QtCore.Slot(int, int, str)
-    def _on_step(self, index: int, total: int, label: str) -> None:
-        self._bar.setMaximum(total)
-        self._bar.setValue(min(index + 1, total))
-        self._step_label.setText(f"Step {index + 1}/{total}: {label}")
-
     @QtCore.Slot(object)
     def _on_ok(self, _root) -> None:
         import dgpy_gui
         import matanyone_runtime_paths as paths
 
-        self._finished = True
-        self._ok = True
-        self._elapsed_timer.stop()
-        self._bar.setValue(self._bar.maximum())
-        self._step_label.setText("Done")
         self._on_log("— setup finished —")
-        self._hide_btn.setEnabled(False)
-        self._close_btn.setEnabled(True)
-        self.show()
-        self.raise_()
-        self.activateWindow()
+        self._mark_done_ui(ok=True, label="Done")
         dgpy_gui.info(
             self,
             "MatAnyone Runtime",
@@ -176,55 +218,128 @@ class SetupProgressDialog(QtWidgets.QDialog):
         import dgpy_gui
         import dgpy_log
 
-        self._finished = True
-        self._ok = False
         self._error = message
-        self._elapsed_timer.stop()
-        self._step_label.setText("Failed")
         self._on_log("— setup failed —")
         self._on_log(message)
-        self._hide_btn.setEnabled(False)
-        self._close_btn.setEnabled(True)
+        self._mark_done_ui(ok=False, label="Failed")
         dgpy_log.setup().error("MatAnyone runtime setup failed: %s", message)
-        self.show()
-        self.raise_()
-        self.activateWindow()
         dgpy_gui.error(self, "MatAnyone Runtime", f"Setup failed:\n{message}")
 
     def closeEvent(self, event) -> None:  # noqa: N802
-        global _ACTIVE
-        # While running: treat close like Hide (job keeps going).
+        global _ACTIVE_SETUP
         if self._thread is not None and self._thread.isRunning() and not self._finished:
             event.ignore()
             self.hide()
             return
-        _ACTIVE = None
-        super().closeEvent(event)
+        _ACTIVE_SETUP = None
+        QtWidgets.QDialog.closeEvent(self, event)
 
-    @property
-    def succeeded(self) -> bool:
-        return self._ok
 
-    @property
-    def error_message(self) -> str:
-        return self._error
+class RemoveProgressDialog(_ProgressDialogBase):
+    """Non-modal Remove UI (large rmtree must not freeze Flame)."""
+
+    def __init__(self, parent=None):
+        super().__init__(
+            "MatAnyone Runtime Remove",
+            "Deleting runtime folders (may be several GB). "
+            "Flame stays usable — this window is non-modal.",
+            steps=setup.remove_step_count(),
+            parent=parent,
+        )
+        self._worker: _RemoveWorker | None = None
+
+    def start(self) -> None:
+        self._thread = QtCore.QThread(self)
+        self._worker = _RemoveWorker()
+        self._worker.moveToThread(self._thread)
+        self._thread.started.connect(self._worker.run)
+        self._worker.log_line.connect(self._on_log)
+        self._worker.step_changed.connect(self._on_step)
+        self._worker.finished_ok.connect(self._on_ok)
+        self._worker.finished_err.connect(self._on_err)
+        self._worker.finished_ok.connect(self._thread.quit)
+        self._worker.finished_err.connect(self._thread.quit)
+        self._thread.finished.connect(self._worker.deleteLater)
+        self._thread.start()
+
+    @QtCore.Slot()
+    def _on_ok(self) -> None:
+        import dgpy_gui
+
+        self._on_log("— remove finished —")
+        self._mark_done_ui(ok=True, label="Done")
+        dgpy_gui.info(self, "MatAnyone Runtime", "Removed.")
+
+    @QtCore.Slot(str)
+    def _on_err(self, message: str) -> None:
+        import dgpy_gui
+        import dgpy_log
+
+        self._error = message
+        self._on_log("— remove failed —")
+        self._on_log(message)
+        self._mark_done_ui(ok=False, label="Failed")
+        dgpy_log.setup().error("MatAnyone runtime remove failed: %s", message)
+        dgpy_gui.error(self, "MatAnyone Runtime", f"Remove failed:\n{message}")
+
+    def closeEvent(self, event) -> None:  # noqa: N802
+        global _ACTIVE_REMOVE
+        if self._thread is not None and self._thread.isRunning() and not self._finished:
+            event.ignore()
+            self.hide()
+            return
+        _ACTIVE_REMOVE = None
+        QtWidgets.QDialog.closeEvent(self, event)
 
 
 def setup_is_running() -> bool:
-    return _ACTIVE is not None and _ACTIVE._thread is not None and _ACTIVE._thread.isRunning()
+    return (
+        _ACTIVE_SETUP is not None
+        and _ACTIVE_SETUP._thread is not None
+        and _ACTIVE_SETUP._thread.isRunning()
+    )
+
+
+def remove_is_running() -> bool:
+    return (
+        _ACTIVE_REMOVE is not None
+        and _ACTIVE_REMOVE._thread is not None
+        and _ACTIVE_REMOVE._thread.isRunning()
+    )
 
 
 def start_setup_nonblocking(*, force: bool) -> bool:
     """Start non-modal setup. Returns False if a setup is already running."""
-    global _ACTIVE
+    global _ACTIVE_SETUP
     if setup_is_running():
-        assert _ACTIVE is not None
-        _ACTIVE.show()
-        _ACTIVE.raise_()
-        _ACTIVE.activateWindow()
+        assert _ACTIVE_SETUP is not None
+        _ACTIVE_SETUP.show()
+        _ACTIVE_SETUP.raise_()
+        _ACTIVE_SETUP.activateWindow()
+        return False
+    if remove_is_running():
         return False
     dlg = SetupProgressDialog(force=force)
-    _ACTIVE = dlg
+    _ACTIVE_SETUP = dlg
+    dlg.start()
+    dlg.show()
+    dlg.raise_()
+    return True
+
+
+def start_remove_nonblocking() -> bool:
+    """Start non-modal remove. Returns False if busy."""
+    global _ACTIVE_REMOVE
+    if remove_is_running():
+        assert _ACTIVE_REMOVE is not None
+        _ACTIVE_REMOVE.show()
+        _ACTIVE_REMOVE.raise_()
+        _ACTIVE_REMOVE.activateWindow()
+        return False
+    if setup_is_running():
+        return False
+    dlg = RemoveProgressDialog()
+    _ACTIVE_REMOVE = dlg
     dlg.start()
     dlg.show()
     dlg.raise_()

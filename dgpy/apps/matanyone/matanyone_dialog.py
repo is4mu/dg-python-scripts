@@ -9,7 +9,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 
 import matanyone_selection as selection
 
-__version__ = "0.1.1"
+__version__ = "0.2.1"
 
 _WINDOW: QtWidgets.QWidget | None = None
 
@@ -128,8 +128,10 @@ class MatAnyoneDialog(QtWidgets.QDialog):
 
         mask_box = QtWidgets.QGroupBox("Mask source")
         mask_layout = QtWidgets.QVBoxLayout(mask_box)
-        self._mask_flame = QtWidgets.QRadioButton("Flame (PNG / EXR file)")
-        self._mask_sam = QtWidgets.QRadioButton("SAM2 (click points after export)")
+        self._mask_flame = QtWidgets.QRadioButton("Flame (PNG / EXR file) — recommended")
+        self._mask_sam = QtWidgets.QRadioButton(
+            "SAM2 (experimental — click points after export)"
+        )
         self._mask_flame.setChecked(True)
         mask_layout.addWidget(self._mask_flame)
         mask_layout.addWidget(self._mask_sam)
@@ -149,8 +151,9 @@ class MatAnyoneDialog(QtWidgets.QDialog):
         clear_pts.clicked.connect(self._sam_preview.clear_points)
         mask_layout.addWidget(clear_pts)
         hint = QtWidgets.QLabel(
-            "SAM2: leave points empty here — after Run starts, a first-frame "
-            "preview dialog will collect clicks (runtime SAM/SAM2 required)."
+            "SAM2 is experimental: weights are not installed by Runtime Setup. "
+            "After Run, a first-frame preview collects clicks; if SAM is missing, "
+            "use Flame mask instead."
         )
         hint.setWordWrap(True)
         mask_layout.addWidget(hint)

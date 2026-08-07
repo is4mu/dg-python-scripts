@@ -15,7 +15,7 @@ for _p in (_DGPY_ROOT, _APP_DIR):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
-__version__ = "0.1.8"
+__version__ = "0.2.1"
 
 
 def _setup(_selection=None) -> None:
@@ -28,6 +28,13 @@ def _setup(_selection=None) -> None:
     paths.migrate_legacy_runtime_if_needed(
         log=lambda m: logger.info("[matanyone_runtime] %s", m)
     )
+    if progress.remove_is_running():
+        dgpy_gui.warning(
+            None,
+            "MatAnyone Runtime",
+            "Remove is still running. Wait until it finishes before Setup.",
+        )
+        return
     if progress.setup_is_running():
         dgpy_gui.info(
             None,
@@ -76,7 +83,6 @@ def _remove(_selection=None) -> None:
     import dgpy_log
     import matanyone_runtime_paths as paths
     import matanyone_runtime_progress as progress
-    import matanyone_runtime_setup as setup
 
     logger = dgpy_log.setup()
     if progress.setup_is_running():
@@ -86,22 +92,43 @@ def _remove(_selection=None) -> None:
             "Setup is still running. Wait until it finishes before Remove.",
         )
         return
-    if not paths.runtime_root().exists():
+    if progress.remove_is_running():
+        dgpy_gui.info(
+            None,
+            "MatAnyone Runtime",
+            "Remove is already running.\n"
+            "The progress window was brought to the front.",
+        )
+        progress.start_remove_nonblocking()
+        return
+
+    paths.migrate_legacy_runtime_if_needed(
+        log=lambda m: logger.info("[matanyone_runtime] %s", m)
+    )
+    # Also offer remove if only legacy leftovers exist.
+    primary = paths.runtime_root()
+    legacy_left = [p for p in paths.legacy_runtime_roots() if p.exists()]
+    if not primary.exists() and not legacy_left:
         dgpy_gui.info(None, "MatAnyone Runtime", "Runtime folder not found.")
         return
+
+    lines = []
+    if primary.exists():
+        lines.append(str(primary))
+    for p in legacy_left:
+        lines.append(f"{p} (legacy)")
     if not dgpy_gui.confirm(
         None,
         "MatAnyone Runtime",
-        f"Delete runtime folder?\n\n{paths.runtime_root()}",
+        "Delete runtime folder(s)?\n\n" + "\n".join(lines),
     ):
         return
-    try:
-        setup.remove_runtime(log=lambda m: logger.info("[matanyone_runtime] %s", m))
-    except Exception as exc:  # noqa: BLE001
-        logger.exception("MatAnyone runtime remove failed")
-        dgpy_gui.error(None, "MatAnyone Runtime", f"Remove failed:\n{exc}")
+
+    started = progress.start_remove_nonblocking()
+    if not started:
+        logger.info("MatAnyone remove already in progress")
         return
-    dgpy_gui.info(None, "MatAnyone Runtime", "Removed.")
+    logger.info("MatAnyone runtime remove started (non-modal; Flame stays usable)")
 
 
 def get_main_menu_custom_ui_actions():

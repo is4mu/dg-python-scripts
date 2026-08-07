@@ -1,10 +1,15 @@
-"""MatAnyone job: export → (optional SAM) → infer → import."""
+"""MatAnyone job: export → (optional SAM) → infer → import.
+
+Heavy subprocess work streams logs and respects cancel. Flame API calls
+(export / import) are marshalled to the Qt main thread when needed.
+"""
 
 from __future__ import annotations
 
 import json
 import re
 import subprocess
+import threading
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -13,10 +18,20 @@ from typing import Any, Callable
 
 import dgpy_paths
 
-__version__ = "0.1.1"
+__version__ = "0.2.1"
 
 ProgressCb = Callable[[str], None]
+StepCb = Callable[[int, int, str], None]
 MAX_SIZE = 1080
+
+JOB_STEPS: list[tuple[str, int]] = [
+    ("Prepare work dir", 1),
+    ("Export source", 3),
+    ("Prepare mask", 2),
+    ("MatAnyone infer", 8),
+    ("Import to Flame", 2),
+    ("Done", 1),
+]
 
 _WARN_FLAGS = (
     "warn_on_mixed_colour_space",
@@ -51,6 +66,21 @@ class JobResult:
     alpha_path: Path | None = None
     foreground_path: Path | None = None
     imported: bool = False
+    cancelled: bool = False
+
+
+class JobCancelled(Exception):
+    """Raised when the operator cancels a running job."""
+
+
+def job_step_count() -> int:
+    return len(JOB_STEPS)
+
+
+def job_step_label(index: int) -> str:
+    if 0 <= index < len(JOB_STEPS):
+        return JOB_STEPS[index][0]
+    return ""
 
 
 def default_work_dir(job_id: str | None = None) -> Path:
@@ -71,6 +101,71 @@ def _apply_exporter_quiet_flags(exporter) -> None:
                 pass
 
 
+_MAIN_INVOKER: Any = None
+
+
+def _main_invoker():
+    """Lazy singleton QObject living on the Qt GUI thread."""
+    global _MAIN_INVOKER
+    try:
+        from PySide6 import QtCore, QtWidgets
+    except ImportError:
+        return None
+
+    app = QtWidgets.QApplication.instance()
+    if app is None:
+        return None
+    if _MAIN_INVOKER is not None:
+        return _MAIN_INVOKER
+
+    class _Invoker(QtCore.QObject):
+        @QtCore.Slot()
+        def _run(self) -> None:
+            try:
+                self._result = self._fn()
+                self._error = None
+            except Exception as exc:  # noqa: BLE001
+                self._result = None
+                self._error = exc
+
+    inv = _Invoker()
+    inv.moveToThread(app.thread())
+    inv._fn = None
+    inv._result = None
+    inv._error = None
+    _MAIN_INVOKER = inv
+    return inv
+
+
+def _call_on_main_thread(fn: Callable[[], Any]) -> Any:
+    """Run Flame API / modal UI work on the Qt GUI thread when needed."""
+    try:
+        from PySide6 import QtCore, QtWidgets
+    except ImportError:
+        return fn()
+
+    app = QtWidgets.QApplication.instance()
+    if app is None:
+        return fn()
+    if QtCore.QThread.currentThread() == app.thread():
+        return fn()
+
+    invoker = _main_invoker()
+    if invoker is None:
+        return fn()
+    invoker._fn = fn
+    invoker._result = None
+    invoker._error = None
+    QtCore.QMetaObject.invokeMethod(
+        invoker,
+        "_run",
+        QtCore.Qt.ConnectionType.BlockingQueuedConnection,
+    )
+    if invoker._error is not None:
+        raise invoker._error
+    return invoker._result
+
+
 def export_clip_mp4(clip, out_dir: Path, *, logger) -> Path:
     """Export clip to MP4 via PyExporter; return path to produced movie."""
     import flame
@@ -80,36 +175,107 @@ def export_clip_mp4(clip, out_dir: Path, *, logger) -> Path:
     if not preset.is_file():
         raise RuntimeError(f"Export preset missing: {preset}")
 
-    before = {p.resolve() for p in out_dir.rglob("*") if p.is_file()}
-    exporter = flame.PyExporter()
-    exporter.foreground = True
-    if hasattr(exporter, "export_between_marks"):
-        exporter.export_between_marks = False
-    if hasattr(exporter, "use_top_video_track"):
-        exporter.use_top_video_track = True
-    _apply_exporter_quiet_flags(exporter)
+    def _do() -> Path:
+        before = {p.resolve() for p in out_dir.rglob("*") if p.is_file()}
+        exporter = flame.PyExporter()
+        exporter.foreground = True
+        if hasattr(exporter, "export_between_marks"):
+            exporter.export_between_marks = False
+        if hasattr(exporter, "use_top_video_track"):
+            exporter.use_top_video_track = True
+        _apply_exporter_quiet_flags(exporter)
 
-    sources = [clip]
+        sources = [clip]
+        try:
+            exporter.export(sources, str(preset), str(out_dir))
+        except TypeError:
+            exporter.export(clip, str(preset), str(out_dir))
+
+        after = [p for p in out_dir.rglob("*") if p.is_file()]
+        new_files = [p for p in after if p.resolve() not in before]
+        movies = [
+            p
+            for p in (new_files or after)
+            if p.suffix.lower() in {".mp4", ".mov", ".mxf", ".avi"}
+        ]
+        if not movies:
+            raise RuntimeError(f"No movie produced in {out_dir}")
+        movies.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+        logger.info("MatAnyone exported: %s", movies[0])
+        return movies[0]
+
+    return _call_on_main_thread(_do)
+
+
+class _ProcHolder:
+    def __init__(self) -> None:
+        self.proc: subprocess.Popen | None = None
+        self._lock = threading.Lock()
+
+    def set(self, proc: subprocess.Popen | None) -> None:
+        with self._lock:
+            self.proc = proc
+
+    def kill(self) -> None:
+        with self._lock:
+            proc = self.proc
+        if proc is None:
+            return
+        try:
+            proc.kill()
+        except OSError:
+            pass
+
+
+def _check_cancel(cancel: threading.Event | None) -> None:
+    if cancel is not None and cancel.is_set():
+        raise JobCancelled("Cancelled by user")
+
+
+def _run_streaming(
+    cmd: list[str],
+    *,
+    cwd: Path | None = None,
+    log: ProgressCb,
+    cancel: threading.Event | None = None,
+    holder: _ProcHolder | None = None,
+) -> None:
+    log("$ " + " ".join(cmd))
+    proc = subprocess.Popen(
+        cmd,
+        cwd=str(cwd) if cwd else None,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        bufsize=1,
+    )
+    if holder is not None:
+        holder.set(proc)
+    assert proc.stdout is not None
     try:
-        exporter.export(sources, str(preset), str(out_dir))
-    except TypeError:
-        exporter.export(clip, str(preset), str(out_dir))
-
-    after = [p for p in out_dir.rglob("*") if p.is_file()]
-    new_files = [p for p in after if p.resolve() not in before]
-    movies = [
-        p
-        for p in (new_files or after)
-        if p.suffix.lower() in {".mp4", ".mov", ".mxf", ".avi"}
-    ]
-    if not movies:
-        raise RuntimeError(f"No movie produced in {out_dir}")
-    movies.sort(key=lambda p: p.stat().st_mtime, reverse=True)
-    logger.info("MatAnyone exported: %s", movies[0])
-    return movies[0]
+        for line in proc.stdout:
+            _check_cancel(cancel)
+            text = line.rstrip()
+            if text:
+                log(text)
+        code = proc.wait()
+    finally:
+        if holder is not None:
+            holder.set(None)
+    _check_cancel(cancel)
+    if code != 0:
+        raise RuntimeError(f"Command failed ({code}): {' '.join(cmd)}")
 
 
-def extract_first_frame(video: Path, still: Path, *, python: str, log: ProgressCb) -> Path:
+def extract_first_frame(
+    video: Path,
+    still: Path,
+    *,
+    python: str,
+    log: ProgressCb,
+    cancel: threading.Event | None = None,
+    holder: _ProcHolder | None = None,
+) -> Path:
     still.parent.mkdir(parents=True, exist_ok=True)
     code = (
         "import sys\n"
@@ -121,16 +287,14 @@ def extract_first_frame(video: Path, still: Path, *, python: str, log: ProgressC
         "cv2.imwrite(sys.argv[2], frame)\n"
     )
     log(f"Extract first frame → {still}")
-    proc = subprocess.run(
+    _run_streaming(
         [python, "-c", code, str(video), str(still)],
-        text=True,
-        capture_output=True,
-        check=False,
+        log=log,
+        cancel=cancel,
+        holder=holder,
     )
-    if proc.returncode != 0 or not still.is_file():
-        raise RuntimeError(
-            f"First-frame extract failed:\n{proc.stderr or proc.stdout}"
-        )
+    if not still.is_file():
+        raise RuntimeError("First-frame extract produced no file")
     return still
 
 
@@ -142,6 +306,8 @@ def run_sam_mask(
     points: list[tuple[float, float]],
     out_mask: Path,
     log: ProgressCb,
+    cancel: threading.Event | None = None,
+    holder: _ProcHolder | None = None,
 ) -> Path:
     if not points:
         raise RuntimeError("SAM2 mode needs at least one foreground point")
@@ -157,17 +323,16 @@ def run_sam_mask(
         "--out",
         str(out_mask),
     ]
-    log("$ " + " ".join(cmd))
-    proc = subprocess.run(cmd, text=True, capture_output=True, check=False)
-    if proc.stdout:
-        log(proc.stdout.rstrip())
-    if proc.stderr:
-        log(proc.stderr.rstrip())
-    if proc.returncode != 0 or not out_mask.is_file():
+    try:
+        _run_streaming(cmd, log=log, cancel=cancel, holder=holder)
+    except RuntimeError as exc:
         raise RuntimeError(
-            "SAM mask failed. Install SAM/SAM2 + checkpoint into the runtime.\n"
-            f"{proc.stderr or proc.stdout}"
-        )
+            "SAM mask failed (experimental). Use Flame mask, or install "
+            "SAM/SAM2 + checkpoint into the MatAnyone runtime.\n"
+            f"{exc}"
+        ) from exc
+    if not out_mask.is_file():
+        raise RuntimeError("SAM mask produced no file")
     return out_mask
 
 
@@ -180,6 +345,8 @@ def run_matanyone(
     out_dir: Path,
     save_image: bool,
     log: ProgressCb,
+    cancel: threading.Event | None = None,
+    holder: _ProcHolder | None = None,
 ) -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
     cmd = [
@@ -196,22 +363,13 @@ def run_matanyone(
     ]
     if save_image:
         cmd.append("--save_image")
-    log("$ " + " ".join(cmd))
-    proc = subprocess.run(
+    _run_streaming(
         cmd,
-        cwd=str(inference_script.parent),
-        text=True,
-        capture_output=True,
-        check=False,
+        cwd=inference_script.parent,
+        log=log,
+        cancel=cancel,
+        holder=holder,
     )
-    if proc.stdout:
-        log(proc.stdout.rstrip())
-    if proc.stderr:
-        log(proc.stderr.rstrip())
-    if proc.returncode != 0:
-        raise RuntimeError(
-            f"MatAnyone failed ({proc.returncode}):\n{proc.stderr or proc.stdout}"
-        )
 
 
 def _find_outputs(out_dir: Path) -> tuple[Path | None, Path | None, Path | None]:
@@ -247,28 +405,29 @@ def sequence_pattern(pha_dir: Path) -> str | None:
     last = frames[-1].name
     m2 = re.match(r"^(.*?)(\d+)(\.[^.]+)$", last)
     end = int(m2.group(2)) if m2 else start
-    # Flame: name.[0000-0099].ext  (padding matters)
     return str(pha_dir / f"{prefix}[{start:0{width}d}-{end:0{width}d}]{suffix}")
 
 
 def import_path(path_str: str, destination) -> None:
     import flame
 
-    dest = destination
-    if dest is None:
-        desktop = flame.project.current_project.current_workspace.desktop
-        reel_groups = getattr(desktop, "reel_groups", None) or []
-        if not reel_groups:
-            raise RuntimeError("No desktop reel group for import")
-        reels = getattr(reel_groups[0], "reels", None) or []
-        if not reels:
-            raise RuntimeError("No desktop reel for import")
-        dest = reels[0]
-    # Prefer list form (Flame 2020+ docs / community scripts).
-    try:
-        flame.import_clips([path_str], dest)
-    except TypeError:
-        flame.import_clips(path_str, dest)
+    def _do() -> None:
+        dest = destination
+        if dest is None:
+            desktop = flame.project.current_project.current_workspace.desktop
+            reel_groups = getattr(desktop, "reel_groups", None) or []
+            if not reel_groups:
+                raise RuntimeError("No desktop reel group for import")
+            reels = getattr(reel_groups[0], "reels", None) or []
+            if not reels:
+                raise RuntimeError("No desktop reel for import")
+            dest = reels[0]
+        try:
+            flame.import_clips([path_str], dest)
+        except TypeError:
+            flame.import_clips(path_str, dest)
+
+    _call_on_main_thread(_do)
 
 
 def gpu_vram_warning() -> str | None:
@@ -305,11 +464,25 @@ def gpu_vram_warning() -> str | None:
     return None
 
 
-def run_job(opts: JobOptions, *, logger, progress: ProgressCb | None = None) -> JobResult:
+def run_job(
+    opts: JobOptions,
+    *,
+    logger,
+    progress: ProgressCb | None = None,
+    step: StepCb | None = None,
+    cancel: threading.Event | None = None,
+    proc_holder: _ProcHolder | None = None,
+) -> JobResult:
     def log(msg: str) -> None:
         logger.info("[matanyone] %s", msg)
         if progress:
             progress(msg)
+
+    def set_step(index: int, label: str | None = None) -> None:
+        if step:
+            step(index, len(JOB_STEPS), label or job_step_label(index))
+
+    holder = proc_holder or _ProcHolder()
 
     # Import runtime helpers from sibling package.
     runtime_app = Path(dgpy_paths.apps_dir()) / "matanyone_runtime"
@@ -332,33 +505,50 @@ def run_job(opts: JobOptions, *, logger, progress: ProgressCb | None = None) -> 
         return JobResult(ok=False, message="Runtime READY but python/script missing.")
 
     work = opts.work_dir or default_work_dir()
-    work.mkdir(parents=True, exist_ok=True)
-    (work / "options.json").write_text(
-        json.dumps(
-            {
-                "mask_source": opts.mask_source,
-                "output_kind": opts.output_kind,
-                "write_foreground": opts.write_foreground,
-                "import_to_flame": opts.import_to_flame,
-                "max_size": MAX_SIZE,
-            },
-            indent=2,
-        )
-        + "\n",
-        encoding="utf-8",
-    )
-
     try:
+        set_step(0)
+        _check_cancel(cancel)
+        work.mkdir(parents=True, exist_ok=True)
+        (work / "options.json").write_text(
+            json.dumps(
+                {
+                    "mask_source": opts.mask_source,
+                    "output_kind": opts.output_kind,
+                    "write_foreground": opts.write_foreground,
+                    "import_to_flame": opts.import_to_flame,
+                    "max_size": MAX_SIZE,
+                },
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        set_step(1)
         log("Exporting source…")
+        _check_cancel(cancel)
         video = export_clip_mp4(opts.clip, work / "source", logger=logger)
 
+        set_step(2)
+        _check_cancel(cancel)
         mask_path = opts.mask_path
         if opts.mask_source == "sam2":
+            log("Preparing SAM2 mask (experimental)…")
             still = work / "first_frame.png"
-            extract_first_frame(video, still, python=python, log=log)
+            extract_first_frame(
+                video,
+                still,
+                python=python,
+                log=log,
+                cancel=cancel,
+                holder=holder,
+            )
             points = list(opts.sam_points)
             if not points and opts.sam_points_provider is not None:
-                provided = opts.sam_points_provider(still)
+                # Point UI must run on the Qt main thread.
+                provided = _call_on_main_thread(
+                    lambda: opts.sam_points_provider(still)
+                )
                 if not provided:
                     return JobResult(
                         ok=False,
@@ -368,7 +558,10 @@ def run_job(opts: JobOptions, *, logger, progress: ProgressCb | None = None) -> 
                 points = list(provided)
             sam = rpaths.sam_script()
             if sam is None:
-                raise RuntimeError("SAM helper missing in runtime")
+                raise RuntimeError(
+                    "SAM helper missing in runtime. "
+                    "Use Flame mask, or finish SAM setup later."
+                )
             mask_path = work / "mask.png"
             run_sam_mask(
                 python=python,
@@ -377,15 +570,20 @@ def run_job(opts: JobOptions, *, logger, progress: ProgressCb | None = None) -> 
                 points=points,
                 out_mask=mask_path,
                 log=log,
+                cancel=cancel,
+                holder=holder,
             )
         else:
             if mask_path is None or not Path(mask_path).is_file():
                 raise RuntimeError("Flame mask PNG/EXR path is required")
             mask_path = Path(mask_path)
+            log(f"Using Flame mask: {mask_path}")
 
+        set_step(3)
         out_dir = work / "out"
         save_image = opts.output_kind == "alpha_sequence"
         log("Running MatAnyone (max_size=1080 short side)…")
+        _check_cancel(cancel)
         run_matanyone(
             python=python,
             inference_script=infer,
@@ -394,6 +592,8 @@ def run_job(opts: JobOptions, *, logger, progress: ProgressCb | None = None) -> 
             out_dir=out_dir,
             save_image=save_image,
             log=log,
+            cancel=cancel,
+            holder=holder,
         )
 
         pha_mov, fgr_mov, pha_dir = _find_outputs(out_dir)
@@ -420,6 +620,9 @@ def run_job(opts: JobOptions, *, logger, progress: ProgressCb | None = None) -> 
         fgr_path = fgr_mov if opts.write_foreground else None
         imported = False
         import_errors: list[str] = []
+
+        set_step(4)
+        _check_cancel(cancel)
         if opts.import_to_flame and import_candidates:
             last_err: Exception | None = None
             for target in import_candidates:
@@ -436,6 +639,7 @@ def run_job(opts: JobOptions, *, logger, progress: ProgressCb | None = None) -> 
                     log(f"Import failed, trying next candidate: {exc}")
             if not imported and last_err is not None:
                 detail = "\n".join(import_errors)
+                set_step(5)
                 return JobResult(
                     ok=True,
                     message=(
@@ -448,6 +652,7 @@ def run_job(opts: JobOptions, *, logger, progress: ProgressCb | None = None) -> 
                     imported=False,
                 )
 
+        set_step(5)
         return JobResult(
             ok=True,
             message="Done" if imported or not opts.import_to_flame else "Done (not imported)",
@@ -455,6 +660,14 @@ def run_job(opts: JobOptions, *, logger, progress: ProgressCb | None = None) -> 
             alpha_path=alpha,
             foreground_path=fgr_path,
             imported=imported,
+        )
+    except JobCancelled:
+        log("Cancelled.")
+        return JobResult(
+            ok=False,
+            message="Cancelled.",
+            work_dir=work,
+            cancelled=True,
         )
     except Exception as exc:  # noqa: BLE001
         logger.exception("MatAnyone job failed")

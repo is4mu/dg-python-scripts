@@ -10,7 +10,7 @@ from typing import Any
 import dgpy_config
 import dgpy_http
 
-__version__ = "0.3.2"
+__version__ = "0.3.3"
 
 
 @dataclass
@@ -43,6 +43,8 @@ class ManifestPackage:
     changelog: str = ""
     files: list[ManifestFile] = field(default_factory=list)
     assets: list[ManifestAsset] = field(default_factory=list)
+    # False: show in Script Manager but skip Update All / startup for status New.
+    auto_install: bool = True
 
 
 @dataclass
@@ -107,6 +109,7 @@ def parse_manifest(data: dict[str, Any]) -> Manifest:
                 changelog=str(raw.get("changelog") or ""),
                 files=files,
                 assets=assets,
+                auto_install=bool(raw.get("auto_install", True)),
             )
         )
     return Manifest(

@@ -1,4 +1,4 @@
-"""MatAnyone app entry: dialog → job."""
+"""MatAnyone app entry: dialog → non-blocking job."""
 
 from __future__ import annotations
 
@@ -6,9 +6,10 @@ from pathlib import Path
 
 import matanyone_dialog as dialog
 import matanyone_job as job
+import matanyone_job_progress as job_progress
 import matanyone_selection as selection
 
-__version__ = "0.1.1"
+__version__ = "0.2.1"
 
 
 def run_from_selection(selection_items) -> None:
@@ -16,6 +17,16 @@ def run_from_selection(selection_items) -> None:
     import dgpy_log
 
     logger = dgpy_log.setup()
+    if job_progress.job_is_running():
+        dgpy_gui.info(
+            None,
+            "MatAnyone",
+            "A MatAnyone job is already running.\n"
+            "The progress window was brought to the front.",
+        )
+        job_progress.raise_job_window()
+        return
+
     clips = selection.direct_clips(selection_items)
     if not clips:
         dgpy_gui.warning(None, "MatAnyone", "Select a Clip or Sequence.")
@@ -34,10 +45,38 @@ def run_from_selection(selection_items) -> None:
     if opts_ui is None:
         return
 
+    if opts_ui.mask_source == "sam2":
+        if not dgpy_gui.confirm(
+            None,
+            "MatAnyone",
+            "SAM2 mask mode is experimental.\n\n"
+            "SAM/SAM2 weights are not installed by Runtime Setup.\n"
+            "If mask generation fails, use Flame (PNG/EXR) instead.\n\n"
+            "Continue with SAM2?",
+        ):
+            return
+
     def _sam_provider(still: Path):
         return dialog.collect_sam_points(still)
 
-    result = job.run_job(
+    def _on_finished(result: job.JobResult) -> None:
+        if result.cancelled:
+            dgpy_gui.info(None, "MatAnyone", "Cancelled.")
+            return
+        if not result.ok:
+            dgpy_gui.error(None, "MatAnyone", result.message)
+            return
+        msg = f"Done.\nWork: {result.work_dir}\nAlpha: {result.alpha_path}"
+        if result.imported:
+            msg += "\nImported to Flame."
+            dgpy_gui.info(None, "MatAnyone", msg)
+        elif "import failed" in result.message.lower():
+            dgpy_gui.warning(None, "MatAnyone", result.message)
+        else:
+            msg += "\n(Not imported — open path manually if needed.)"
+            dgpy_gui.info(None, "MatAnyone", msg)
+
+    started = job_progress.start_job_nonblocking(
         job.JobOptions(
             clip=clip,
             mask_source=opts_ui.mask_source,
@@ -52,18 +91,7 @@ def run_from_selection(selection_items) -> None:
             work_dir=opts_ui.work_dir,
         ),
         logger=logger,
+        on_finished=_on_finished,
     )
-
-    if not result.ok:
-        dgpy_gui.error(None, "MatAnyone", result.message)
-        return
-
-    msg = f"Done.\nWork: {result.work_dir}\nAlpha: {result.alpha_path}"
-    if result.imported:
-        msg += "\nImported to Flame."
-        dgpy_gui.info(None, "MatAnyone", msg)
-    elif "import failed" in result.message.lower():
-        dgpy_gui.warning(None, "MatAnyone", result.message)
-    else:
-        msg += "\n(Not imported — open path manually if needed.)"
-        dgpy_gui.info(None, "MatAnyone", msg)
+    if not started:
+        logger.info("MatAnyone job already running")

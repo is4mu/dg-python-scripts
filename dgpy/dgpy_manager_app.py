@@ -12,7 +12,7 @@ import dgpy_manifest
 import dgpy_paths
 import dgpy_sync
 
-__version__ = "0.3.15"
+__version__ = "0.3.16"
 
 _WINDOW: QtWidgets.QWidget | None = None
 
@@ -242,6 +242,11 @@ class ManagerWindow(QtWidgets.QDialog):
             if pkg:
                 if pkg.summary:
                     blocks.append(f"Summary: {pkg.summary}")
+                if not pkg.auto_install:
+                    blocks.append(
+                        "Install policy: manual only while New "
+                        "(skipped by Update All / startup auto-update)."
+                    )
                 if pkg.depends:
                     blocks.append("Depends: " + ", ".join(pkg.depends))
                 if pkg.changelog:

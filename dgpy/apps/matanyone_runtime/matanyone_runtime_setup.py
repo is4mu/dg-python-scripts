@@ -12,7 +12,7 @@ from typing import Callable
 
 import matanyone_runtime_paths as paths
 
-__version__ = "0.1.8"
+__version__ = "0.2.1"
 
 LogFn = Callable[[str], None]
 StepFn = Callable[[int, int, str], None]
@@ -524,23 +524,63 @@ def setup_runtime(
     return root
 
 
-def remove_runtime(*, log: LogFn | None = None) -> None:
-    paths.migrate_legacy_runtime_if_needed(log=log)
-    targets = [paths.runtime_root(), *paths.legacy_runtime_roots()]
-    removed = False
+def remove_step_count(targets: list[Path] | None = None) -> int:
+    """Progress steps = folders to delete (at least 1 for the 'done' tick)."""
+    if targets is None:
+        targets = _remove_targets()
+    return max(len(targets), 1)
+
+
+def _remove_targets() -> list[Path]:
+    """Primary runtime + any legacy scanned locations that still exist."""
+    paths.migrate_legacy_runtime_if_needed()
+    out: list[Path] = []
     seen: set[str] = set()
-    for target in targets:
-        key = str(target.resolve()) if target.exists() else str(target)
+    for target in (paths.runtime_root(), *paths.legacy_runtime_roots()):
+        if not target.exists():
+            continue
+        try:
+            key = str(target.resolve())
+        except OSError:
+            key = str(target)
         if key in seen:
             continue
         seen.add(key)
-        if not target.exists():
-            continue
-        _log(log, f"Removing {target}")
-        shutil.rmtree(target)
-        removed = True
-    if not removed:
+        out.append(target)
+    return out
+
+
+def remove_runtime(
+    *,
+    log: LogFn | None = None,
+    step: StepFn | None = None,
+) -> None:
+    """Delete runtime + legacy folders under dgpy_runtimes / old scan paths.
+
+    Does not touch OS packages, shell profiles, or …/shared/python apps.
+    """
+    targets = _remove_targets()
+    total = max(len(targets), 1)
+    if not targets:
+        _step(step, 0, "Nothing to remove")
         _log(log, f"Nothing to remove (checked {paths.runtime_root()})")
+        return
+
+    for index, target in enumerate(targets):
+        _step(step, index, f"Removing {target}")
+        _log(log, f"Removing {target}")
+        shutil.rmtree(target, ignore_errors=False)
+        # Clean empty parent (e.g. dgpy_runtimes/) when safe.
+        parent = target.parent
+        try:
+            if parent.is_dir() and not any(parent.iterdir()):
+                parent.rmdir()
+                _log(log, f"Removed empty parent {parent}")
+        except OSError:
+            pass
+
+    _step(step, total - 1, "Done")
+    _log(log, "Remove finished")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -563,7 +603,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"python={paths.resolve_python()}")
         return 0
     if args.action == "remove":
-        remove_runtime(log=_print)
+        remove_runtime(log=_print, step=_print_step)
         return 0
     setup_runtime(log=_print, step=_print_step, force=args.force)
     return 0
