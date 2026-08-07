@@ -18,7 +18,7 @@ from typing import Any, Callable
 
 import dgpy_paths
 
-__version__ = "0.12.3"
+__version__ = "0.12.4"
 
 ProgressCb = Callable[[str], None]
 StepCb = Callable[[int, int, str], None]
@@ -1168,6 +1168,16 @@ def run_matanyone(
     holder_key: str = "default",
 ) -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
+    # Repair upstream MatAnyone2 bug on already-installed runtimes (no Setup).
+    try:
+        import matanyone_runtime_setup as rsetup
+
+        if rsetup.patch_inference_matanyone2(
+            inference_script.parent, log=log
+        ):
+            log("Applied MatAnyone2 inference patch (max_size mask resize).")
+    except Exception as exc:  # noqa: BLE001
+        log(f"Warning: could not patch inference script: {exc}")
     cmd = [
         python,
         str(inference_script),

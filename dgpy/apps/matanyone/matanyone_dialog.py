@@ -12,7 +12,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 import matanyone_sam2 as sam
 import matanyone_selection as selection
 
-__version__ = "0.12.3"
+__version__ = "0.12.4"
 
 _WINDOW: QtWidgets.QWidget | None = None
 

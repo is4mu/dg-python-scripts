@@ -12,7 +12,7 @@ from typing import Callable
 
 import matanyone_runtime_paths as paths
 
-__version__ = "0.11.0"
+__version__ = "0.11.1"
 
 LogFn = Callable[[str], None]
 StepFn = Callable[[int, int, str], None]
@@ -279,6 +279,87 @@ def _patch_matanyone_deps(repo: Path, *, log: LogFn | None = None) -> None:
         return
     pyproject.write_text(text, encoding="utf-8")
     _log(log, "Patched MatAnyone 2 deps: cchardet → faust-cchardet (Py3.10+ build fix)")
+
+
+_INFER_PATCH_MARK = "# dgpy-patch: max_size-mask-resize-v1"
+
+
+def patch_inference_matanyone2(
+    repo: Path | None = None,
+    *,
+    log: LogFn | None = None,
+) -> bool:
+    """Fix upstream UnboundLocalError on mask resize when video is already ≤ max_size.
+
+    Upstream ``inference_matanyone2.py`` sets ``new_h``/``new_w`` only when the
+    video short side exceeds ``max_size``, but always resizes the mask with those
+    names when ``max_size > 0``. Our jobs always pass ``--max_size 1080`` and the
+    export is already short-side-capped, so Forward/Backward crash every time.
+    """
+    import re
+
+    root = repo or paths.repo_dir()
+    path = root / paths.INFERENCE_SCRIPT_NAME
+    if not path.is_file():
+        _log(log, f"Inference script missing, skip patch: {path}")
+        return False
+    text = path.read_text(encoding="utf-8")
+    if _INFER_PATCH_MARK in text:
+        return False
+
+    new_resize = (
+        "    # resize if needed\n"
+        f"    {_INFER_PATCH_MARK}\n"
+        "    h, w = vframes.shape[-2:]\n"
+        "    if max_size > 0:\n"
+        "        min_side = min(h, w)\n"
+        "        if min_side > max_size:\n"
+        "            h = int(h / min_side * max_size)\n"
+        "            w = int(w / min_side * max_size)\n"
+        "            vframes = F.interpolate(vframes, size=(h, w), mode=\"area\")\n"
+        "            print(f'Resize to {h}x{w} for processing...')\n"
+    )
+    new_mask = (
+        "    # Match mask spatial size to (possibly resized) video frames.\n"
+        "    if mask.shape[-2] != h or mask.shape[-1] != w:\n"
+        "        mask = F.interpolate(\n"
+        "            mask.unsqueeze(0).unsqueeze(0), size=(h, w), mode=\"nearest\"\n"
+        "        )[0, 0]\n"
+    )
+
+    resize_re = re.compile(
+        r"    # resize if needed\n"
+        r"    if max_size > 0:\n"
+        r"        h, w = vframes\.shape\[-2:\]\n"
+        r"        min_side = min\(h, w\)\n"
+        r"        if min_side > max_size:\n"
+        r"            new_h = int\(h / min_side \* max_size\)\n"
+        r"            new_w = int\(w / min_side \* max_size\)\n"
+        r"            vframes = F\.interpolate\(vframes, size=\(new_h, new_w\), "
+        r"mode=[\"']area[\"']\)\n"
+        r"            print\(f'Resize to \{new_h\}x\{new_w\} for processing\.\.\.'\)\n"
+        r"[ \t]*\n?",
+    )
+    mask_re = re.compile(
+        r"    if max_size > 0:  # resize needed\n"
+        r"        mask = F\.interpolate\(mask\.unsqueeze\(0\)\.unsqueeze\(0\), "
+        r"size=\(new_h, new_w\), mode=[\"']nearest[\"']\)\n"
+        r"        mask = mask\[0,\s*0\]\n"
+    )
+
+    text2, n1 = resize_re.subn(new_resize + "\n", text, count=1)
+    text3, n2 = mask_re.subn(new_mask, text2, count=1)
+    if n1 != 1 or n2 != 1:
+        _log(
+            log,
+            "inference_matanyone2.py layout unexpected; cannot apply "
+            f"max_size mask-resize patch automatically (resize={n1}, mask={n2})",
+        )
+        return False
+
+    path.write_text(text3, encoding="utf-8")
+    _log(log, f"Patched {path.name}: fix max_size mask resize (new_h UnboundLocalError)")
+    return True
 
 
 def _purge_matanyone_v1(root: Path, *, log: LogFn | None = None) -> None:
@@ -772,6 +853,7 @@ def setup_runtime(
     else:
         _log(log, f"Repo already present: {repo}")
     _patch_matanyone_deps(repo, log=log)
+    patch_inference_matanyone2(repo, log=log)
 
     _step(step, 3)
     venv_dir = root / paths.VENV_DIRNAME
