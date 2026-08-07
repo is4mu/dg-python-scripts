@@ -18,7 +18,7 @@ from typing import Any, Callable
 
 import dgpy_paths
 
-__version__ = "0.5.1"
+__version__ = "0.6.0"
 
 ProgressCb = Callable[[str], None]
 StepCb = Callable[[int, int, str], None]
@@ -28,6 +28,20 @@ JOB_STEPS: list[tuple[str, int]] = [
     ("Prepare work dir", 1),
     ("Export source", 3),
     ("Prepare mask", 2),
+    ("MatAnyone 2 infer", 8),
+    ("Import to Flame", 2),
+    ("Done", 1),
+]
+
+EXPORT_STEPS: list[tuple[str, int]] = [
+    ("Prepare work dir", 1),
+    ("Export source", 4),
+    ("Extract first frame", 2),
+    ("Done", 1),
+]
+
+INFER_STEPS: list[tuple[str, int]] = [
+    ("Prepare", 1),
     ("MatAnyone 2 infer", 8),
     ("Import to Flame", 2),
     ("Done", 1),
@@ -47,7 +61,7 @@ _WARN_FLAGS = (
 @dataclass
 class JobOptions:
     clip: Any
-    mask_source: str  # "flame" | "sam2"
+    mask_source: str = "flame"  # "flame" | "sam2"
     mask_path: Path | None = None
     sam_points: list[tuple[float, float]] = field(default_factory=list)
     sam_points_provider: Callable[[Path], list[tuple[float, float]] | None] | None = None
@@ -56,6 +70,8 @@ class JobOptions:
     import_to_flame: bool = True
     import_destination: Any | None = None
     work_dir: Path | None = None
+    phase: str = "full"  # export | infer | full
+    source_video: Path | None = None
 
 
 @dataclass
@@ -67,19 +83,30 @@ class JobResult:
     foreground_path: Path | None = None
     imported: bool = False
     cancelled: bool = False
+    video_path: Path | None = None
+    still_path: Path | None = None
 
 
 class JobCancelled(Exception):
     """Raised when the operator cancels a running job."""
 
 
-def job_step_count() -> int:
-    return len(JOB_STEPS)
+def _steps_for(phase: str) -> list[tuple[str, int]]:
+    if phase == "export":
+        return EXPORT_STEPS
+    if phase == "infer":
+        return INFER_STEPS
+    return JOB_STEPS
 
 
-def job_step_label(index: int) -> str:
-    if 0 <= index < len(JOB_STEPS):
-        return JOB_STEPS[index][0]
+def job_step_count(phase: str = "full") -> int:
+    return len(_steps_for(phase))
+
+
+def job_step_label(index: int, phase: str = "full") -> str:
+    steps = _steps_for(phase)
+    if 0 <= index < len(steps):
+        return steps[index][0]
     return ""
 
 
@@ -490,7 +517,16 @@ def gpu_vram_warning() -> str | None:
     return None
 
 
-def run_job(
+def _runtime_import():
+    runtime_app = Path(dgpy_paths.apps_dir()) / "matanyone_runtime"
+    if str(runtime_app) not in __import__("sys").path:
+        __import__("sys").path.insert(0, str(runtime_app))
+    import matanyone_runtime_paths as rpaths
+
+    return rpaths
+
+
+def run_export(
     opts: JobOptions,
     *,
     logger,
@@ -499,6 +535,10 @@ def run_job(
     cancel: threading.Event | None = None,
     proc_holder: _ProcHolder | None = None,
 ) -> JobResult:
+    """PyExporter + first-frame extract. Opens mask UI afterward."""
+    phase = "export"
+    steps = EXPORT_STEPS
+
     def log(msg: str) -> None:
         logger.info("[matanyone] %s", msg)
         if progress:
@@ -506,35 +546,107 @@ def run_job(
 
     def set_step(index: int, label: str | None = None) -> None:
         if step:
-            step(index, len(JOB_STEPS), label or job_step_label(index))
+            step(index, len(steps), label or job_step_label(index, phase))
 
     holder = proc_holder or _ProcHolder()
-
-    # Import runtime helpers from sibling package.
-    runtime_app = Path(dgpy_paths.apps_dir()) / "matanyone_runtime"
-    if str(runtime_app) not in __import__("sys").path:
-        __import__("sys").path.insert(0, str(runtime_app))
-    import matanyone_runtime_paths as rpaths
-
+    rpaths = _runtime_import()
     if not rpaths.is_ready():
         return JobResult(
             ok=False,
             message=(
                 "MatAnyone 2 runtime is not set up.\n"
-                "Use DGpy → MatAnyone → Runtime Setup… "
-                "(upgrades from MatAnyone v1 if present)."
+                "Use DGpy → MatAnyone → Runtime Setup… first."
             ),
         )
+    python = rpaths.resolve_python()
+    if not python:
+        return JobResult(ok=False, message="Runtime READY but python missing.")
 
+    work = opts.work_dir or default_work_dir()
+    try:
+        set_step(0)
+        _check_cancel(cancel)
+        work.mkdir(parents=True, exist_ok=True)
+        set_step(1)
+        log("Exporting source…")
+        _check_cancel(cancel)
+        video = export_clip_mp4(opts.clip, work / "source", logger=logger)
+        set_step(2)
+        still = work / "first_frame.png"
+        log(f"Extract first frame → {still}")
+        extract_first_frame(
+            video,
+            still,
+            python=python,
+            log=log,
+            cancel=cancel,
+            holder=holder,
+        )
+        set_step(3)
+        return JobResult(
+            ok=True,
+            message="Export done",
+            work_dir=work,
+            video_path=video,
+            still_path=still,
+        )
+    except JobCancelled:
+        log("Cancelled.")
+        return JobResult(ok=False, message="Cancelled.", work_dir=work, cancelled=True)
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("MatAnyone export failed")
+        return JobResult(ok=False, message=str(exc), work_dir=work)
+
+
+def run_infer(
+    opts: JobOptions,
+    *,
+    logger,
+    progress: ProgressCb | None = None,
+    step: StepCb | None = None,
+    cancel: threading.Event | None = None,
+    proc_holder: _ProcHolder | None = None,
+) -> JobResult:
+    """MatAnyone 2 infer + optional import. Mask must already exist."""
+    phase = "infer"
+    steps = INFER_STEPS
+
+    def log(msg: str) -> None:
+        logger.info("[matanyone] %s", msg)
+        if progress:
+            progress(msg)
+
+    def set_step(index: int, label: str | None = None) -> None:
+        if step:
+            step(index, len(steps), label or job_step_label(index, phase))
+
+    holder = proc_holder or _ProcHolder()
+    rpaths = _runtime_import()
+    if not rpaths.is_ready():
+        return JobResult(
+            ok=False,
+            message=(
+                "MatAnyone 2 runtime is not set up.\n"
+                "Use DGpy → MatAnyone → Runtime Setup… first."
+            ),
+        )
     python = rpaths.resolve_python()
     infer = rpaths.inference_script()
     if not python or not infer:
         return JobResult(ok=False, message="Runtime READY but python/script missing.")
 
     work = opts.work_dir or default_work_dir()
+    video = opts.source_video
+    mask_path = opts.mask_path
     try:
         set_step(0)
         _check_cancel(cancel)
+        if video is None or not Path(video).is_file():
+            raise RuntimeError("Exported source video missing")
+        if mask_path is None or not Path(mask_path).is_file():
+            raise RuntimeError("Mask image missing")
+        video = Path(video)
+        mask_path = Path(mask_path)
         work.mkdir(parents=True, exist_ok=True)
         (work / "options.json").write_text(
             json.dumps(
@@ -544,6 +656,8 @@ def run_job(
                     "write_foreground": opts.write_foreground,
                     "import_to_flame": opts.import_to_flame,
                     "max_size": MAX_SIZE,
+                    "mask_path": str(mask_path),
+                    "source_video": str(video),
                 },
                 indent=2,
             )
@@ -552,74 +666,6 @@ def run_job(
         )
 
         set_step(1)
-        log("Exporting source…")
-        _check_cancel(cancel)
-        video = export_clip_mp4(opts.clip, work / "source", logger=logger)
-
-        set_step(2)
-        _check_cancel(cancel)
-        mask_path = opts.mask_path
-        if opts.mask_source == "sam2":
-            if not rpaths.is_sam2_ready():
-                return JobResult(
-                    ok=False,
-                    message=(
-                        "SAM2 is not installed in the MatAnyone runtime.\n"
-                        "Use DGpy → MatAnyone → SAM2 Setup… first "
-                        "(or choose Flame PNG/EXR mask)."
-                    ),
-                    work_dir=work,
-                )
-            log("Preparing SAM2 mask…")
-            still = work / "first_frame.png"
-            extract_first_frame(
-                video,
-                still,
-                python=python,
-                log=log,
-                cancel=cancel,
-                holder=holder,
-            )
-            points = list(opts.sam_points)
-            if not points and opts.sam_points_provider is not None:
-                # Point UI must run on the Qt main thread.
-                provided = _call_on_main_thread(
-                    lambda: opts.sam_points_provider(still)
-                )
-                if not provided:
-                    return JobResult(
-                        ok=False,
-                        message="SAM2 cancelled (no points).",
-                        work_dir=work,
-                    )
-                points = list(provided)
-            sam = rpaths.sam_script()
-            if sam is None:
-                raise RuntimeError(
-                    "SAM2 helper missing. Re-run DGpy → MatAnyone → SAM2 Setup…"
-                )
-            mask_path = work / "mask.png"
-            run_sam_mask(
-                python=python,
-                sam_script=sam,
-                image=still,
-                points=points,
-                out_mask=mask_path,
-                checkpoint=rpaths.sam2_checkpoint_path(),
-                config=rpaths.sam2_config_id(),
-                # Avoid runtime root / sam2 clone as cwd (package shadowing).
-                cwd=work,
-                log=log,
-                cancel=cancel,
-                holder=holder,
-            )
-        else:
-            if mask_path is None or not Path(mask_path).is_file():
-                raise RuntimeError("Flame mask PNG/EXR path is required")
-            mask_path = Path(mask_path)
-            log(f"Using Flame mask: {mask_path}")
-
-        set_step(3)
         out_dir = work / "out"
         save_image = opts.output_kind == "alpha_sequence"
         log("Running MatAnyone 2 (max_size=1080 short side)…")
@@ -661,7 +707,7 @@ def run_job(
         imported = False
         import_errors: list[str] = []
 
-        set_step(4)
+        set_step(2)
         _check_cancel(cancel)
         if opts.import_to_flame and import_candidates:
             last_err: Exception | None = None
@@ -679,7 +725,7 @@ def run_job(
                     log(f"Import failed, trying next candidate: {exc}")
             if not imported and last_err is not None:
                 detail = "\n".join(import_errors)
-                set_step(5)
+                set_step(3)
                 return JobResult(
                     ok=True,
                     message=(
@@ -690,9 +736,10 @@ def run_job(
                     alpha_path=alpha,
                     foreground_path=fgr_path,
                     imported=False,
+                    video_path=video,
                 )
 
-        set_step(5)
+        set_step(3)
         return JobResult(
             ok=True,
             message="Done" if imported or not opts.import_to_flame else "Done (not imported)",
@@ -700,6 +747,7 @@ def run_job(
             alpha_path=alpha,
             foreground_path=fgr_path,
             imported=imported,
+            video_path=video,
         )
     except JobCancelled:
         log("Cancelled.")
@@ -708,7 +756,42 @@ def run_job(
             message="Cancelled.",
             work_dir=work,
             cancelled=True,
+            video_path=video if isinstance(video, Path) else None,
         )
     except Exception as exc:  # noqa: BLE001
-        logger.exception("MatAnyone job failed")
+        logger.exception("MatAnyone infer failed")
         return JobResult(ok=False, message=str(exc), work_dir=work)
+
+
+def run_job(
+    opts: JobOptions,
+    *,
+    logger,
+    progress: ProgressCb | None = None,
+    step: StepCb | None = None,
+    cancel: threading.Event | None = None,
+    proc_holder: _ProcHolder | None = None,
+) -> JobResult:
+    if opts.phase == "export":
+        return run_export(
+            opts,
+            logger=logger,
+            progress=progress,
+            step=step,
+            cancel=cancel,
+            proc_holder=proc_holder,
+        )
+    if opts.phase == "infer":
+        return run_infer(
+            opts,
+            logger=logger,
+            progress=progress,
+            step=step,
+            cancel=cancel,
+            proc_holder=proc_holder,
+        )
+    # Legacy full path no longer used by the UI; keep a clear error.
+    return JobResult(
+        ok=False,
+        message="Internal error: unsupported job phase. Use export or infer.",
+    )

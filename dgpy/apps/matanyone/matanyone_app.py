@@ -1,4 +1,4 @@
-"""MatAnyone app entry: dialog → non-blocking job."""
+"""MatAnyone app entry: export → mask dialog → infer."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ import matanyone_job as job
 import matanyone_job_progress as job_progress
 import matanyone_selection as selection
 
-__version__ = "0.5.1"
+__version__ = "0.6.0"
 
 
 def run_from_selection(selection_items) -> None:
@@ -28,6 +28,15 @@ def run_from_selection(selection_items) -> None:
         job_progress.raise_job_window()
         return
 
+    if not rpaths.is_ready():
+        dgpy_gui.warning(
+            None,
+            "MatAnyone",
+            "MatAnyone 2 runtime is not set up.\n"
+            "Run DGpy → MatAnyone → Runtime Setup… first.",
+        )
+        return
+
     clips = selection.direct_clips(selection_items)
     if not clips:
         dgpy_gui.warning(None, "MatAnyone", "Select a Clip or Sequence.")
@@ -42,25 +51,9 @@ def run_from_selection(selection_items) -> None:
     if warn and not dgpy_gui.confirm(None, "MatAnyone", warn):
         return
 
-    opts_ui = dialog.open_dialog(clip, ignored_count=ignored)
-    if opts_ui is None:
-        return
+    work = job.default_work_dir()
 
-    if opts_ui.mask_source == "sam2" and not rpaths.is_sam2_ready():
-        dgpy_gui.warning(
-            None,
-            "MatAnyone",
-            "SAM2 is not ready in the MatAnyone runtime.\n\n"
-            "Run DGpy → MatAnyone → SAM2 Setup… first "
-            "(uses the existing runtime; no system packages),\n"
-            "or choose Flame (PNG/EXR) mask instead.",
-        )
-        return
-
-    def _sam_provider(still: Path):
-        return dialog.collect_sam_points(still)
-
-    def _on_finished(result: job.JobResult) -> None:
+    def _on_infer_finished(result: job.JobResult) -> None:
         if result.cancelled:
             dgpy_gui.info(None, "MatAnyone", "Cancelled.")
             return
@@ -77,22 +70,57 @@ def run_from_selection(selection_items) -> None:
             msg += "\n(Not imported — open path manually if needed.)"
             dgpy_gui.info(None, "MatAnyone", msg)
 
+    def _start_infer(opts_ui: dialog.DialogResult, video: Path) -> None:
+        started = job_progress.start_job_nonblocking(
+            job.JobOptions(
+                clip=clip,
+                phase="infer",
+                mask_source=opts_ui.mask_source,
+                mask_path=opts_ui.mask_path,
+                sam_points=list(opts_ui.sam_points),
+                output_kind=opts_ui.output_kind,
+                write_foreground=opts_ui.write_foreground,
+                import_to_flame=opts_ui.import_to_flame,
+                work_dir=opts_ui.work_dir or work,
+                source_video=video,
+            ),
+            logger=logger,
+            on_finished=_on_infer_finished,
+        )
+        if not started:
+            logger.info("MatAnyone infer already running")
+
+    def _on_export_finished(result: job.JobResult) -> None:
+        if result.cancelled:
+            dgpy_gui.info(None, "MatAnyone", "Export cancelled.")
+            return
+        if not result.ok:
+            dgpy_gui.error(None, "MatAnyone", result.message)
+            return
+        video = result.video_path
+        still = result.still_path
+        work_dir = result.work_dir or work
+        if video is None or still is None or not video.is_file():
+            dgpy_gui.error(None, "MatAnyone", "Export finished but files are missing.")
+            return
+        opts_ui = dialog.open_mask_dialog(
+            clip,
+            still_path=still,
+            work_dir=work_dir,
+            ignored_count=ignored,
+        )
+        if opts_ui is None:
+            return
+        _start_infer(opts_ui, video)
+
     started = job_progress.start_job_nonblocking(
         job.JobOptions(
             clip=clip,
-            mask_source=opts_ui.mask_source,
-            mask_path=opts_ui.mask_path,
-            sam_points=list(opts_ui.sam_points),
-            sam_points_provider=_sam_provider
-            if opts_ui.mask_source == "sam2"
-            else None,
-            output_kind=opts_ui.output_kind,
-            write_foreground=opts_ui.write_foreground,
-            import_to_flame=opts_ui.import_to_flame,
-            work_dir=opts_ui.work_dir,
+            phase="export",
+            work_dir=work,
         ),
         logger=logger,
-        on_finished=_on_finished,
+        on_finished=_on_export_finished,
     )
     if not started:
-        logger.info("MatAnyone job already running")
+        logger.info("MatAnyone export already running")

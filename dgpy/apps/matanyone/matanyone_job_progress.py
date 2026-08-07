@@ -10,7 +10,7 @@ from PySide6 import QtCore, QtWidgets
 
 import matanyone_job as job
 
-__version__ = "0.5.1"
+__version__ = "0.6.0"
 
 _ACTIVE: JobProgressDialog | None = None
 
@@ -90,12 +90,22 @@ class JobProgressDialog(QtWidgets.QDialog):
         layout.addWidget(self._step_label)
 
         self._bar = QtWidgets.QProgressBar()
-        self._bar.setRange(0, job.job_step_count())
+        self._bar.setRange(0, job.job_step_count(opts.phase))
         self._bar.setValue(0)
         self._bar.setFormat("%v / %m steps")
         layout.addWidget(self._bar)
 
-        self._eta = QtWidgets.QLabel("Infer can take several minutes depending on length.")
+        if opts.phase == "export":
+            eta_text = "Exporting source for MatAnyone…"
+            title = "MatAnyone 2 — Export"
+        elif opts.phase == "infer":
+            eta_text = "Infer can take several minutes depending on length."
+            title = "MatAnyone 2 — Infer"
+        else:
+            eta_text = "Infer can take several minutes depending on length."
+            title = "MatAnyone 2"
+        self.setWindowTitle(title)
+        self._eta = QtWidgets.QLabel(eta_text)
         self._eta.setWordWrap(True)
         layout.addWidget(self._eta)
 
@@ -148,10 +158,11 @@ class JobProgressDialog(QtWidgets.QDialog):
     def _tick_elapsed(self) -> None:
         secs = int(time.monotonic() - self._started)
         mm, ss = divmod(secs, 60)
-        self._eta.setText(
-            "Infer can take several minutes depending on length.\n"
-            f"Elapsed: {mm:02d}:{ss:02d}"
-        )
+        if self._opts.phase == "export":
+            base = "Exporting source for MatAnyone…"
+        else:
+            base = "Infer can take several minutes depending on length."
+        self._eta.setText(f"{base}\nElapsed: {mm:02d}:{ss:02d}")
 
     @QtCore.Slot(str)
     def _on_log(self, line: str) -> None:
@@ -203,7 +214,8 @@ class JobProgressDialog(QtWidgets.QDialog):
             event.ignore()
             self.hide()
             return
-        _ACTIVE = None
+        if _ACTIVE is self:
+            _ACTIVE = None
         super().closeEvent(event)
 
 

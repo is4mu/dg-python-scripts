@@ -15,7 +15,7 @@ for _p in (_DGPY_ROOT, _APP_DIR):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
-__version__ = "0.5.1"
+__version__ = "0.6.0"
 
 _pending_selection: list | None = None
 
@@ -29,6 +29,20 @@ def _scope_visible(selection) -> bool:
     logger = dgpy_log.setup()
     items = dgpy_flame_types.as_list(selection)
     _pending_selection = items
+
+    runtime_dir = os.path.join(os.path.dirname(_APP_DIR), "matanyone_runtime")
+    if runtime_dir not in sys.path:
+        sys.path.insert(0, runtime_dir)
+    try:
+        import matanyone_runtime_paths as rpaths
+
+        if not rpaths.is_ready():
+            logger.debug("MatAnyone isVisible=False (runtime not ready)")
+            return False
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("MatAnyone isVisible runtime check error: %s", exc)
+        return False
+
     try:
         clips = sel.direct_clips(items)
     except Exception as exc:  # noqa: BLE001

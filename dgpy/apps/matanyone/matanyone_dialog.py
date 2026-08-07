@@ -1,7 +1,8 @@
-"""MatAnyone dialog (PySide6)."""
+"""MatAnyone mask-prep dialog (PySide6) — Flame / SAM2 tabs."""
 
 from __future__ import annotations
 
+import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -9,7 +10,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 
 import matanyone_selection as selection
 
-__version__ = "0.5.1"
+__version__ = "0.6.0"
 
 _WINDOW: QtWidgets.QWidget | None = None
 
@@ -17,7 +18,7 @@ _WINDOW: QtWidgets.QWidget | None = None
 @dataclass
 class DialogResult:
     mask_source: str
-    mask_path: Path | None
+    mask_path: Path
     sam_points: list[tuple[float, float]]
     output_kind: str
     write_foreground: bool
@@ -25,30 +26,42 @@ class DialogResult:
     work_dir: Path | None
 
 
-class _SamPreview(QtWidgets.QLabel):
-    """Clickable first-frame preview; stores image-space points."""
+class _ImagePreview(QtWidgets.QLabel):
+    """Image preview with optional clickable points and mask overlay."""
 
     point_added = QtCore.Signal(float, float)
 
-    def __init__(self, parent=None):
+    def __init__(self, *, clickable: bool = False, parent=None):
         super().__init__(parent)
-        self.setMinimumSize(480, 270)
+        self.setMinimumSize(520, 292)
         self.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         self.setStyleSheet("background:#222; color:#aaa;")
-        self.setText(
-            "SAM2: after export, click foreground points on the first frame"
-        )
+        self.setText("No preview")
+        self._clickable = clickable
         self._pixmap: QtGui.QPixmap | None = None
+        self._mask: QtGui.QPixmap | None = None
         self._points: list[tuple[float, float]] = []
 
     def set_image_path(self, path: Path | None) -> None:
         self._points.clear()
+        self._mask = None
         if path is None or not path.is_file():
             self._pixmap = None
             self.setText("No preview")
             return
         pm = QtGui.QPixmap(str(path))
-        self._pixmap = pm
+        self._pixmap = pm if not pm.isNull() else None
+        if self._pixmap is None:
+            self.setText("Could not load image")
+            return
+        self._refresh()
+
+    def set_mask_path(self, path: Path | None) -> None:
+        if path is None or not path.is_file():
+            self._mask = None
+        else:
+            pm = QtGui.QPixmap(str(path))
+            self._mask = pm if not pm.isNull() else None
         self._refresh()
 
     def points(self) -> list[tuple[float, float]]:
@@ -56,6 +69,7 @@ class _SamPreview(QtWidgets.QLabel):
 
     def clear_points(self) -> None:
         self._points.clear()
+        self._mask = None
         self._refresh()
 
     def _refresh(self) -> None:
@@ -69,14 +83,33 @@ class _SamPreview(QtWidgets.QLabel):
         canvas = QtGui.QPixmap(scaled)
         painter = QtGui.QPainter(canvas)
         painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
-        pen = QtGui.QPen(QtGui.QColor(0, 255, 120), 2)
-        painter.setPen(pen)
-        brush = QtGui.QBrush(QtGui.QColor(0, 255, 120))
-        painter.setBrush(brush)
-        sx = scaled.width() / max(self._pixmap.width(), 1)
-        sy = scaled.height() / max(self._pixmap.height(), 1)
-        for x, y in self._points:
-            painter.drawEllipse(QtCore.QPointF(x * sx, y * sy), 4, 4)
+        if self._mask is not None and not self._mask.isNull():
+            mask_s = self._mask.scaled(
+                scaled.size(),
+                QtCore.Qt.AspectRatioMode.IgnoreAspectRatio,
+                QtCore.Qt.TransformationMode.SmoothTransformation,
+            )
+            painter.setOpacity(0.45)
+            # Tint mask green via CompositionMode
+            tinted = QtGui.QPixmap(mask_s.size())
+            tinted.fill(QtCore.Qt.GlobalColor.transparent)
+            tp = QtGui.QPainter(tinted)
+            tp.drawPixmap(0, 0, mask_s)
+            tp.setCompositionMode(
+                QtGui.QPainter.CompositionMode.CompositionMode_SourceIn
+            )
+            tp.fillRect(tinted.rect(), QtGui.QColor(0, 220, 120, 200))
+            tp.end()
+            painter.drawPixmap(0, 0, tinted)
+            painter.setOpacity(1.0)
+        if self._clickable:
+            pen = QtGui.QPen(QtGui.QColor(0, 255, 120), 2)
+            painter.setPen(pen)
+            painter.setBrush(QtGui.QBrush(QtGui.QColor(0, 255, 120)))
+            sx = scaled.width() / max(self._pixmap.width(), 1)
+            sy = scaled.height() / max(self._pixmap.height(), 1)
+            for x, y in self._points:
+                painter.drawEllipse(QtCore.QPointF(x * sx, y * sy), 4, 4)
         painter.end()
         self.setPixmap(canvas)
 
@@ -85,6 +118,8 @@ class _SamPreview(QtWidgets.QLabel):
         self._refresh()
 
     def mousePressEvent(self, event) -> None:  # noqa: N802
+        if not self._clickable:
+            return
         if self._pixmap is None or self._pixmap.isNull():
             return
         if event.button() != QtCore.Qt.MouseButton.LeftButton:
@@ -94,7 +129,6 @@ class _SamPreview(QtWidgets.QLabel):
             QtCore.Qt.AspectRatioMode.KeepAspectRatio,
             QtCore.Qt.TransformationMode.SmoothTransformation,
         )
-        # Map click from label coords into pixmap coords.
         x_off = (self.width() - scaled.width()) / 2
         y_off = (self.height() - scaled.height()) / 2
         pos = event.position() if hasattr(event, "position") else event.localPos()
@@ -109,73 +143,137 @@ class _SamPreview(QtWidgets.QLabel):
         self.point_added.emit(ix, iy)
 
 
+class _SamMaskWorker(QtCore.QObject):
+    finished_ok = QtCore.Signal(object)  # Path
+    finished_err = QtCore.Signal(str)
+
+    def __init__(
+        self,
+        *,
+        still: Path,
+        points: list[tuple[float, float]],
+        out_mask: Path,
+        work: Path,
+    ):
+        super().__init__()
+        self._still = still
+        self._points = points
+        self._out = out_mask
+        self._work = work
+
+    @QtCore.Slot()
+    def run(self) -> None:
+        try:
+            import matanyone_job as job
+            import matanyone_runtime_paths as rpaths
+            import matanyone_runtime_setup as rsetup
+
+            python = rpaths.resolve_python()
+            sam = rpaths.sam_script()
+            if not python or sam is None:
+                raise RuntimeError("SAM2 helper / python missing")
+            rsetup._write_sam_helper(sam)
+            logs: list[str] = []
+
+            def _log(m: str) -> None:
+                logs.append(m)
+
+            job.run_sam_mask(
+                python=python,
+                sam_script=sam,
+                image=self._still,
+                points=self._points,
+                out_mask=self._out,
+                checkpoint=rpaths.sam2_checkpoint_path(),
+                config=rpaths.sam2_config_id(),
+                cwd=self._work,
+                log=_log,
+            )
+            self.finished_ok.emit(self._out)
+        except Exception as exc:  # noqa: BLE001
+            self.finished_err.emit(str(exc))
+
+
 class MatAnyoneDialog(QtWidgets.QDialog):
-    def __init__(self, clip, ignored_count: int = 0, parent=None):
+    """Mask preparation after export."""
+
+    def __init__(
+        self,
+        clip,
+        *,
+        still_path: Path,
+        work_dir: Path,
+        ignored_count: int = 0,
+        parent=None,
+    ):
         super().__init__(parent)
         self.setWindowTitle("MatAnyone 2")
-        self.setMinimumWidth(560)
+        self.setMinimumWidth(640)
         self._result: DialogResult | None = None
-        self._clip = clip
-
-        layout = QtWidgets.QVBoxLayout(self)
-
-        src = selection.clip_label(clip)
-        if ignored_count:
-            src += f"  (ignoring {ignored_count} other)"
-        layout.addWidget(QtWidgets.QLabel(f"Source: {src}"))
-        layout.addWidget(QtWidgets.QLabel("Engine: MatAnyone 2"))
-        layout.addWidget(
-            QtWidgets.QLabel("Max size: short side ≤ 1080 (fixed)")
-        )
+        self._still = still_path
+        self._work = work_dir
+        self._sam_mask = work_dir / "mask_sam2.png"
+        self._flame_mask: Path | None = None
+        self._sam_busy = False
+        self._sam_thread: QtCore.QThread | None = None
+        self._sam_worker: _SamMaskWorker | None = None
+        self._debounce = QtCore.QTimer(self)
+        self._debounce.setSingleShot(True)
+        self._debounce.setInterval(350)
+        self._debounce.timeout.connect(self._run_sam2)
 
         try:
             import matanyone_runtime_paths as rpaths
 
-            sam2_ready = rpaths.is_sam2_ready()
+            self._sam2_ready = rpaths.is_sam2_ready()
         except Exception:  # noqa: BLE001
-            sam2_ready = False
+            self._sam2_ready = False
 
-        mask_box = QtWidgets.QGroupBox("Mask source")
-        mask_layout = QtWidgets.QVBoxLayout(mask_box)
-        self._mask_flame = QtWidgets.QRadioButton(
-            "Flame (PNG / EXR file) — recommended"
-        )
-        if sam2_ready:
-            sam_label = "SAM2 (click points after export)"
-            hint_text = (
-                "SAM2 is ready. After Run, click foreground points on the "
-                "first-frame preview. Points on this dialog are optional."
-            )
-        else:
-            sam_label = "SAM2 (requires DGpy → MatAnyone → SAM2 Setup…)"
-            hint_text = (
-                "SAM2 is not installed yet. Run DGpy → MatAnyone → SAM2 Setup… "
-                "first (same runtime folder; no system packages), or use a "
-                "Flame PNG/EXR mask."
-            )
-        self._mask_sam = QtWidgets.QRadioButton(sam_label)
-        self._mask_flame.setChecked(True)
-        mask_layout.addWidget(self._mask_flame)
-        mask_layout.addWidget(self._mask_sam)
+        layout = QtWidgets.QVBoxLayout(self)
+        src = selection.clip_label(clip)
+        if ignored_count:
+            src += f"  (ignoring {ignored_count} other)"
+        layout.addWidget(QtWidgets.QLabel(f"Source: {src} (exported)"))
+        layout.addWidget(QtWidgets.QLabel("Max size: short side ≤ 1080 (fixed)"))
 
+        self._tabs = QtWidgets.QTabWidget()
+        flame_page = QtWidgets.QWidget()
+        flame_l = QtWidgets.QVBoxLayout(flame_page)
         row = QtWidgets.QHBoxLayout()
         self._mask_edit = QtWidgets.QLineEdit()
-        self._mask_edit.setPlaceholderText("Path to first-frame mask…")
+        self._mask_edit.setPlaceholderText("Path to first-frame mask (PNG / EXR)…")
         browse = QtWidgets.QPushButton("Browse…")
         browse.clicked.connect(self._browse_mask)
         row.addWidget(self._mask_edit)
         row.addWidget(browse)
-        mask_layout.addLayout(row)
+        flame_l.addLayout(row)
+        self._flame_preview = _ImagePreview(clickable=False)
+        flame_l.addWidget(self._flame_preview, 1)
+        self._tabs.addTab(flame_page, "Flame")
 
-        self._sam_preview = _SamPreview()
-        mask_layout.addWidget(self._sam_preview)
-        clear_pts = QtWidgets.QPushButton("Clear SAM points")
-        clear_pts.clicked.connect(self._sam_preview.clear_points)
-        mask_layout.addWidget(clear_pts)
-        hint = QtWidgets.QLabel(hint_text)
-        hint.setWordWrap(True)
-        mask_layout.addWidget(hint)
-        layout.addWidget(mask_box)
+        sam_page = QtWidgets.QWidget()
+        sam_l = QtWidgets.QVBoxLayout(sam_page)
+        self._sam_preview = _ImagePreview(clickable=True)
+        self._sam_preview.set_image_path(still_path if still_path.is_file() else None)
+        self._sam_preview.point_added.connect(self._on_point)
+        sam_l.addWidget(self._sam_preview, 1)
+        clear_pts = QtWidgets.QPushButton("Clear points")
+        clear_pts.clicked.connect(self._clear_sam)
+        sam_l.addWidget(clear_pts)
+        self._sam_status = QtWidgets.QLabel(
+            "Click the subject. Mask updates automatically."
+            if self._sam2_ready
+            else "SAM2 is not set up. Run DGpy → MatAnyone → SAM2 Setup…"
+        )
+        self._sam_status.setWordWrap(True)
+        sam_l.addWidget(self._sam_status)
+        self._tabs.addTab(sam_page, "SAM2")
+        if not self._sam2_ready:
+            self._tabs.setTabEnabled(1, False)
+            self._tabs.setTabToolTip(
+                1, "Run DGpy → MatAnyone → SAM2 Setup… to enable this tab."
+            )
+        layout.addWidget(self._tabs, 1)
 
         out_box = QtWidgets.QGroupBox("Output")
         out_layout = QtWidgets.QFormLayout(out_box)
@@ -188,9 +286,9 @@ class MatAnyoneDialog(QtWidgets.QDialog):
         self._import = QtWidgets.QCheckBox("Import to Flame")
         self._import.setChecked(True)
         out_layout.addRow(self._import)
-        self._work = QtWidgets.QLineEdit()
-        self._work.setPlaceholderText("/tmp/dgpy_matanyone/<job_id>/ (default)")
-        out_layout.addRow("Work dir", self._work)
+        self._work_edit = QtWidgets.QLineEdit(str(work_dir))
+        self._work_edit.setReadOnly(True)
+        out_layout.addRow("Work dir", self._work_edit)
         layout.addWidget(out_box)
 
         buttons = QtWidgets.QDialogButtonBox(
@@ -201,13 +299,6 @@ class MatAnyoneDialog(QtWidgets.QDialog):
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
 
-        self._mask_flame.toggled.connect(self._sync_mode)
-        self._sync_mode()
-
-    def _sync_mode(self) -> None:
-        flame_mode = self._mask_flame.isChecked()
-        self._mask_edit.setEnabled(flame_mode)
-
     def _browse_mask(self) -> None:
         path, _ = QtWidgets.QFileDialog.getOpenFileName(
             self,
@@ -215,35 +306,110 @@ class MatAnyoneDialog(QtWidgets.QDialog):
             "",
             "Images (*.png *.exr *.jpg *.jpeg *.tif *.tiff);;All (*)",
         )
-        if path:
-            self._mask_edit.setText(path)
+        if not path:
+            return
+        self._mask_edit.setText(path)
+        self._flame_mask = Path(path)
+        self._flame_preview.set_image_path(self._flame_mask)
+
+    def _on_point(self, _x: float, _y: float) -> None:
+        if not self._sam2_ready or self._sam_busy:
+            return
+        self._sam_status.setText("SAM2: updating mask…")
+        self._debounce.start()
+
+    def _clear_sam(self) -> None:
+        self._debounce.stop()
+        self._sam_preview.clear_points()
+        if self._sam_mask.exists():
+            try:
+                self._sam_mask.unlink()
+            except OSError:
+                pass
+        self._sam_status.setText("Click the subject. Mask updates automatically.")
+
+    def _run_sam2(self) -> None:
+        points = self._sam_preview.points()
+        if not points or self._sam_busy:
+            return
+        self._sam_busy = True
+        self._sam_status.setText("SAM2: generating mask…")
+        self._sam_thread = QtCore.QThread(self)
+        self._sam_worker = _SamMaskWorker(
+            still=self._still,
+            points=points,
+            out_mask=self._sam_mask,
+            work=self._work,
+        )
+        self._sam_worker.moveToThread(self._sam_thread)
+        self._sam_thread.started.connect(self._sam_worker.run)
+        self._sam_worker.finished_ok.connect(self._on_sam_ok)
+        self._sam_worker.finished_err.connect(self._on_sam_err)
+        self._sam_worker.finished_ok.connect(self._sam_thread.quit)
+        self._sam_worker.finished_err.connect(self._sam_thread.quit)
+        self._sam_thread.finished.connect(self._sam_worker.deleteLater)
+        self._sam_thread.start()
+
+    @QtCore.Slot(object)
+    def _on_sam_ok(self, path: object) -> None:
+        self._sam_busy = False
+        mask = Path(str(path))
+        self._sam_preview.set_mask_path(mask if mask.is_file() else None)
+        self._sam_status.setText("SAM2 mask ready. Add points to refine, then OK.")
+
+    @QtCore.Slot(str)
+    def _on_sam_err(self, message: str) -> None:
+        self._sam_busy = False
+        self._sam_status.setText(f"SAM2 failed: {message}")
+        QtWidgets.QMessageBox.warning(self, "MatAnyone", f"SAM2 mask failed:\n{message}")
 
     def _accept(self) -> None:
-        if self._mask_flame.isChecked():
+        if self._sam_busy:
+            QtWidgets.QMessageBox.information(
+                self, "MatAnyone", "SAM2 is still generating. Wait a moment."
+            )
+            return
+        tab = self._tabs.currentIndex()
+        dest = self._work / "mask.png"
+        if tab == 0:
             raw = self._mask_edit.text().strip()
             if not raw or not Path(raw).is_file():
                 QtWidgets.QMessageBox.warning(
-                    self, "MatAnyone", "Choose a valid mask image file."
+                    self, "MatAnyone", "Choose a valid mask image on the Flame tab."
                 )
                 return
-            mask_path = Path(raw)
+            src = Path(raw)
+            if src.resolve() != dest.resolve():
+                shutil.copy2(src, dest)
             mask_source = "flame"
             points: list[tuple[float, float]] = []
         else:
-            mask_path = None
+            if not self._sam2_ready:
+                QtWidgets.QMessageBox.warning(
+                    self,
+                    "MatAnyone",
+                    "SAM2 is not set up.\nRun DGpy → MatAnyone → SAM2 Setup…",
+                )
+                return
+            if not self._sam_mask.is_file():
+                QtWidgets.QMessageBox.warning(
+                    self,
+                    "MatAnyone",
+                    "Generate a SAM2 mask first (click points on the preview).",
+                )
+                return
+            shutil.copy2(self._sam_mask, dest)
             mask_source = "sam2"
             points = self._sam_preview.points()
 
-        work_raw = self._work.text().strip()
-        work_dir = Path(work_raw).expanduser() if work_raw else None
         self._result = DialogResult(
             mask_source=mask_source,
-            mask_path=mask_path,
+            mask_path=dest,
             sam_points=points,
             output_kind=str(self._kind.currentData()),
             write_foreground=self._fgr.isChecked(),
             import_to_flame=self._import.isChecked(),
-            work_dir=work_dir,
+            work_dir=self._work,
         )
         self.accept()
 
@@ -251,52 +417,21 @@ class MatAnyoneDialog(QtWidgets.QDialog):
         return self._result
 
 
-class SamPointsDialog(QtWidgets.QDialog):
-    """Collect foreground clicks on the exported first frame."""
-
-    def __init__(self, image_path: Path, parent=None):
-        super().__init__(parent)
-        self.setWindowTitle("MatAnyone — SAM2 points")
-        self._points: list[tuple[float, float]] = []
-        layout = QtWidgets.QVBoxLayout(self)
-        layout.addWidget(
-            QtWidgets.QLabel("Click the subject (foreground). Then OK.")
-        )
-        self._preview = _SamPreview()
-        self._preview.set_image_path(image_path)
-        layout.addWidget(self._preview)
-        buttons = QtWidgets.QDialogButtonBox(
-            QtWidgets.QDialogButtonBox.StandardButton.Ok
-            | QtWidgets.QDialogButtonBox.StandardButton.Cancel
-        )
-        buttons.accepted.connect(self._ok)
-        buttons.rejected.connect(self.reject)
-        layout.addWidget(buttons)
-
-    def _ok(self) -> None:
-        self._points = self._preview.points()
-        if not self._points:
-            QtWidgets.QMessageBox.warning(
-                self, "MatAnyone", "Add at least one foreground point."
-            )
-            return
-        self.accept()
-
-    def points(self) -> list[tuple[float, float]]:
-        return list(self._points)
-
-
-def open_dialog(clip, ignored_count: int = 0) -> DialogResult | None:
+def open_mask_dialog(
+    clip,
+    *,
+    still_path: Path,
+    work_dir: Path,
+    ignored_count: int = 0,
+) -> DialogResult | None:
     global _WINDOW
-    dlg = MatAnyoneDialog(clip, ignored_count=ignored_count)
+    dlg = MatAnyoneDialog(
+        clip,
+        still_path=still_path,
+        work_dir=work_dir,
+        ignored_count=ignored_count,
+    )
     _WINDOW = dlg
     if dlg.exec() != QtWidgets.QDialog.DialogCode.Accepted:
         return None
     return dlg.result_data()
-
-
-def collect_sam_points(image_path: Path) -> list[tuple[float, float]] | None:
-    dlg = SamPointsDialog(image_path)
-    if dlg.exec() != QtWidgets.QDialog.DialogCode.Accepted:
-        return None
-    return dlg.points()
