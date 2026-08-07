@@ -1,4 +1,4 @@
-"""MatAnyone mask-prep dialog (PySide6) — Flame / SAM2 tabs."""
+"""MatAnyone mask-prep dialog (PySide6) — Flame / SAM2 tabs + ref frame."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 
 import matanyone_selection as selection
 
-__version__ = "0.8.0"
+__version__ = "0.9.0"
 
 _WINDOW: QtWidgets.QWidget | None = None
 
@@ -24,6 +24,7 @@ class DialogResult:
     write_foreground: bool
     import_to_flame: bool
     work_dir: Path | None
+    ref_frame_index: int = 0
 
 
 class _ImagePreview(QtWidgets.QLabel):
@@ -46,9 +47,12 @@ class _ImagePreview(QtWidgets.QLabel):
     def set_accept_clicks(self, enabled: bool) -> None:
         self._accept_clicks = bool(enabled and self._clickable)
 
-    def set_image_path(self, path: Path | None) -> None:
-        self._points.clear()
-        self._mask_img = None
+    def set_image_path(
+        self, path: Path | None, *, clear_overlay: bool = True
+    ) -> None:
+        if clear_overlay:
+            self._points.clear()
+            self._mask_img = None
         if path is None or not path.is_file():
             self._pixmap = None
             self.setText("No preview")
@@ -216,6 +220,7 @@ class MatAnyoneDialog(QtWidgets.QDialog):
         clip,
         *,
         still_path: Path,
+        source_video: Path,
         work_dir: Path,
         ignored_count: int = 0,
         parent=None,
@@ -225,10 +230,15 @@ class MatAnyoneDialog(QtWidgets.QDialog):
         self.setMinimumWidth(640)
         self._result: DialogResult | None = None
         self._still = still_path
+        self._video = source_video
         self._work = work_dir
+        self._ref_dir = work_dir / "ref"
+        self._ref_dir.mkdir(parents=True, exist_ok=True)
+        self._ref_still = self._ref_dir / "ref_frame.png"
         self._sam_mask = work_dir / "mask_sam2.png"
         self._flame_mask: Path | None = None
         self._sam_busy = False
+        self._frame_busy = False
         self._sam_thread: QtCore.QThread | None = None
         self._sam_worker: _SamMaskWorker | None = None
         self._pending_rerun = False
@@ -237,13 +247,26 @@ class MatAnyoneDialog(QtWidgets.QDialog):
         self._debounce.setSingleShot(True)
         self._debounce.setInterval(900)
         self._debounce.timeout.connect(self._run_sam2)
+        self._frame_debounce = QtCore.QTimer(self)
+        self._frame_debounce.setSingleShot(True)
+        self._frame_debounce.setInterval(250)
+        self._frame_debounce.timeout.connect(self._apply_ref_frame)
 
         try:
             import matanyone_runtime_paths as rpaths
 
             self._sam2_ready = rpaths.is_sam2_ready()
+            self._python = rpaths.resolve_python() or "python3"
         except Exception:  # noqa: BLE001
             self._sam2_ready = False
+            self._python = "python3"
+
+        import matanyone_job as job
+
+        try:
+            self._frame_count = max(1, job.probe_frame_count(source_video, python=self._python))
+        except Exception:  # noqa: BLE001
+            self._frame_count = 1
 
         layout = QtWidgets.QVBoxLayout(self)
         src = selection.clip_label(clip)
@@ -252,17 +275,41 @@ class MatAnyoneDialog(QtWidgets.QDialog):
         layout.addWidget(QtWidgets.QLabel(f"Source: {src} (exported)"))
         layout.addWidget(QtWidgets.QLabel("Max size: short side ≤ 1080 (fixed)"))
 
+        ref_row = QtWidgets.QHBoxLayout()
+        ref_row.addWidget(QtWidgets.QLabel("Reference frame"))
+        self._frame_slider = QtWidgets.QSlider(QtCore.Qt.Orientation.Horizontal)
+        self._frame_slider.setMinimum(0)
+        self._frame_slider.setMaximum(max(0, self._frame_count - 1))
+        self._frame_slider.setValue(0)
+        self._frame_slider.valueChanged.connect(self._on_frame_slider)
+        ref_row.addWidget(self._frame_slider, 1)
+        self._frame_spin = QtWidgets.QSpinBox()
+        self._frame_spin.setMinimum(0)
+        self._frame_spin.setMaximum(max(0, self._frame_count - 1))
+        self._frame_spin.valueChanged.connect(self._on_frame_spin)
+        ref_row.addWidget(self._frame_spin)
+        self._frame_label = QtWidgets.QLabel(self._frame_caption(0))
+        ref_row.addWidget(self._frame_label)
+        layout.addLayout(ref_row)
+
         self._tabs = QtWidgets.QTabWidget()
         flame_page = QtWidgets.QWidget()
         flame_l = QtWidgets.QVBoxLayout(flame_page)
         row = QtWidgets.QHBoxLayout()
         self._mask_edit = QtWidgets.QLineEdit()
-        self._mask_edit.setPlaceholderText("Path to first-frame mask (PNG / EXR)…")
+        self._mask_edit.setPlaceholderText(
+            "Path to reference-frame mask (PNG / EXR)…"
+        )
         browse = QtWidgets.QPushButton("Browse…")
         browse.clicked.connect(self._browse_mask)
         row.addWidget(self._mask_edit)
         row.addWidget(browse)
         flame_l.addLayout(row)
+        flame_l.addWidget(
+            QtWidgets.QLabel(
+                "Mask overlays the source. Scrub the reference frame until they align."
+            )
+        )
         self._flame_preview = _ImagePreview(clickable=False)
         flame_l.addWidget(self._flame_preview, 1)
         self._tabs.addTab(flame_page, "Flame")
@@ -270,7 +317,6 @@ class MatAnyoneDialog(QtWidgets.QDialog):
         sam_page = QtWidgets.QWidget()
         sam_l = QtWidgets.QVBoxLayout(sam_page)
         self._sam_preview = _ImagePreview(clickable=True)
-        self._sam_preview.set_image_path(still_path if still_path.is_file() else None)
         self._sam_preview.point_added.connect(self._on_point)
         sam_l.addWidget(self._sam_preview, 1)
         clear_pts = QtWidgets.QPushButton("Clear points")
@@ -319,6 +365,92 @@ class MatAnyoneDialog(QtWidgets.QDialog):
         self._clear_btn = clear_pts
         self._set_sam_busy(False)
 
+        # Seed previews from export still (frame 0) or extract if needed.
+        if still_path.is_file():
+            try:
+                shutil.copy2(still_path, self._ref_still)
+            except OSError:
+                pass
+        self._apply_ref_frame(force_index=0)
+
+    def _frame_caption(self, index: int) -> str:
+        last = max(0, self._frame_count - 1)
+        return f"{index} / {last}"
+
+    def _on_frame_slider(self, value: int) -> None:
+        if self._frame_spin.value() != value:
+            self._frame_spin.blockSignals(True)
+            self._frame_spin.setValue(value)
+            self._frame_spin.blockSignals(False)
+        self._frame_label.setText(self._frame_caption(value))
+        self._frame_debounce.start()
+
+    def _on_frame_spin(self, value: int) -> None:
+        if self._frame_slider.value() != value:
+            self._frame_slider.blockSignals(True)
+            self._frame_slider.setValue(value)
+            self._frame_slider.blockSignals(False)
+        self._frame_label.setText(self._frame_caption(value))
+        self._frame_debounce.start()
+
+    def _apply_ref_frame(self, force_index: int | None = None) -> None:
+        import matanyone_job as job
+
+        index = self._frame_slider.value() if force_index is None else force_index
+        if force_index is not None:
+            self._frame_slider.blockSignals(True)
+            self._frame_spin.blockSignals(True)
+            self._frame_slider.setValue(index)
+            self._frame_spin.setValue(index)
+            self._frame_slider.blockSignals(False)
+            self._frame_spin.blockSignals(False)
+            self._frame_label.setText(self._frame_caption(index))
+
+        # Changing ref clears SAM points/mask (spec BE).
+        self._debounce.stop()
+        self._pending_rerun = False
+        self._sam_preview.clear_points()
+        if self._sam_mask.exists():
+            try:
+                self._sam_mask.unlink()
+            except OSError:
+                pass
+        if self._sam2_ready:
+            self._sam_status.setText(
+                "Reference frame changed. Click the subject to generate a mask."
+            )
+
+        self._frame_busy = True
+        if hasattr(self, "_ok_btn") and self._ok_btn is not None:
+            self._ok_btn.setEnabled(False)
+        try:
+            def _log(_m: str) -> None:
+                return
+
+            job.extract_frame_at(
+                self._video,
+                index,
+                self._ref_still,
+                python=self._python,
+                log=_log,
+            )
+            self._still = self._ref_still
+            # Flame: keep mask overlay while swapping source.
+            self._flame_preview.set_image_path(
+                self._ref_still, clear_overlay=False
+            )
+            if self._flame_mask is not None:
+                self._flame_preview.set_mask_path(self._flame_mask)
+            self._sam_preview.set_image_path(self._ref_still, clear_overlay=True)
+        except Exception as exc:  # noqa: BLE001
+            QtWidgets.QMessageBox.warning(
+                self, "MatAnyone", f"Could not extract frame {index}:\n{exc}"
+            )
+        finally:
+            self._frame_busy = False
+            if hasattr(self, "_ok_btn") and self._ok_btn is not None:
+                self._ok_btn.setEnabled(not self._sam_busy)
+
     def _set_sam_busy(self, busy: bool) -> None:
         self._sam_busy = busy
         # Always allow placing more points (queued regenerate). Only lock OK.
@@ -326,7 +458,9 @@ class MatAnyoneDialog(QtWidgets.QDialog):
         if hasattr(self, "_clear_btn") and self._clear_btn is not None:
             self._clear_btn.setEnabled(not busy)
         if hasattr(self, "_ok_btn") and self._ok_btn is not None:
-            self._ok_btn.setEnabled(not busy)
+            self._ok_btn.setEnabled(not busy and not self._frame_busy)
+        self._frame_slider.setEnabled(not busy)
+        self._frame_spin.setEnabled(not busy)
         if busy:
             self._tabs.setTabEnabled(0, False)
         else:
@@ -337,7 +471,7 @@ class MatAnyoneDialog(QtWidgets.QDialog):
     def _browse_mask(self) -> None:
         path, _ = QtWidgets.QFileDialog.getOpenFileName(
             self,
-            "First-frame mask",
+            "Reference-frame mask",
             "",
             "Images (*.png *.exr *.jpg *.jpeg *.tif *.tiff);;All (*)",
         )
@@ -345,7 +479,10 @@ class MatAnyoneDialog(QtWidgets.QDialog):
             return
         self._mask_edit.setText(path)
         self._flame_mask = Path(path)
-        self._flame_preview.set_image_path(self._flame_mask)
+        # Source stays; mask becomes overlay.
+        if self._still.is_file():
+            self._flame_preview.set_image_path(self._still, clear_overlay=False)
+        self._flame_preview.set_mask_path(self._flame_mask)
 
     def _on_point(self, _x: float, _y: float) -> None:
         if not self._sam2_ready:
@@ -357,11 +494,10 @@ class MatAnyoneDialog(QtWidgets.QDialog):
                 f"SAM2: {n} point(s) — will regenerate after current run…"
             )
             return
-        # Keep accepting more clicks while debouncing — do not lock yet.
         self._sam_status.setText(
             f"SAM2: {n} point(s) — mask updates after you pause clicking…"
         )
-        self._debounce.start()  # restarts timer on each click
+        self._debounce.start()
 
     def _clear_sam(self) -> None:
         if self._sam_busy:
@@ -383,7 +519,6 @@ class MatAnyoneDialog(QtWidgets.QDialog):
             self._set_sam_busy(False)
             return
         if self._sam_busy:
-            # Generation in flight — rerun with latest points when it finishes.
             self._pending_rerun = True
             return
         self._points_at_run = list(points)
@@ -411,7 +546,6 @@ class MatAnyoneDialog(QtWidgets.QDialog):
         mask = Path(str(path))
         self._sam_preview.set_mask_path(mask if mask.is_file() else None)
         self._set_sam_busy(False)
-        # If the user added points during generation, or points differ, regenerate.
         current = self._sam_preview.points()
         if self._pending_rerun or current != getattr(self, "_points_at_run", current):
             self._pending_rerun = False
@@ -428,9 +562,9 @@ class MatAnyoneDialog(QtWidgets.QDialog):
         QtWidgets.QMessageBox.warning(self, "MatAnyone", f"SAM2 mask failed:\n{message}")
 
     def _accept(self) -> None:
-        if self._sam_busy:
+        if self._sam_busy or self._frame_busy:
             QtWidgets.QMessageBox.information(
-                self, "MatAnyone", "SAM2 is still generating. Wait a moment."
+                self, "MatAnyone", "Still busy. Wait a moment."
             )
             return
         tab = self._tabs.currentIndex()
@@ -474,6 +608,7 @@ class MatAnyoneDialog(QtWidgets.QDialog):
             write_foreground=self._fgr.isChecked(),
             import_to_flame=self._import.isChecked(),
             work_dir=self._work,
+            ref_frame_index=int(self._frame_slider.value()),
         )
         self.accept()
 
@@ -485,6 +620,7 @@ def open_mask_dialog(
     clip,
     *,
     still_path: Path,
+    source_video: Path,
     work_dir: Path,
     ignored_count: int = 0,
 ) -> DialogResult | None:
@@ -492,6 +628,7 @@ def open_mask_dialog(
     dlg = MatAnyoneDialog(
         clip,
         still_path=still_path,
+        source_video=source_video,
         work_dir=work_dir,
         ignored_count=ignored_count,
     )

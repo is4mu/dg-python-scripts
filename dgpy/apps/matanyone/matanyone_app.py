@@ -9,7 +9,7 @@ import matanyone_job as job
 import matanyone_job_progress as job_progress
 import matanyone_selection as selection
 
-__version__ = "0.8.0"
+__version__ = "0.9.0"
 
 
 def run_from_selection(selection_items) -> None:
@@ -90,6 +90,7 @@ def run_from_selection(selection_items) -> None:
                     import_to_flame=opts_ui.import_to_flame,
                     import_destination=import_destination,
                     result_basename=result_basename,
+                    ref_frame_index=int(opts_ui.ref_frame_index),
                     work_dir=opts_ui.work_dir or work,
                     source_video=video,
                 ),
@@ -108,6 +109,7 @@ def run_from_selection(selection_items) -> None:
         opts_ui = dialog.open_mask_dialog(
             clip,
             still_path=still,
+            source_video=video,
             work_dir=work_dir,
             ignored_count=ignored,
         )

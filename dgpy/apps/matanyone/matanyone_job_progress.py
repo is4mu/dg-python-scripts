@@ -10,7 +10,7 @@ from PySide6 import QtCore, QtWidgets
 
 import matanyone_job as job
 
-__version__ = "0.8.0"
+__version__ = "0.9.0"
 
 _ACTIVE: JobProgressDialog | None = None
 

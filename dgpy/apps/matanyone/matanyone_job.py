@@ -18,7 +18,7 @@ from typing import Any, Callable
 
 import dgpy_paths
 
-__version__ = "0.8.0"
+__version__ = "0.9.0"
 
 ProgressCb = Callable[[str], None]
 StepCb = Callable[[int, int, str], None]
@@ -42,7 +42,9 @@ EXPORT_STEPS: list[tuple[str, int]] = [
 
 INFER_STEPS: list[tuple[str, int]] = [
     ("Prepare", 1),
-    ("MatAnyone 2 infer", 8),
+    ("Forward MatAnyone", 6),
+    ("Backward MatAnyone", 6),
+    ("Join + upscale", 3),
     ("Import to Flame", 2),
     ("Done", 1),
 ]
@@ -73,6 +75,7 @@ class JobOptions:
     phase: str = "full"  # export | infer | full
     source_video: Path | None = None
     result_basename: str = "clip"  # sanitized source name without _Alpha
+    ref_frame_index: int = 0  # mask applies to this frame; bidirectional when > 0
 
 
 @dataclass
@@ -313,10 +316,112 @@ def extract_first_frame(
     holder: _ProcHolder | None = None,
 ) -> Path:
     """Write first frame PNG. Prefer ffmpeg (avoids OpenCV in the pipeline)."""
+    return extract_frame_at(
+        video,
+        0,
+        still,
+        python=python,
+        log=log,
+        cancel=cancel,
+        holder=holder,
+    )
+
+
+def probe_frame_count(video: Path, *, python: str | None = None) -> int:
+    """Best-effort frame count for the intermediate export video."""
     import shutil
 
+    ffprobe = shutil.which("ffprobe")
+    if ffprobe:
+        proc = subprocess.run(
+            [
+                ffprobe,
+                "-v",
+                "error",
+                "-select_streams",
+                "v:0",
+                "-count_packets",
+                "-show_entries",
+                "stream=nb_read_packets",
+                "-of",
+                "csv=p=0",
+                str(video),
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if proc.returncode == 0:
+            raw = (proc.stdout or "").strip().splitlines()
+            if raw:
+                try:
+                    n = int(raw[0].strip().split(",")[0])
+                    if n > 0:
+                        return n
+                except ValueError:
+                    pass
+        proc2 = subprocess.run(
+            [
+                ffprobe,
+                "-v",
+                "error",
+                "-select_streams",
+                "v:0",
+                "-show_entries",
+                "stream=nb_frames",
+                "-of",
+                "csv=p=0",
+                str(video),
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if proc2.returncode == 0:
+            raw = (proc2.stdout or "").strip()
+            if raw.isdigit() and int(raw) > 0:
+                return int(raw)
+
+    if not python:
+        raise RuntimeError(f"Could not probe frame count for {video}")
+    code = (
+        "import sys,cv2\n"
+        "cap=cv2.VideoCapture(sys.argv[1])\n"
+        "n=int(cap.get(cv2.CAP_PROP_FRAME_COUNT)); cap.release()\n"
+        "if n<1: raise SystemExit('bad frame count')\n"
+        "print(n)\n"
+    )
+    proc = subprocess.run(
+        [python, "-c", code, str(video)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if proc.returncode != 0:
+        raise RuntimeError(
+            f"Could not probe frame count for {video}: "
+            f"{(proc.stderr or proc.stdout or '').strip()}"
+        )
+    return int((proc.stdout or "").strip())
+
+
+def extract_frame_at(
+    video: Path,
+    frame_index: int,
+    still: Path,
+    *,
+    python: str,
+    log: ProgressCb,
+    cancel: threading.Event | None = None,
+    holder: _ProcHolder | None = None,
+) -> Path:
+    """Write PNG for frame_index (0-based) from video."""
+    import shutil
+
+    if frame_index < 0:
+        raise RuntimeError(f"Invalid frame index: {frame_index}")
     still.parent.mkdir(parents=True, exist_ok=True)
-    log(f"Extract first frame → {still}")
+    log(f"Extract frame {frame_index} → {still}")
     ffmpeg = shutil.which("ffmpeg")
     if ffmpeg:
         _run_streaming(
@@ -328,6 +433,10 @@ def extract_first_frame(
                 "-y",
                 "-i",
                 str(video),
+                "-vf",
+                f"select=eq(n\\,{frame_index})",
+                "-vsync",
+                "vfr",
                 "-frames:v",
                 "1",
                 str(still),
@@ -337,25 +446,377 @@ def extract_first_frame(
             holder=holder,
         )
     else:
-        # Fallback: runtime venv + OpenCV (may fail on some codecs).
         code = (
-            "import sys\n"
-            "import cv2\n"
-            "cap=cv2.VideoCapture(sys.argv[1])\n"
-            "ok,frame=cap.read()\n"
-            "cap.release()\n"
+            "import sys,cv2\n"
+            "cap=cv2.VideoCapture(sys.argv[1]); idx=int(sys.argv[2])\n"
+            "cap.set(cv2.CAP_PROP_POS_FRAMES, idx)\n"
+            "ok,frame=cap.read(); cap.release()\n"
             "if not ok: raise SystemExit('failed to read frame')\n"
-            "cv2.imwrite(sys.argv[2], frame)\n"
+            "cv2.imwrite(sys.argv[3], frame)\n"
         )
         _run_streaming(
-            [python, "-c", code, str(video), str(still)],
+            [python, "-c", code, str(video), str(frame_index), str(still)],
             log=log,
             cancel=cancel,
             holder=holder,
         )
     if not still.is_file():
-        raise RuntimeError("First-frame extract produced no file")
+        raise RuntimeError(f"Frame extract produced no file (index={frame_index})")
     return still
+
+
+def _ffmpeg_or_raise() -> str:
+    import shutil
+
+    ffmpeg = shutil.which("ffmpeg")
+    if not ffmpeg:
+        raise RuntimeError("ffmpeg is required for reference-frame segmenting")
+    return ffmpeg
+
+
+def make_forward_segment(
+    video: Path,
+    ref_index: int,
+    out_mp4: Path,
+    *,
+    log: ProgressCb,
+    cancel: threading.Event | None = None,
+    holder: _ProcHolder | None = None,
+) -> Path:
+    """Write MP4 of frames ref_index…end (frame 0 of result = ref)."""
+    ffmpeg = _ffmpeg_or_raise()
+    out_mp4.parent.mkdir(parents=True, exist_ok=True)
+    log(f"Build forward segment from frame {ref_index} → {out_mp4.name}")
+    _run_streaming(
+        [
+            ffmpeg,
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-y",
+            "-i",
+            str(video),
+            "-vf",
+            f"select='gte(n\\,{ref_index})',setpts=N/FRAME_RATE/TB",
+            "-an",
+            "-c:v",
+            "libx264",
+            "-crf",
+            "15",
+            "-pix_fmt",
+            "yuv420p",
+            str(out_mp4),
+        ],
+        log=log,
+        cancel=cancel,
+        holder=holder,
+    )
+    if not out_mp4.is_file():
+        raise RuntimeError("Forward segment missing")
+    return out_mp4
+
+
+def make_backward_input_segment(
+    video: Path,
+    ref_index: int,
+    out_mp4: Path,
+    *,
+    log: ProgressCb,
+    cancel: threading.Event | None = None,
+    holder: _ProcHolder | None = None,
+) -> Path:
+    """Write MP4 of frames ref…0 in reverse (frame 0 of result = ref)."""
+    ffmpeg = _ffmpeg_or_raise()
+    out_mp4.parent.mkdir(parents=True, exist_ok=True)
+    log(f"Build backward-input segment (reverse 0…{ref_index}) → {out_mp4.name}")
+    _run_streaming(
+        [
+            ffmpeg,
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-y",
+            "-i",
+            str(video),
+            "-vf",
+            f"select='lte(n\\,{ref_index})',setpts=N/FRAME_RATE/TB,reverse",
+            "-an",
+            "-c:v",
+            "libx264",
+            "-crf",
+            "15",
+            "-pix_fmt",
+            "yuv420p",
+            str(out_mp4),
+        ],
+        log=log,
+        cancel=cancel,
+        holder=holder,
+    )
+    if not out_mp4.is_file():
+        raise RuntimeError("Backward input segment missing")
+    return out_mp4
+
+
+def _reverse_movie(
+    src: Path,
+    dest: Path,
+    *,
+    log: ProgressCb,
+    cancel: threading.Event | None = None,
+    holder: _ProcHolder | None = None,
+) -> Path:
+    ffmpeg = _ffmpeg_or_raise()
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    log(f"Reverse movie {src.name} → {dest.name}")
+    _run_streaming(
+        [
+            ffmpeg,
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-y",
+            "-i",
+            str(src),
+            "-vf",
+            "reverse",
+            "-an",
+            "-c:v",
+            "libx264",
+            "-crf",
+            "15",
+            "-pix_fmt",
+            "yuv420p",
+            str(dest),
+        ],
+        log=log,
+        cancel=cancel,
+        holder=holder,
+    )
+    if not dest.is_file():
+        raise RuntimeError(f"Reverse movie failed: {dest}")
+    return dest
+
+
+def _list_seq_frames(seq_dir: Path) -> list[Path]:
+    frames = sorted(seq_dir.glob("*.png"))
+    if not frames:
+        frames = sorted(seq_dir.glob("*.exr"))
+    return frames
+
+
+def _reverse_sequence_dir(
+    src_dir: Path,
+    dest_dir: Path,
+    *,
+    log: ProgressCb,
+) -> Path:
+    frames = _list_seq_frames(src_dir)
+    if not frames:
+        raise RuntimeError(f"No frames to reverse in {src_dir}")
+    if dest_dir.exists():
+        import shutil
+
+        shutil.rmtree(dest_dir)
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    log(f"Reverse sequence ({len(frames)} frames) → {dest_dir.name}")
+    width = max(4, len(str(len(frames) - 1)))
+    suffix = frames[0].suffix
+    for i, frame in enumerate(reversed(frames)):
+        target = dest_dir / f"{i:0{width}d}{suffix}"
+        target.write_bytes(frame.read_bytes())
+    return dest_dir
+
+
+def reverse_matanyone_outputs(
+    src_out: Path,
+    dest_out: Path,
+    *,
+    log: ProgressCb,
+    cancel: threading.Event | None = None,
+    holder: _ProcHolder | None = None,
+) -> None:
+    """Time-reverse pha/fgr movies and pha/ sequence under a MatAnyone out dir."""
+    import shutil
+
+    if dest_out.exists():
+        shutil.rmtree(dest_out)
+    dest_out.mkdir(parents=True, exist_ok=True)
+    pha_mov, fgr_mov, pha_dir = _find_outputs(src_out)
+    if pha_dir is not None:
+        _reverse_sequence_dir(pha_dir, dest_out / "pha", log=log)
+    if pha_mov is not None:
+        tmp = dest_out / f".{pha_mov.name}.rev.mp4"
+        _reverse_movie(pha_mov, tmp, log=log, cancel=cancel, holder=holder)
+        final = dest_out / pha_mov.name
+        if final.exists():
+            final.unlink()
+        tmp.rename(final)
+    if fgr_mov is not None:
+        tmp = dest_out / f".{fgr_mov.name}.rev.mp4"
+        _reverse_movie(fgr_mov, tmp, log=log, cancel=cancel, holder=holder)
+        final = dest_out / fgr_mov.name
+        if final.exists():
+            final.unlink()
+        tmp.rename(final)
+
+
+def _join_sequence_dirs(
+    bwd_dir: Path,
+    fwd_dir: Path,
+    *,
+    ref_index: int,
+    dest_dir: Path,
+    log: ProgressCb,
+) -> Path:
+    bwd = _list_seq_frames(bwd_dir)
+    fwd = _list_seq_frames(fwd_dir)
+    if not bwd or not fwd:
+        raise RuntimeError("Join sequence: missing frames")
+    head = bwd[:ref_index]
+    combined = head + fwd
+    if dest_dir.exists():
+        import shutil
+
+        shutil.rmtree(dest_dir)
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    width = max(4, len(str(max(len(combined) - 1, 0))))
+    suffix = combined[0].suffix
+    log(f"Join sequence: {len(head)} (bwd) + {len(fwd)} (fwd) → {len(combined)}")
+    for i, frame in enumerate(combined):
+        (dest_dir / f"{i:0{width}d}{suffix}").write_bytes(frame.read_bytes())
+    return dest_dir
+
+
+def _join_movies(
+    bwd_mov: Path,
+    fwd_mov: Path,
+    *,
+    ref_index: int,
+    dest: Path,
+    log: ProgressCb,
+    cancel: threading.Event | None = None,
+    holder: _ProcHolder | None = None,
+) -> Path:
+    """Concat first ref_index frames of bwd with all of fwd."""
+    import shutil
+
+    ffmpeg = _ffmpeg_or_raise()
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    if ref_index <= 0:
+        shutil.copy2(fwd_mov, dest)
+        return dest
+    part_a = dest.with_name(f".{dest.stem}_a{dest.suffix}")
+    log(f"Join movies: bwd[0…{ref_index - 1}] + fwd")
+    _run_streaming(
+        [
+            ffmpeg,
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-y",
+            "-i",
+            str(bwd_mov),
+            "-vf",
+            f"select='lt(n\\,{ref_index})',setpts=N/FRAME_RATE/TB",
+            "-an",
+            "-c:v",
+            "libx264",
+            "-crf",
+            "15",
+            "-pix_fmt",
+            "yuv420p",
+            str(part_a),
+        ],
+        log=log,
+        cancel=cancel,
+        holder=holder,
+    )
+    _run_streaming(
+        [
+            ffmpeg,
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-y",
+            "-i",
+            str(part_a),
+            "-i",
+            str(fwd_mov),
+            "-filter_complex",
+            "[0:v][1:v]concat=n=2:v=1:a=0[v]",
+            "-map",
+            "[v]",
+            "-c:v",
+            "libx264",
+            "-crf",
+            "15",
+            "-pix_fmt",
+            "yuv420p",
+            str(dest),
+        ],
+        log=log,
+        cancel=cancel,
+        holder=holder,
+    )
+    try:
+        part_a.unlink()
+    except OSError:
+        pass
+    if not dest.is_file():
+        raise RuntimeError("Joined movie missing")
+    return dest
+
+
+def join_matanyone_outputs(
+    bwd_out: Path,
+    fwd_out: Path,
+    *,
+    ref_index: int,
+    dest_out: Path,
+    write_foreground: bool,
+    log: ProgressCb,
+    cancel: threading.Event | None = None,
+    holder: _ProcHolder | None = None,
+) -> None:
+    """Join reversed-backward + forward into dest_out (pha / *_pha / *_fgr)."""
+    import shutil
+
+    if dest_out.exists():
+        shutil.rmtree(dest_out)
+    dest_out.mkdir(parents=True, exist_ok=True)
+    b_pha, b_fgr, b_dir = _find_outputs(bwd_out)
+    f_pha, f_fgr, f_dir = _find_outputs(fwd_out)
+
+    if b_dir is not None and f_dir is not None:
+        _join_sequence_dirs(
+            b_dir, f_dir, ref_index=ref_index, dest_dir=dest_out / "pha", log=log
+        )
+    if b_pha is not None and f_pha is not None:
+        _join_movies(
+            b_pha,
+            f_pha,
+            ref_index=ref_index,
+            dest=dest_out / "clip_pha.mp4",
+            log=log,
+            cancel=cancel,
+            holder=holder,
+        )
+    elif f_pha is not None and ref_index == 0:
+        shutil.copy2(f_pha, dest_out / f_pha.name)
+
+    if write_foreground and b_fgr is not None and f_fgr is not None:
+        _join_movies(
+            b_fgr,
+            f_fgr,
+            ref_index=ref_index,
+            dest=dest_out / "clip_fgr.mp4",
+            log=log,
+            cancel=cancel,
+            holder=holder,
+        )
+    elif write_foreground and f_fgr is not None and ref_index == 0:
+        shutil.copy2(f_fgr, dest_out / f_fgr.name)
 
 
 def run_sam_mask(
@@ -1027,6 +1488,7 @@ def run_infer(
                     "write_foreground": opts.write_foreground,
                     "import_to_flame": opts.import_to_flame,
                     "result_basename": opts.result_basename,
+                    "ref_frame_index": opts.ref_frame_index,
                     "max_size": MAX_SIZE,
                     "mask_path": str(mask_path),
                     "source_video": str(video),
@@ -1037,23 +1499,94 @@ def run_infer(
             encoding="utf-8",
         )
 
-        set_step(1)
+        ref_n = max(0, int(opts.ref_frame_index or 0))
         out_dir = work / "out"
         save_image = opts.output_kind == "alpha_sequence"
-        log("Running MatAnyone 2 (max_size=1080 short side)…")
-        _check_cancel(cancel)
-        run_matanyone(
-            python=python,
-            inference_script=infer,
-            source=video,
-            mask=mask_path,
-            out_dir=out_dir,
-            save_image=save_image,
-            log=log,
-            cancel=cancel,
-            holder=holder,
-        )
+        seg = work / "seg"
 
+        set_step(1)
+        _check_cancel(cancel)
+        if ref_n == 0:
+            log("Running MatAnyone 2 forward (ref=0, full clip)…")
+            run_matanyone(
+                python=python,
+                inference_script=infer,
+                source=video,
+                mask=mask_path,
+                out_dir=out_dir,
+                save_image=save_image,
+                log=log,
+                cancel=cancel,
+                holder=holder,
+            )
+            set_step(2, "Backward skipped (ref=0)")
+            log("Backward pass skipped (reference frame 0).")
+        else:
+            fwd_mp4 = make_forward_segment(
+                video,
+                ref_n,
+                seg / "forward.mp4",
+                log=log,
+                cancel=cancel,
+                holder=holder,
+            )
+            log(f"Running MatAnyone 2 forward from frame {ref_n}…")
+            run_matanyone(
+                python=python,
+                inference_script=infer,
+                source=fwd_mp4,
+                mask=mask_path,
+                out_dir=work / "out_fwd",
+                save_image=save_image,
+                log=log,
+                cancel=cancel,
+                holder=holder,
+            )
+
+            set_step(2)
+            _check_cancel(cancel)
+            bwd_in = make_backward_input_segment(
+                video,
+                ref_n,
+                seg / "backward_in.mp4",
+                log=log,
+                cancel=cancel,
+                holder=holder,
+            )
+            log(f"Running MatAnyone 2 backward (reverse 0…{ref_n})…")
+            run_matanyone(
+                python=python,
+                inference_script=infer,
+                source=bwd_in,
+                mask=mask_path,
+                out_dir=work / "out_bwd_raw",
+                save_image=save_image,
+                log=log,
+                cancel=cancel,
+                holder=holder,
+            )
+            reverse_matanyone_outputs(
+                work / "out_bwd_raw",
+                work / "out_bwd",
+                log=log,
+                cancel=cancel,
+                holder=holder,
+            )
+            set_step(3)
+            _check_cancel(cancel)
+            log("Joining backward + forward mattes…")
+            join_matanyone_outputs(
+                work / "out_bwd",
+                work / "out_fwd",
+                ref_index=ref_n,
+                dest_out=out_dir,
+                write_foreground=opts.write_foreground,
+                log=log,
+                cancel=cancel,
+                holder=holder,
+            )
+
+        set_step(3)
         _check_cancel(cancel)
         restore_outputs_to_source_size(
             out_dir=out_dir,
@@ -1077,7 +1610,7 @@ def run_infer(
         imported = False
         import_errors: list[str] = []
 
-        set_step(2)
+        set_step(4)
         _check_cancel(cancel)
         if opts.import_to_flame and import_candidates:
             last_err: Exception | None = None
@@ -1095,7 +1628,7 @@ def run_infer(
                     log(f"Import failed, trying next candidate: {exc}")
             if not imported and last_err is not None:
                 detail = "\n".join(import_errors)
-                set_step(3)
+                set_step(5)
                 return JobResult(
                     ok=True,
                     message=(
@@ -1109,7 +1642,7 @@ def run_infer(
                     video_path=video,
                 )
 
-        set_step(3)
+        set_step(5)
         return JobResult(
             ok=True,
             message="Done" if imported or not opts.import_to_flame else "Done (not imported)",
