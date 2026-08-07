@@ -12,7 +12,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 import matanyone_sam2 as sam
 import matanyone_selection as selection
 
-__version__ = "0.12.2"
+__version__ = "0.12.3"
 
 _WINDOW: QtWidgets.QWidget | None = None
 
@@ -405,6 +405,13 @@ class _BgCall(QtCore.QObject):
             self.finished_err.emit(str(exc))
 
 
+class _FrameBridge(QtCore.QObject):
+    """Marshal frame-extract results from a worker thread onto the GUI thread."""
+
+    finished_ok = QtCore.Signal(object)
+    finished_err = QtCore.Signal(str)
+
+
 class MatAnyoneDialog(QtWidgets.QDialog):
     """Mask preparation after export (SAM2-only)."""
 
@@ -436,6 +443,11 @@ class MatAnyoneDialog(QtWidgets.QDialog):
         self._frame_job_running = False
         self._want_proxy: tuple[int, int] | None = None  # index, gen
         self._want_full: tuple[int, int] | None = None
+        self._frame_cb_ok = None
+        self._frame_cb_err = None
+        self._frame_bridge = _FrameBridge(self)
+        self._frame_bridge.finished_ok.connect(self._on_frame_bridge_ok)
+        self._frame_bridge.finished_err.connect(self._on_frame_bridge_err)
         self._finalizing = False
         self._pending_rerun = False
         self._points_at_run: list[tuple[float, float, int]] = []
@@ -636,7 +648,7 @@ class MatAnyoneDialog(QtWidgets.QDialog):
         return f"{index} / {last}"
 
     def _proxy_cache_path(self, index: int) -> Path:
-        return self._ref_dir / "proxy" / f"{index:06d}.jpg"
+        return self._ref_dir / "proxy" / f"{index:06d}.png"
 
     def _full_cache_path(self, index: int) -> Path:
         return self._ref_dir / "full" / f"{index:06d}.png"
@@ -846,24 +858,42 @@ class MatAnyoneDialog(QtWidgets.QDialog):
         self._run_frame_bg(work, ok, err)
 
     def _run_frame_bg(self, fn, on_ok, on_err) -> None:
-        """Run extract on a daemon thread; marshal result back to the GUI thread.
+        """Run extract on a daemon thread; deliver result via Qt signal (GUI thread).
 
-        Avoid QThread/moveToThread here — under Flame those callbacks often never
-        return, which left the dialog permanently locked after scrubbing.
+        Do not use QTimer.singleShot from the worker thread — under Flame those
+        callbacks are often dropped, so the preview never updates.
         """
+        self._frame_cb_ok = on_ok
+        self._frame_cb_err = on_err
+        bridge = self._frame_bridge
 
         def runner() -> None:
             try:
                 result = fn()
             except Exception as exc:  # noqa: BLE001
-                msg = str(exc)
-                QtCore.QTimer.singleShot(0, lambda m=msg: on_err(m))
+                bridge.finished_err.emit(str(exc))
                 return
-            QtCore.QTimer.singleShot(0, lambda r=result: on_ok(r))
+            bridge.finished_ok.emit(result)
 
         threading.Thread(
             target=runner, name="matanyone-ref-frame", daemon=True
         ).start()
+
+    @QtCore.Slot(object)
+    def _on_frame_bridge_ok(self, result: object) -> None:
+        cb = self._frame_cb_ok
+        self._frame_cb_ok = None
+        self._frame_cb_err = None
+        if cb is not None:
+            cb(result)
+
+    @QtCore.Slot(str)
+    def _on_frame_bridge_err(self, message: str) -> None:
+        cb = self._frame_cb_err
+        self._frame_cb_ok = None
+        self._frame_cb_err = None
+        if cb is not None:
+            cb(message)
 
     # --- objects / tools ---------------------------------------------------
 

@@ -18,7 +18,7 @@ from typing import Any, Callable
 
 import dgpy_paths
 
-__version__ = "0.12.2"
+__version__ = "0.12.3"
 
 ProgressCb = Callable[[str], None]
 StepCb = Callable[[int, int, str], None]
@@ -423,10 +423,8 @@ def extract_frame_at(
 ) -> Path:
     """Write image for frame_index (0-based) from video.
 
-    Prefers OpenCV seek in the runtime venv (fast for scrubbing). Optional
-    ``max_short_side`` downscales so the short side is at most that many pixels
-    (proxy previews). Falls back to ffmpeg select when OpenCV fails and no
-    downscale is requested.
+    Tries OpenCV seek first, then ffmpeg with ``-ss`` (fast scrub). Optional
+    ``max_short_side`` downscales for proxy previews.
     """
     import shutil
 
@@ -439,24 +437,32 @@ def extract_frame_at(
         + (f" (proxy≤{side})" if side > 0 else "")
         + f" → {still}"
     )
+
+    errors: list[str] = []
+
+    # --- OpenCV seek -------------------------------------------------------
     code = (
         "import sys,cv2\n"
         "src,dst,idx,max_side=sys.argv[1],sys.argv[2],int(sys.argv[3]),int(sys.argv[4])\n"
         "cap=cv2.VideoCapture(src)\n"
         "if not cap.isOpened(): raise SystemExit('open failed')\n"
         "cap.set(cv2.CAP_PROP_POS_FRAMES, idx)\n"
-        "ok,frame=cap.read(); cap.release()\n"
-        "if not ok: raise SystemExit('failed to read frame')\n"
+        "ok,frame=cap.read()\n"
+        "if not ok:\n"
+        "    cap.set(cv2.CAP_PROP_POS_FRAMES, 0)\n"
+        "    for _ in range(idx):\n"
+        "        if not cap.grab(): break\n"
+        "    ok,frame=cap.retrieve()\n"
+        "cap.release()\n"
+        "if not ok or frame is None: raise SystemExit('failed to read frame')\n"
         "if max_side>0:\n"
         "    h,w=frame.shape[:2]; short=min(h,w)\n"
         "    if short>max_side:\n"
         "        s=max_side/float(short)\n"
         "        frame=cv2.resize(frame,(max(1,int(w*s)),max(1,int(h*s))),"
         "interpolation=cv2.INTER_AREA)\n"
-        "if dst.lower().endswith(('.jpg','.jpeg')):\n"
-        "    cv2.imwrite(dst,frame,[int(cv2.IMWRITE_JPEG_QUALITY),82])\n"
-        "else:\n"
-        "    cv2.imwrite(dst,frame)\n"
+        "if not cv2.imwrite(dst, frame):\n"
+        "    raise SystemExit('imwrite failed')\n"
     )
     proc = subprocess.run(
         [python, "-c", code, str(video), str(still), str(frame_index), str(side)],
@@ -464,46 +470,109 @@ def extract_frame_at(
         text=True,
         check=False,
     )
-    if proc.returncode == 0 and still.is_file():
+    if proc.returncode == 0 and still.is_file() and still.stat().st_size > 0:
         return still
+    detail = (proc.stderr or proc.stdout or "").strip()
+    if detail:
+        errors.append(f"opencv: {detail}")
 
-    if side > 0:
-        detail = (proc.stderr or proc.stdout or "").strip()
-        raise RuntimeError(
-            f"Proxy frame extract failed (index={frame_index}): {detail}"
-        )
-
-    # Full-frame ffmpeg fallback (no downscale).
+    # --- ffmpeg -ss (much faster than select=eq for scrubbing) -------------
     ffmpeg = shutil.which("ffmpeg")
     if not ffmpeg:
-        detail = (proc.stderr or proc.stdout or "").strip()
         raise RuntimeError(
-            f"Frame extract failed (index={frame_index}): {detail}"
+            f"Frame extract failed (index={frame_index}): "
+            + ("; ".join(errors) or "opencv failed and ffmpeg missing")
         )
-    _run_streaming(
-        [
-            ffmpeg,
-            "-hide_banner",
-            "-loglevel",
-            "error",
-            "-y",
-            "-i",
-            str(video),
-            "-vf",
-            f"select=eq(n\\,{frame_index})",
-            "-vsync",
-            "vfr",
-            "-frames:v",
-            "1",
-            str(still),
-        ],
-        log=log,
-        cancel=cancel,
-        holder=holder,
+
+    fps = _probe_fps(video, python=python)
+    ss = max(0.0, float(frame_index) / max(fps, 1e-3))
+    cmd = [
+        ffmpeg,
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-y",
+        "-ss",
+        f"{ss:.4f}",
+        "-i",
+        str(video),
+    ]
+    if side > 0:
+        # Fit inside a square budget → short side ≤ side.
+        cmd.extend(
+            [
+                "-vf",
+                f"scale={side}:{side}:force_original_aspect_ratio=decrease",
+            ]
+        )
+    cmd.extend(["-frames:v", "1", str(still)])
+    proc2 = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    if proc2.returncode == 0 and still.is_file() and still.stat().st_size > 0:
+        return still
+    detail2 = (proc2.stderr or proc2.stdout or "").strip()
+    if detail2:
+        errors.append(f"ffmpeg: {detail2}")
+    raise RuntimeError(
+        f"Frame extract failed (index={frame_index}): "
+        + ("; ".join(errors) or "unknown")
     )
-    if not still.is_file():
-        raise RuntimeError(f"Frame extract produced no file (index={frame_index})")
-    return still
+
+
+def _probe_fps(video: Path, *, python: str) -> float:
+    import shutil
+
+    ffprobe = shutil.which("ffprobe")
+    if ffprobe:
+        proc = subprocess.run(
+            [
+                ffprobe,
+                "-v",
+                "error",
+                "-select_streams",
+                "v:0",
+                "-show_entries",
+                "stream=r_frame_rate",
+                "-of",
+                "csv=p=0",
+                str(video),
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        raw = (proc.stdout or "").strip().splitlines()
+        if raw:
+            token = raw[0].strip()
+            if "/" in token:
+                num, den = token.split("/", 1)
+                try:
+                    n, d = float(num), float(den)
+                    if d:
+                        return max(n / d, 1.0)
+                except ValueError:
+                    pass
+            try:
+                return max(float(token), 1.0)
+            except ValueError:
+                pass
+    code = (
+        "import sys,cv2\n"
+        "cap=cv2.VideoCapture(sys.argv[1])\n"
+        "fps=float(cap.get(cv2.CAP_PROP_FPS) or 0); cap.release()\n"
+        "print(fps if fps>0 else 24.0)\n"
+    )
+    proc = subprocess.run(
+        [python, "-c", code, str(video)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if proc.returncode == 0:
+        try:
+            return max(float((proc.stdout or "").strip()), 1.0)
+        except ValueError:
+            pass
+    return 24.0
 
 
 PROXY_SHORT_SIDE = 480
