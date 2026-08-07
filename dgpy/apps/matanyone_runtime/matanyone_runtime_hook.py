@@ -1,7 +1,5 @@
 """
-Flame main menu: MatAnyone Runtime Setup / SAM2 Setup / Remove.
-
-Menu: DGpy → MatAnyone Runtime…
+Flame main menu: DGpy → MatAnyone → Runtime / SAM2 / Remove All.
 """
 
 from __future__ import annotations
@@ -15,7 +13,7 @@ for _p in (_DGPY_ROOT, _APP_DIR):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
-__version__ = "0.4.0"
+__version__ = "0.5.1"
 
 
 def _setup(_selection=None) -> None:
@@ -31,14 +29,14 @@ def _setup(_selection=None) -> None:
     if progress.remove_is_running() or progress.sam2_setup_is_running():
         dgpy_gui.warning(
             None,
-            "MatAnyone Runtime",
+            "MatAnyone",
             "Another MatAnyone runtime job is still running. Wait until it finishes.",
         )
         return
     if progress.setup_is_running():
         dgpy_gui.info(
             None,
-            "MatAnyone Runtime",
+            "MatAnyone",
             "Setup is already running.\n"
             "The progress window was brought to the front "
             "(Flame remains usable).",
@@ -49,7 +47,7 @@ def _setup(_selection=None) -> None:
     if paths.is_ready():
         if not dgpy_gui.confirm(
             None,
-            "MatAnyone Runtime",
+            "MatAnyone",
             f"MatAnyone 2 runtime already ready:\n{paths.runtime_root()}\n\n"
             "Reinstall (force)?",
         ):
@@ -65,7 +63,7 @@ def _setup(_selection=None) -> None:
             )
         if not dgpy_gui.confirm(
             None,
-            "MatAnyone Runtime",
+            "MatAnyone",
             "Install MatAnyone 2 runtime now?\n\n"
             f"Target:\n{paths.runtime_root()}\n\n"
             "Needs network, git, NVIDIA GPU drivers, and several GB of disk.\n"
@@ -95,14 +93,14 @@ def _setup_sam2(_selection=None) -> None:
     if progress.setup_is_running() or progress.remove_is_running():
         dgpy_gui.warning(
             None,
-            "MatAnyone SAM2",
+            "MatAnyone",
             "Another MatAnyone runtime job is still running. Wait until it finishes.",
         )
         return
     if progress.sam2_setup_is_running():
         dgpy_gui.info(
             None,
-            "MatAnyone SAM2",
+            "MatAnyone",
             "SAM2 Setup is already running.\n"
             "The progress window was brought to the front.",
         )
@@ -112,16 +110,16 @@ def _setup_sam2(_selection=None) -> None:
     if not paths.is_ready():
         dgpy_gui.warning(
             None,
-            "MatAnyone SAM2",
+            "MatAnyone",
             "MatAnyone 2 runtime is not ready.\n"
-            "Run DGpy → MatAnyone Runtime Setup… first.",
+            "Run DGpy → MatAnyone → Runtime Setup… first.",
         )
         return
 
     if paths.is_sam2_ready():
         if not dgpy_gui.confirm(
             None,
-            "MatAnyone SAM2",
+            "MatAnyone",
             f"SAM2 already ready:\n{paths.sam2_checkpoint_path()}\n\n"
             "Reinstall (force)?",
         ):
@@ -131,9 +129,9 @@ def _setup_sam2(_selection=None) -> None:
         force = False
         if not dgpy_gui.confirm(
             None,
-            "MatAnyone SAM2",
+            "MatAnyone",
             "Install SAM2 into the MatAnyone runtime?\n\n"
-            f"Target:\n{paths.runtime_root()}/sam2\n"
+            f"Target:\n{paths.sam2_repo_dir()}\n"
             f"Checkpoint:\n{paths.runtime_root()}/checkpoints/"
             f"{paths.SAM2_CKPT_NAME}\n\n"
             "Uses the existing runtime venv (no system Python / dnf).\n"
@@ -158,15 +156,15 @@ def _remove(_selection=None) -> None:
     if progress.setup_is_running() or progress.sam2_setup_is_running():
         dgpy_gui.warning(
             None,
-            "MatAnyone Runtime",
-            "Setup is still running. Wait until it finishes before Remove.",
+            "MatAnyone",
+            "Setup is still running. Wait until it finishes before Remove All.",
         )
         return
     if progress.remove_is_running():
         dgpy_gui.info(
             None,
-            "MatAnyone Runtime",
-            "Remove is already running.\n"
+            "MatAnyone",
+            "Remove All is already running.\n"
             "The progress window was brought to the front.",
         )
         progress.start_remove_nonblocking()
@@ -178,7 +176,7 @@ def _remove(_selection=None) -> None:
     primary = paths.runtime_root()
     legacy_left = [p for p in paths.legacy_runtime_roots() if p.exists()]
     if not primary.exists() and not legacy_left:
-        dgpy_gui.info(None, "MatAnyone Runtime", "Runtime folder not found.")
+        dgpy_gui.info(None, "MatAnyone", "Runtime folder not found.")
         return
 
     lines = []
@@ -188,7 +186,7 @@ def _remove(_selection=None) -> None:
         lines.append(f"{p} (legacy)")
     if not dgpy_gui.confirm(
         None,
-        "MatAnyone Runtime",
+        "MatAnyone",
         "Delete runtime folder(s)?\n\n" + "\n".join(lines),
     ):
         return
@@ -203,23 +201,23 @@ def _remove(_selection=None) -> None:
 def get_main_menu_custom_ui_actions():
     return [
         {
-            "hierarchy": ["DGpy"],
+            "hierarchy": ["DGpy", "MatAnyone"],
             "actions": [
                 {
-                    "name": "MatAnyone Runtime Setup…",
-                    "order": 80,
+                    "name": "Runtime Setup…",
+                    "order": 10,
                     "execute": _setup,
                     "minimumVersion": "2025",
                 },
                 {
-                    "name": "MatAnyone SAM2 Setup…",
-                    "order": 81,
+                    "name": "SAM2 Setup…",
+                    "order": 20,
                     "execute": _setup_sam2,
                     "minimumVersion": "2025",
                 },
                 {
-                    "name": "MatAnyone Runtime Remove…",
-                    "order": 82,
+                    "name": "Remove All…",
+                    "order": 30,
                     "execute": _remove,
                     "minimumVersion": "2025",
                 },

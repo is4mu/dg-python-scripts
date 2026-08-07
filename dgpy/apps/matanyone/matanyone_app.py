@@ -9,7 +9,7 @@ import matanyone_job as job
 import matanyone_job_progress as job_progress
 import matanyone_selection as selection
 
-__version__ = "0.4.0"
+__version__ = "0.5.1"
 
 
 def run_from_selection(selection_items) -> None:
@@ -51,7 +51,7 @@ def run_from_selection(selection_items) -> None:
             None,
             "MatAnyone",
             "SAM2 is not ready in the MatAnyone runtime.\n\n"
-            "Run DGpy → MatAnyone SAM2 Setup… first "
+            "Run DGpy → MatAnyone → SAM2 Setup… first "
             "(uses the existing runtime; no system packages),\n"
             "or choose Flame (PNG/EXR) mask instead.",
         )

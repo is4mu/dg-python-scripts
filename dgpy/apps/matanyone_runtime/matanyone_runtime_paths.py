@@ -9,7 +9,7 @@ from typing import Callable
 
 import dgpy_paths
 
-__version__ = "0.4.0"
+__version__ = "0.5.1"
 
 RUNTIME_NAME = "matanyone"
 READY_NAME = "READY.json"
@@ -19,7 +19,10 @@ INFERENCE_SCRIPT_NAME = "inference_matanyone2.py"
 ENGINE_ID = "matanyone2"
 VENV_DIRNAME = "venv"
 MINIFORGE_DIRNAME = "miniforge3"
-SAM2_REPO_DIRNAME = "sam2"
+# Clone dir must NOT be named "sam2" — that shadows the pip package when
+# helpers live beside it under the runtime root (sys.path[0]=script dir).
+SAM2_REPO_DIRNAME = "sam2_src"
+SAM2_REPO_DIRNAME_LEGACY = "sam2"
 SAM2_CKPT_DIRNAME = "checkpoints"
 SAM2_CKPT_NAME = "sam2.1_hiera_large.pt"
 SAM2_CONFIG = "configs/sam2.1/sam2.1_hiera_l.yaml"
@@ -224,7 +227,15 @@ def sam_script(root: Path | None = None) -> Path | None:
 
 
 def sam2_repo_dir(root: Path | None = None) -> Path:
-    return runtime_root(root) / SAM2_REPO_DIRNAME
+    """Editable clone of facebookresearch/sam2 (prefer sam2_src over legacy sam2/)."""
+    base = runtime_root(root)
+    preferred = base / SAM2_REPO_DIRNAME
+    if (preferred / "sam2" / "build_sam.py").is_file():
+        return preferred
+    legacy = base / SAM2_REPO_DIRNAME_LEGACY
+    if (legacy / "sam2" / "build_sam.py").is_file():
+        return legacy
+    return preferred
 
 
 def sam2_checkpoint_path(root: Path | None = None) -> Path:

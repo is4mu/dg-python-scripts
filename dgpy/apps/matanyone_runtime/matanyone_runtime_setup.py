@@ -12,7 +12,7 @@ from typing import Callable
 
 import matanyone_runtime_paths as paths
 
-__version__ = "0.4.0"
+__version__ = "0.5.1"
 
 LogFn = Callable[[str], None]
 StepFn = Callable[[int, int, str], None]
@@ -340,11 +340,31 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+import traceback
 from pathlib import Path
 
 import numpy as np
 import torch
 from PIL import Image
+
+
+def _unshadow_sam2_package() -> None:
+    """Drop this script's directory from sys.path.
+
+    The helper lives under …/dgpy_runtimes/matanyone/. A clone folder named
+    ``sam2`` beside it would otherwise win on sys.path[0] and shadow the
+    installed ``sam2`` package (Meta's build_sam raises RuntimeError).
+    """
+    script_dir = str(Path(__file__).resolve().parent)
+    while script_dir in sys.path:
+        sys.path.remove(script_dir)
+    # Prefer empty cwd entry over a shadowed runtime root.
+    cwd = os.getcwd()
+    if cwd == script_dir or Path(cwd).name in ("sam2", "sam2_src"):
+        while "" in sys.path:
+            sys.path.remove("")
+        if cwd in sys.path:
+            sys.path.remove(cwd)
 
 
 def _parse_points(raw: str):
@@ -375,44 +395,53 @@ def main() -> int:
     ckpt = str(args.checkpoint or "").strip()
     if not ckpt or not Path(ckpt).is_file():
         print(
-            "SAM2 checkpoint missing. Run DGpy → MatAnyone SAM2 Setup…",
+            "SAM2 checkpoint missing. Run DGpy → MatAnyone → SAM2 Setup…",
+            file=sys.stderr,
+        )
+        return 2
+
+    _unshadow_sam2_package()
+    try:
+        from sam2.build_sam import build_sam2
+        from sam2.sam2_image_predictor import SAM2ImagePredictor
+    except Exception as exc:  # noqa: BLE001
+        print(
+            "sam2 package not importable in this Python. "
+            "Run DGpy → MatAnyone → SAM2 Setup…\\n"
+            f"{exc}\\n{traceback.format_exc()}",
             file=sys.stderr,
         )
         return 2
 
     try:
-        from sam2.build_sam import build_sam2
-        from sam2.sam2_image_predictor import SAM2ImagePredictor
-    except ImportError as exc:
+        image = np.array(Image.open(args.image).convert("RGB"))
+        points = _parse_points(args.points)
+        point_coords = np.array(points, dtype=np.float32)
+        point_labels = np.ones(len(points), dtype=np.int32)
+
+        device = "cuda" if torch.cuda.is_available() else "cpu"
         print(
-            "sam2 package not importable in this Python. "
-            "Run DGpy → MatAnyone SAM2 Setup…\\n"
-            f"{exc}",
-            file=sys.stderr,
+            f"SAM2 device={device} ckpt={ckpt} config={args.config} "
+            f"sam2_path={__import__('sam2').__path__}",
+            flush=True,
         )
-        return 2
-
-    image = np.array(Image.open(args.image).convert("RGB"))
-    points = _parse_points(args.points)
-    point_coords = np.array(points, dtype=np.float32)
-    point_labels = np.ones(len(points), dtype=np.int32)
-
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    print(f"SAM2 device={device} ckpt={ckpt} config={args.config}", flush=True)
-    predictor = SAM2ImagePredictor(build_sam2(args.config, ckpt, device=device))
-    with torch.inference_mode():
-        predictor.set_image(image)
-        masks, scores, _ = predictor.predict(
-            point_coords=point_coords,
-            point_labels=point_labels,
-            multimask_output=True,
-        )
-    mask = masks[int(np.argmax(scores))]
-    out = (mask.astype(np.uint8) * 255)
-    Path(args.out).parent.mkdir(parents=True, exist_ok=True)
-    Image.fromarray(out, mode="L").save(args.out)
-    print(args.out)
-    return 0
+        predictor = SAM2ImagePredictor(build_sam2(args.config, ckpt, device=device))
+        with torch.inference_mode():
+            predictor.set_image(image)
+            masks, scores, _ = predictor.predict(
+                point_coords=point_coords,
+                point_labels=point_labels,
+                multimask_output=True,
+            )
+        mask = masks[int(np.argmax(scores))]
+        out = (mask.astype(np.uint8) * 255)
+        Path(args.out).parent.mkdir(parents=True, exist_ok=True)
+        Image.fromarray(out, mode="L").save(args.out)
+        print(args.out)
+        return 0
+    except Exception:  # noqa: BLE001
+        traceback.print_exc()
+        return 1
 
 
 if __name__ == "__main__":
@@ -460,7 +489,7 @@ def _update_ready_sam2(
 ) -> None:
     data = paths.load_ready()
     if not data:
-        raise RuntimeError("READY.json missing — run MatAnyone Runtime Setup first")
+        raise RuntimeError("READY.json missing — run DGpy → MatAnyone → Runtime Setup first")
     data["sam2"] = {
         "ready": True,
         "repo": str(repo),
@@ -496,7 +525,7 @@ def setup_sam2(
     if not paths.is_ready():
         raise RuntimeError(
             "MatAnyone 2 runtime is not ready.\n"
-            "Run DGpy → MatAnyone Runtime Setup… first."
+            "Run DGpy → MatAnyone → Runtime Setup… first."
         )
     py = paths.resolve_python()
     if not py:

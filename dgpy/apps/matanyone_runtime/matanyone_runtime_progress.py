@@ -11,7 +11,7 @@ from PySide6 import QtCore, QtWidgets
 
 import matanyone_runtime_setup as setup
 
-__version__ = "0.4.0"
+__version__ = "0.5.1"
 
 # Keep alive while the background job runs (menu callback returns immediately).
 _ACTIVE_SETUP: SetupProgressDialog | None = None
@@ -264,7 +264,7 @@ class RemoveProgressDialog(_ProgressDialogBase):
 
     def __init__(self, parent=None):
         super().__init__(
-            "MatAnyone Runtime Remove",
+            "MatAnyone — Remove All",
             "Deleting runtime folders (may be several GB). "
             "Flame stays usable — this window is non-modal.",
             steps=setup.remove_step_count(),

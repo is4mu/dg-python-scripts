@@ -9,7 +9,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 
 import matanyone_selection as selection
 
-__version__ = "0.4.0"
+__version__ = "0.5.1"
 
 _WINDOW: QtWidgets.QWidget | None = None
 
@@ -147,9 +147,9 @@ class MatAnyoneDialog(QtWidgets.QDialog):
                 "first-frame preview. Points on this dialog are optional."
             )
         else:
-            sam_label = "SAM2 (requires DGpy → MatAnyone SAM2 Setup…)"
+            sam_label = "SAM2 (requires DGpy → MatAnyone → SAM2 Setup…)"
             hint_text = (
-                "SAM2 is not installed yet. Run DGpy → MatAnyone SAM2 Setup… "
+                "SAM2 is not installed yet. Run DGpy → MatAnyone → SAM2 Setup… "
                 "first (same runtime folder; no system packages), or use a "
                 "Flame PNG/EXR mask."
             )

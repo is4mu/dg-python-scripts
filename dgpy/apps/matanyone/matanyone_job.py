@@ -18,7 +18,7 @@ from typing import Any, Callable
 
 import dgpy_paths
 
-__version__ = "0.4.0"
+__version__ = "0.5.1"
 
 ProgressCb = Callable[[str], None]
 StepCb = Callable[[int, int, str], None]
@@ -239,6 +239,7 @@ def _run_streaming(
     log: ProgressCb,
     cancel: threading.Event | None = None,
     holder: _ProcHolder | None = None,
+    tail: int = 40,
 ) -> None:
     log("$ " + " ".join(cmd))
     proc = subprocess.Popen(
@@ -252,19 +253,26 @@ def _run_streaming(
     if holder is not None:
         holder.set(proc)
     assert proc.stdout is not None
+    recent: list[str] = []
     try:
         for line in proc.stdout:
             _check_cancel(cancel)
             text = line.rstrip()
             if text:
                 log(text)
+                recent.append(text)
+                if len(recent) > tail:
+                    recent = recent[-tail:]
         code = proc.wait()
     finally:
         if holder is not None:
             holder.set(None)
     _check_cancel(cancel)
     if code != 0:
-        raise RuntimeError(f"Command failed ({code}): {' '.join(cmd)}")
+        detail = "\n".join(recent[-tail:]) if recent else "(no output)"
+        raise RuntimeError(
+            f"Command failed ({code}): {' '.join(cmd)}\n\n--- output ---\n{detail}"
+        )
 
 
 def extract_first_frame(
@@ -314,6 +322,13 @@ def run_sam_mask(
 ) -> Path:
     if not points:
         raise RuntimeError("SAM2 mode needs at least one foreground point")
+    # Refresh helper so path-unshadow fix applies without full SAM2 reinstall.
+    try:
+        import matanyone_runtime_setup as rsetup
+
+        rsetup._write_sam_helper(sam_script)
+    except Exception as exc:  # noqa: BLE001
+        log(f"Warning: could not refresh SAM2 helper: {exc}")
     pts = ";".join(f"{x},{y}" for x, y in points)
     out_mask.parent.mkdir(parents=True, exist_ok=True)
     cmd = [
@@ -331,12 +346,13 @@ def run_sam_mask(
         config,
     ]
     try:
-        # cwd=sam2 repo avoids shadowing the installed package by a local folder.
+        # cwd must NOT be the runtime root (parent of a clone named sam2/).
+        # Prefer an unrelated work dir; None uses Flame's cwd.
         _run_streaming(cmd, cwd=cwd, log=log, cancel=cancel, holder=holder)
     except RuntimeError as exc:
         raise RuntimeError(
             "SAM2 mask failed. Use Flame mask, or re-run "
-            "DGpy → MatAnyone SAM2 Setup…\n"
+            "DGpy → MatAnyone → SAM2 Setup…\n"
             f"{exc}"
         ) from exc
     if not out_mask.is_file():
@@ -505,7 +521,7 @@ def run_job(
             ok=False,
             message=(
                 "MatAnyone 2 runtime is not set up.\n"
-                "Use DGpy → MatAnyone Runtime Setup… "
+                "Use DGpy → MatAnyone → Runtime Setup… "
                 "(upgrades from MatAnyone v1 if present)."
             ),
         )
@@ -549,7 +565,7 @@ def run_job(
                     ok=False,
                     message=(
                         "SAM2 is not installed in the MatAnyone runtime.\n"
-                        "Use DGpy → MatAnyone SAM2 Setup… first "
+                        "Use DGpy → MatAnyone → SAM2 Setup… first "
                         "(or choose Flame PNG/EXR mask)."
                     ),
                     work_dir=work,
@@ -580,7 +596,7 @@ def run_job(
             sam = rpaths.sam_script()
             if sam is None:
                 raise RuntimeError(
-                    "SAM2 helper missing. Re-run DGpy → MatAnyone SAM2 Setup…"
+                    "SAM2 helper missing. Re-run DGpy → MatAnyone → SAM2 Setup…"
                 )
             mask_path = work / "mask.png"
             run_sam_mask(
@@ -591,7 +607,8 @@ def run_job(
                 out_mask=mask_path,
                 checkpoint=rpaths.sam2_checkpoint_path(),
                 config=rpaths.sam2_config_id(),
-                cwd=rpaths.sam2_repo_dir(),
+                # Avoid runtime root / sam2 clone as cwd (package shadowing).
+                cwd=work,
                 log=log,
                 cancel=cancel,
                 holder=holder,
