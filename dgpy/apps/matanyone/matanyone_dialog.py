@@ -10,7 +10,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 
 import matanyone_selection as selection
 
-__version__ = "0.6.0"
+__version__ = "0.6.1"
 
 _WINDOW: QtWidgets.QWidget | None = None
 
@@ -38,13 +38,17 @@ class _ImagePreview(QtWidgets.QLabel):
         self.setStyleSheet("background:#222; color:#aaa;")
         self.setText("No preview")
         self._clickable = clickable
+        self._accept_clicks = clickable
         self._pixmap: QtGui.QPixmap | None = None
-        self._mask: QtGui.QPixmap | None = None
+        self._mask_img: QtGui.QImage | None = None
         self._points: list[tuple[float, float]] = []
+
+    def set_accept_clicks(self, enabled: bool) -> None:
+        self._accept_clicks = bool(enabled and self._clickable)
 
     def set_image_path(self, path: Path | None) -> None:
         self._points.clear()
-        self._mask = None
+        self._mask_img = None
         if path is None or not path.is_file():
             self._pixmap = None
             self.setText("No preview")
@@ -57,11 +61,16 @@ class _ImagePreview(QtWidgets.QLabel):
         self._refresh()
 
     def set_mask_path(self, path: Path | None) -> None:
+        """Load an L/RGB mask; luminance becomes overlay alpha (not image alpha)."""
         if path is None or not path.is_file():
-            self._mask = None
+            self._mask_img = None
+            self._refresh()
+            return
+        img = QtGui.QImage(str(path))
+        if img.isNull():
+            self._mask_img = None
         else:
-            pm = QtGui.QPixmap(str(path))
-            self._mask = pm if not pm.isNull() else None
+            self._mask_img = img.convertToFormat(QtGui.QImage.Format.Format_Grayscale8)
         self._refresh()
 
     def points(self) -> list[tuple[float, float]]:
@@ -69,8 +78,31 @@ class _ImagePreview(QtWidgets.QLabel):
 
     def clear_points(self) -> None:
         self._points.clear()
-        self._mask = None
+        self._mask_img = None
         self._refresh()
+
+    def _mask_overlay(self, size: QtCore.QSize) -> QtGui.QPixmap | None:
+        if self._mask_img is None or self._mask_img.isNull():
+            return None
+        gray = self._mask_img.scaled(
+            size,
+            QtCore.Qt.AspectRatioMode.IgnoreAspectRatio,
+            QtCore.Qt.TransformationMode.FastTransformation,
+        )
+        # Grayscale PNG has opaque alpha — do NOT use SourceIn on the pixmap.
+        # Use luminance as the green overlay's alpha instead.
+        w, h = gray.width(), gray.height()
+        overlay = QtGui.QImage(w, h, QtGui.QImage.Format.Format_ARGB32_Premultiplied)
+        overlay.fill(QtCore.Qt.GlobalColor.transparent)
+        for y in range(h):
+            for x in range(w):
+                # Format_Grayscale8: pixel is 0..255 gray
+                v = gray.pixelColor(x, y).value()
+                if v < 16:
+                    continue
+                a = min(200, int(v * 0.7))
+                overlay.setPixelColor(x, y, QtGui.QColor(0, 220, 120, a))
+        return QtGui.QPixmap.fromImage(overlay)
 
     def _refresh(self) -> None:
         if self._pixmap is None or self._pixmap.isNull():
@@ -83,25 +115,9 @@ class _ImagePreview(QtWidgets.QLabel):
         canvas = QtGui.QPixmap(scaled)
         painter = QtGui.QPainter(canvas)
         painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
-        if self._mask is not None and not self._mask.isNull():
-            mask_s = self._mask.scaled(
-                scaled.size(),
-                QtCore.Qt.AspectRatioMode.IgnoreAspectRatio,
-                QtCore.Qt.TransformationMode.SmoothTransformation,
-            )
-            painter.setOpacity(0.45)
-            # Tint mask green via CompositionMode
-            tinted = QtGui.QPixmap(mask_s.size())
-            tinted.fill(QtCore.Qt.GlobalColor.transparent)
-            tp = QtGui.QPainter(tinted)
-            tp.drawPixmap(0, 0, mask_s)
-            tp.setCompositionMode(
-                QtGui.QPainter.CompositionMode.CompositionMode_SourceIn
-            )
-            tp.fillRect(tinted.rect(), QtGui.QColor(0, 220, 120, 200))
-            tp.end()
-            painter.drawPixmap(0, 0, tinted)
-            painter.setOpacity(1.0)
+        overlay = self._mask_overlay(scaled.size())
+        if overlay is not None:
+            painter.drawPixmap(0, 0, overlay)
         if self._clickable:
             pen = QtGui.QPen(QtGui.QColor(0, 255, 120), 2)
             painter.setPen(pen)
@@ -118,7 +134,7 @@ class _ImagePreview(QtWidgets.QLabel):
         self._refresh()
 
     def mousePressEvent(self, event) -> None:  # noqa: N802
-        if not self._clickable:
+        if not self._accept_clicks:
             return
         if self._pixmap is None or self._pixmap.isNull():
             return
@@ -295,9 +311,27 @@ class MatAnyoneDialog(QtWidgets.QDialog):
             QtWidgets.QDialogButtonBox.StandardButton.Ok
             | QtWidgets.QDialogButtonBox.StandardButton.Cancel
         )
+        self._buttons = buttons
+        self._ok_btn = buttons.button(QtWidgets.QDialogButtonBox.StandardButton.Ok)
         buttons.accepted.connect(self._accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
+        self._clear_btn = clear_pts
+        self._set_sam_busy(False)
+
+    def _set_sam_busy(self, busy: bool) -> None:
+        self._sam_busy = busy
+        self._sam_preview.set_accept_clicks(self._sam2_ready and not busy)
+        if hasattr(self, "_clear_btn") and self._clear_btn is not None:
+            self._clear_btn.setEnabled(not busy)
+        if hasattr(self, "_ok_btn") and self._ok_btn is not None:
+            self._ok_btn.setEnabled(not busy)
+        if busy:
+            self._tabs.setTabEnabled(0, False)
+        else:
+            self._tabs.setTabEnabled(0, True)
+            if not self._sam2_ready:
+                self._tabs.setTabEnabled(1, False)
 
     def _browse_mask(self) -> None:
         path, _ = QtWidgets.QFileDialog.getOpenFileName(
@@ -316,9 +350,12 @@ class MatAnyoneDialog(QtWidgets.QDialog):
         if not self._sam2_ready or self._sam_busy:
             return
         self._sam_status.setText("SAM2: updating mask…")
+        self._set_sam_busy(True)
         self._debounce.start()
 
     def _clear_sam(self) -> None:
+        if self._sam_busy:
+            return
         self._debounce.stop()
         self._sam_preview.clear_points()
         if self._sam_mask.exists():
@@ -327,13 +364,15 @@ class MatAnyoneDialog(QtWidgets.QDialog):
             except OSError:
                 pass
         self._sam_status.setText("Click the subject. Mask updates automatically.")
+        self._set_sam_busy(False)
 
     def _run_sam2(self) -> None:
         points = self._sam_preview.points()
-        if not points or self._sam_busy:
+        if not points:
+            self._set_sam_busy(False)
             return
-        self._sam_busy = True
         self._sam_status.setText("SAM2: generating mask…")
+        self._set_sam_busy(True)
         self._sam_thread = QtCore.QThread(self)
         self._sam_worker = _SamMaskWorker(
             still=self._still,
@@ -352,15 +391,15 @@ class MatAnyoneDialog(QtWidgets.QDialog):
 
     @QtCore.Slot(object)
     def _on_sam_ok(self, path: object) -> None:
-        self._sam_busy = False
         mask = Path(str(path))
         self._sam_preview.set_mask_path(mask if mask.is_file() else None)
         self._sam_status.setText("SAM2 mask ready. Add points to refine, then OK.")
+        self._set_sam_busy(False)
 
     @QtCore.Slot(str)
     def _on_sam_err(self, message: str) -> None:
-        self._sam_busy = False
         self._sam_status.setText(f"SAM2 failed: {message}")
+        self._set_sam_busy(False)
         QtWidgets.QMessageBox.warning(self, "MatAnyone", f"SAM2 mask failed:\n{message}")
 
     def _accept(self) -> None:

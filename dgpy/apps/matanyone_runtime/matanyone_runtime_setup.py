@@ -12,7 +12,7 @@ from typing import Callable
 
 import matanyone_runtime_paths as paths
 
-__version__ = "0.5.1"
+__version__ = "0.5.2"
 
 LogFn = Callable[[str], None]
 StepFn = Callable[[int, int, str], None]
@@ -434,7 +434,9 @@ def main() -> int:
                 multimask_output=True,
             )
         mask = masks[int(np.argmax(scores))]
-        out = (mask.astype(np.uint8) * 255)
+        # bool / float → binary 0/255 (float 0..1 must not use astype(uint8) alone)
+        binary = (mask > 0.5).astype(np.uint8) * 255
+        out = np.ascontiguousarray(binary)
         Path(args.out).parent.mkdir(parents=True, exist_ok=True)
         Image.fromarray(out, mode="L").save(args.out)
         print(args.out)

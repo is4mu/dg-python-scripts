@@ -9,7 +9,7 @@ import matanyone_job as job
 import matanyone_job_progress as job_progress
 import matanyone_selection as selection
 
-__version__ = "0.6.0"
+__version__ = "0.6.1"
 
 
 def run_from_selection(selection_items) -> None:
