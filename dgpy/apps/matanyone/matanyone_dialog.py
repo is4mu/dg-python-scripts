@@ -11,7 +11,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 import matanyone_sam2 as sam
 import matanyone_selection as selection
 
-__version__ = "0.12.0"
+__version__ = "0.12.1"
 
 _WINDOW: QtWidgets.QWidget | None = None
 
@@ -430,6 +430,13 @@ class MatAnyoneDialog(QtWidgets.QDialog):
         self._sam_mask = work_dir / "mask_sam2.png"
         self._sam_busy = False
         self._frame_busy = False
+        self._scrubbing = False
+        self._full_ready_index: int | None = None
+        self._frame_gen = 0
+        self._frame_job_running = False
+        self._want_proxy: tuple[int, int] | None = None  # index, gen
+        self._want_full: tuple[int, int] | None = None
+        self._frame_thread: QtCore.QThread | None = None
         self._finalizing = False
         self._pending_rerun = False
         self._points_at_run: list[tuple[float, float, int]] = []
@@ -454,10 +461,14 @@ class MatAnyoneDialog(QtWidgets.QDialog):
         self._paint_ui_timer.setSingleShot(True)
         self._paint_ui_timer.setInterval(16)
         self._paint_ui_timer.timeout.connect(self._flush_paint_ui)
-        self._frame_debounce = QtCore.QTimer(self)
-        self._frame_debounce.setSingleShot(True)
-        self._frame_debounce.setInterval(250)
-        self._frame_debounce.timeout.connect(self._apply_ref_frame)
+        self._proxy_timer = QtCore.QTimer(self)
+        self._proxy_timer.setSingleShot(True)
+        self._proxy_timer.setInterval(60)
+        self._proxy_timer.timeout.connect(self._on_proxy_tick)
+        self._settle_timer = QtCore.QTimer(self)
+        self._settle_timer.setSingleShot(True)
+        self._settle_timer.setInterval(200)
+        self._settle_timer.timeout.connect(self._on_settle_tick)
 
         try:
             import matanyone_runtime_paths as rpaths
@@ -604,12 +615,20 @@ class MatAnyoneDialog(QtWidgets.QDialog):
         layout.addWidget(buttons)
         self._set_sam_busy(False)
 
+        (self._ref_dir / "proxy").mkdir(parents=True, exist_ok=True)
+        (self._ref_dir / "full").mkdir(parents=True, exist_ok=True)
         if still_path.is_file():
+            full0 = self._full_cache_path(0)
             try:
+                shutil.copy2(still_path, full0)
                 shutil.copy2(still_path, self._ref_still)
             except OSError:
                 pass
-        self._apply_ref_frame(force_index=0)
+            if full0.is_file():
+                self._still = full0
+                self._full_ready_index = 0
+                self._sam_preview.set_image_path(full0, clear_overlay=True)
+        self._request_ref_index(0, force=True)
 
         if self._sam2_ready:
             QtCore.QTimer.singleShot(0, self._ensure_worker)
@@ -620,13 +639,28 @@ class MatAnyoneDialog(QtWidgets.QDialog):
         last = max(0, self._frame_count - 1)
         return f"{index} / {last}"
 
+    def _proxy_cache_path(self, index: int) -> Path:
+        return self._ref_dir / "proxy" / f"{index:06d}.jpg"
+
+    def _full_cache_path(self, index: int) -> Path:
+        return self._ref_dir / "full" / f"{index:06d}.png"
+
+    def _ref_input_ready(self) -> bool:
+        return (
+            not self._scrubbing
+            and not self._frame_busy
+            and self._full_ready_index is not None
+            and self._full_ready_index == int(self._frame_slider.value())
+            and self._still.is_file()
+        )
+
     def _on_frame_slider(self, value: int) -> None:
         if self._frame_spin.value() != value:
             self._frame_spin.blockSignals(True)
             self._frame_spin.setValue(value)
             self._frame_spin.blockSignals(False)
         self._frame_label.setText(self._frame_caption(value))
-        self._frame_debounce.start()
+        self._request_ref_index(value)
 
     def _on_frame_spin(self, value: int) -> None:
         if self._frame_slider.value() != value:
@@ -634,13 +668,11 @@ class MatAnyoneDialog(QtWidgets.QDialog):
             self._frame_slider.setValue(value)
             self._frame_slider.blockSignals(False)
         self._frame_label.setText(self._frame_caption(value))
-        self._frame_debounce.start()
+        self._request_ref_index(value)
 
-    def _apply_ref_frame(self, force_index: int | None = None) -> None:
-        import matanyone_job as job
-
-        index = self._frame_slider.value() if force_index is None else force_index
-        if force_index is not None:
+    def _request_ref_index(self, index: int, *, force: bool = False) -> None:
+        index = max(0, min(int(index), max(0, self._frame_count - 1)))
+        if force:
             self._frame_slider.blockSignals(True)
             self._frame_spin.blockSignals(True)
             self._frame_slider.setValue(index)
@@ -649,49 +681,189 @@ class MatAnyoneDialog(QtWidgets.QDialog):
             self._frame_spin.blockSignals(False)
             self._frame_label.setText(self._frame_caption(index))
 
+        changed = self._full_ready_index != index
         self._debounce.stop()
         self._pending_rerun = False
-        self._reset_all_objects()
-        if self._sam_mask.exists():
-            try:
-                self._sam_mask.unlink()
-            except OSError:
-                pass
-        if self._sam2_ready and not self._worker_failed:
-            self._sam_status.setText(
-                "Reference frame changed. Click + / − or paint to generate a mask."
-            )
+        if changed or force:
+            self._reset_all_objects(wipe_disk=False)
+            self._image_on_worker = None
+            if self._sam_mask.exists():
+                try:
+                    self._sam_mask.unlink()
+                except OSError:
+                    pass
 
+        self._scrubbing = True
         self._frame_busy = True
-        if self._ok_btn is not None:
-            self._ok_btn.setEnabled(False)
-        try:
+        if self._sam2_ready and not self._worker_failed:
+            self._sam_status.setText("Scrubbing…")
+        self._set_sam_busy(False)
+
+        # Cached full for this index → show immediately, still settle refresh.
+        full = self._full_cache_path(index)
+        if full.is_file():
+            self._sam_preview.set_image_path(full, clear_overlay=True)
+        else:
+            proxy = self._proxy_cache_path(index)
+            if proxy.is_file():
+                self._sam_preview.set_image_path(proxy, clear_overlay=True)
+
+        self._proxy_timer.start()
+        self._settle_timer.start()
+
+    def _on_proxy_tick(self) -> None:
+        self._enqueue_frame(int(self._frame_slider.value()), "proxy")
+
+    def _on_settle_tick(self) -> None:
+        self._enqueue_frame(int(self._frame_slider.value()), "full")
+
+    def _enqueue_frame(self, index: int, quality: str) -> None:
+        self._frame_gen += 1
+        gen = self._frame_gen
+        if quality == "proxy":
+            self._want_proxy = (index, gen)
+        else:
+            self._want_full = (index, gen)
+        self._kick_frame_job()
+
+    def _kick_frame_job(self) -> None:
+        if self._frame_job_running:
+            return
+        # Full has priority so settle is not starved by proxy spam.
+        if self._want_full is not None:
+            index, gen = self._want_full
+            self._want_full = None
+            quality = "full"
+        elif self._want_proxy is not None:
+            index, gen = self._want_proxy
+            self._want_proxy = None
+            quality = "proxy"
+        else:
+            return
+        self._frame_job_running = True
+
+        video = self._video
+        python = self._python
+        proxy_path = self._proxy_cache_path(index)
+        full_path = self._full_cache_path(index)
+
+        def work():
+            import matanyone_job as job
 
             def _log(_m: str) -> None:
                 return
 
-            job.extract_frame_at(
-                self._video,
-                index,
-                self._ref_still,
-                python=self._python,
-                log=_log,
-            )
-            self._still = self._ref_still
-            self._sam_preview.set_image_path(self._ref_still, clear_overlay=True)
-            self._sam_preview.set_points([])
-            if self._worker_ready and self._worker is not None:
-                self._queue_set_image(self._still)
-        except Exception as exc:  # noqa: BLE001
-            QtWidgets.QMessageBox.warning(
-                self, "MatAnyone", f"Could not extract frame {index}:\n{exc}"
-            )
-        finally:
-            self._frame_busy = False
-            if self._ok_btn is not None:
-                self._ok_btn.setEnabled(
-                    not self._sam_busy and not self._finalizing
+            if quality == "proxy":
+                if not proxy_path.is_file():
+                    job.extract_frame_at(
+                        video,
+                        index,
+                        proxy_path,
+                        python=python,
+                        log=_log,
+                        max_short_side=job.PROXY_SHORT_SIDE,
+                    )
+                return gen, index, quality, proxy_path
+            if not full_path.is_file():
+                job.extract_frame_at(
+                    video,
+                    index,
+                    full_path,
+                    python=python,
+                    log=_log,
+                    max_short_side=None,
                 )
+            return gen, index, quality, full_path
+
+        def ok(result: object) -> None:
+            self._frame_job_running = False
+            try:
+                _r_gen, r_index, r_quality, r_path = result  # type: ignore[misc]
+            except Exception:  # noqa: BLE001
+                self._kick_frame_job()
+                return
+            path = Path(str(r_path))
+            current = int(self._frame_slider.value())
+            if int(r_index) != current:
+                self._kick_frame_job()
+                return
+            if not path.is_file():
+                self._kick_frame_job()
+                return
+            if r_quality == "proxy":
+                if self._full_ready_index == current and self._still.is_file():
+                    self._kick_frame_job()
+                    return
+                self._sam_preview.set_image_path(path, clear_overlay=True)
+                self._sam_status.setText(f"Scrubbing… frame {current}")
+            else:
+                self._still = path
+                try:
+                    shutil.copy2(path, self._ref_still)
+                except OSError:
+                    pass
+                self._sam_preview.set_image_path(path, clear_overlay=True)
+                self._full_ready_index = int(r_index)
+                self._scrubbing = False
+                self._frame_busy = False
+                self._image_on_worker = None
+                if self._sam2_ready and not self._worker_failed:
+                    self._sam_status.setText(
+                        "Reference ready. Click + / − or paint to generate a mask."
+                    )
+                self._set_sam_busy(False)
+            self._kick_frame_job()
+
+        def err(message: str) -> None:
+            self._frame_job_running = False
+            if message != "busy":
+                self._sam_status.setText(f"Frame load failed: {message}")
+                if quality == "full" and int(self._frame_slider.value()) == index:
+                    self._scrubbing = False
+                    self._frame_busy = False
+                    self._set_sam_busy(False)
+            self._kick_frame_job()
+
+        self._run_frame_bg(work, ok, err)
+
+    def _run_frame_bg(self, fn, on_ok, on_err) -> None:
+        """Background extract path (separate from SAM2 `_run_bg`)."""
+        self._frame_on_ok = on_ok
+        self._frame_on_err = on_err
+        thread = QtCore.QThread(self)
+        call = _BgCall(fn)
+        call.moveToThread(thread)
+        thread.started.connect(call.run)
+        call.finished_ok.connect(self._frame_bg_ok)
+        call.finished_err.connect(self._frame_bg_err)
+        call.finished_ok.connect(thread.quit)
+        call.finished_err.connect(thread.quit)
+        thread.finished.connect(call.deleteLater)
+        thread.finished.connect(thread.deleteLater)
+
+        def _clear() -> None:
+            if self._frame_thread is thread:
+                self._frame_thread = None
+
+        thread.finished.connect(_clear)
+        self._frame_thread = thread
+        thread.start()
+
+    @QtCore.Slot(object)
+    def _frame_bg_ok(self, result: object) -> None:
+        cb = getattr(self, "_frame_on_ok", None)
+        self._frame_on_ok = None
+        self._frame_on_err = None
+        if cb is not None:
+            cb(result)
+
+    @QtCore.Slot(str)
+    def _frame_bg_err(self, message: str) -> None:
+        cb = getattr(self, "_frame_on_err", None)
+        self._frame_on_ok = None
+        self._frame_on_err = None
+        if cb is not None:
+            cb(message)
 
     # --- objects / tools ---------------------------------------------------
 
@@ -702,18 +874,19 @@ class MatAnyoneDialog(QtWidgets.QDialog):
         self._active = max(0, min(self._active, len(self._objects) - 1))
         return self._objects[self._active]
 
-    def _reset_all_objects(self) -> None:
+    def _reset_all_objects(self, *, wipe_disk: bool = False) -> None:
         self._objects = [_ObjSlot(name="Object 1", index=0)]
         self._active = 0
         self._refresh_obj_combo()
         self._sam_preview.set_points([])
         self._sam_preview.set_mask_image(None)
-        sam_root = self._work / "sam_obj"
-        if sam_root.is_dir():
-            try:
-                shutil.rmtree(sam_root)
-            except OSError:
-                pass
+        if wipe_disk:
+            sam_root = self._work / "sam_obj"
+            if sam_root.is_dir():
+                try:
+                    shutil.rmtree(sam_root)
+                except OSError:
+                    pass
 
     def _refresh_obj_combo(self) -> None:
         self._obj_combo.blockSignals(True)
@@ -838,32 +1011,17 @@ class MatAnyoneDialog(QtWidgets.QDialog):
             except Exception:  # noqa: BLE001
                 pass
 
-    def _queue_set_image(self, path: Path) -> None:
-        if not self._worker_ready or self._worker is None:
-            return
-        if self._bg_thread is not None and self._bg_thread.isRunning():
-            return
-        worker = self._worker
-
-        def work():
-            worker.set_image(path)
-            return str(path)
-
-        def ok(_p: object) -> None:
-            self._image_on_worker = path
-
-        def err(msg: str) -> None:
-            if msg == "busy":
-                return
-            self._sam_status.setText(f"set_image failed: {msg}")
-
-        self._run_bg(work, ok, err)
-
     def closeEvent(self, event) -> None:  # noqa: N802
+        self._proxy_timer.stop()
+        self._settle_timer.stop()
+        self._reset_all_objects(wipe_disk=True)
         self._shutdown_worker()
         super().closeEvent(event)
 
     def reject(self) -> None:
+        self._proxy_timer.stop()
+        self._settle_timer.stop()
+        self._reset_all_objects(wipe_disk=True)
         self._shutdown_worker()
         super().reject()
 
@@ -871,21 +1029,31 @@ class MatAnyoneDialog(QtWidgets.QDialog):
 
     def _set_sam_busy(self, busy: bool) -> None:
         self._sam_busy = busy
-        lock = busy or self._finalizing or self._frame_busy
+        lock = (
+            busy
+            or self._finalizing
+            or self._frame_busy
+            or self._scrubbing
+            or not self._ref_input_ready()
+        )
         self._sam_preview.set_accept_input(
-            self._sam2_ready and self._worker_ready and not self._finalizing
+            self._sam2_ready
+            and self._worker_ready
+            and not self._finalizing
+            and self._ref_input_ready()
         )
         if self._clear_btn is not None:
             self._clear_btn.setEnabled(not lock)
         if self._ok_btn is not None:
-            self._ok_btn.setEnabled(not lock)
-        self._frame_slider.setEnabled(not lock)
-        self._frame_spin.setEnabled(not lock)
-        self._obj_combo.setEnabled(not self._finalizing)
+            self._ok_btn.setEnabled(not lock and self._ref_input_ready())
+        self._obj_combo.setEnabled(not self._finalizing and not self._scrubbing)
         self._obj_add.setEnabled(
             not lock and len(self._objects) < sam.MAX_OBJECTS
         )
         self._obj_del.setEnabled(not lock and len(self._objects) > 1)
+        # Keep scrubbing the slider even while a frame loads.
+        self._frame_slider.setEnabled(not self._finalizing)
+        self._frame_spin.setEnabled(not self._finalizing)
 
     def _run_bg(self, fn, on_ok, on_err) -> None:
         """Serialize background calls (one QThread at a time)."""
@@ -1128,9 +1296,16 @@ class MatAnyoneDialog(QtWidgets.QDialog):
     # --- accept / finalize -------------------------------------------------
 
     def _accept(self) -> None:
-        if self._sam_busy or self._frame_busy or self._finalizing:
+        if self._sam_busy or self._frame_busy or self._finalizing or self._scrubbing:
             QtWidgets.QMessageBox.information(
                 self, "MatAnyone", "Still busy. Wait a moment."
+            )
+            return
+        if not self._ref_input_ready():
+            QtWidgets.QMessageBox.information(
+                self,
+                "MatAnyone",
+                "Wait for the reference frame to finish loading.",
             )
             return
 
@@ -1161,8 +1336,13 @@ class MatAnyoneDialog(QtWidgets.QDialog):
         slots_snapshot = list(self._objects)
         work = self._work
         worker = self._worker
+        still = self._still
+        need_set = self._image_on_worker != still
 
         def work_fn():
+            assert worker is not None
+            if need_set and still.is_file():
+                worker.set_image(still)
             edits: list[QtGui.QImage] = []
             for slot in slots_snapshot:
                 base_p, paint_p, edit_p = slot.paths(work)
@@ -1174,7 +1354,6 @@ class MatAnyoneDialog(QtWidgets.QDialog):
                 if not slot.has_positive():
                     continue
                 # Points exist but preview edit missing — one tiny predict.
-                assert worker is not None
                 worker.predict(list(slot.points), base_p)
                 base = sam.load_qimage_l(base_p)
                 if slot.paint is not None and not slot.paint.isNull():
@@ -1200,6 +1379,8 @@ class MatAnyoneDialog(QtWidgets.QDialog):
 
         def ok(path: object) -> None:
             self._finalizing = False
+            if need_set:
+                self._image_on_worker = still
             dest_path = Path(str(path))
             # Positives from active object for JobOptions compat (xy only).
             active = self._active_slot()

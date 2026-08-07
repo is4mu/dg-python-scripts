@@ -18,7 +18,7 @@ from typing import Any, Callable
 
 import dgpy_paths
 
-__version__ = "0.12.0"
+__version__ = "0.12.1"
 
 ProgressCb = Callable[[str], None]
 StepCb = Callable[[int, int, str], None]
@@ -419,55 +419,94 @@ def extract_frame_at(
     log: ProgressCb,
     cancel: threading.Event | None = None,
     holder: _ProcHolder | None = None,
+    max_short_side: int | None = None,
 ) -> Path:
-    """Write PNG for frame_index (0-based) from video."""
+    """Write image for frame_index (0-based) from video.
+
+    Prefers OpenCV seek in the runtime venv (fast for scrubbing). Optional
+    ``max_short_side`` downscales so the short side is at most that many pixels
+    (proxy previews). Falls back to ffmpeg select when OpenCV fails and no
+    downscale is requested.
+    """
     import shutil
 
     if frame_index < 0:
         raise RuntimeError(f"Invalid frame index: {frame_index}")
     still.parent.mkdir(parents=True, exist_ok=True)
-    log(f"Extract frame {frame_index} → {still}")
+    side = int(max_short_side) if max_short_side else 0
+    log(
+        f"Extract frame {frame_index}"
+        + (f" (proxy≤{side})" if side > 0 else "")
+        + f" → {still}"
+    )
+    code = (
+        "import sys,cv2\n"
+        "src,dst,idx,max_side=sys.argv[1],sys.argv[2],int(sys.argv[3]),int(sys.argv[4])\n"
+        "cap=cv2.VideoCapture(src)\n"
+        "if not cap.isOpened(): raise SystemExit('open failed')\n"
+        "cap.set(cv2.CAP_PROP_POS_FRAMES, idx)\n"
+        "ok,frame=cap.read(); cap.release()\n"
+        "if not ok: raise SystemExit('failed to read frame')\n"
+        "if max_side>0:\n"
+        "    h,w=frame.shape[:2]; short=min(h,w)\n"
+        "    if short>max_side:\n"
+        "        s=max_side/float(short)\n"
+        "        frame=cv2.resize(frame,(max(1,int(w*s)),max(1,int(h*s))),"
+        "interpolation=cv2.INTER_AREA)\n"
+        "if dst.lower().endswith(('.jpg','.jpeg')):\n"
+        "    cv2.imwrite(dst,frame,[int(cv2.IMWRITE_JPEG_QUALITY),82])\n"
+        "else:\n"
+        "    cv2.imwrite(dst,frame)\n"
+    )
+    proc = subprocess.run(
+        [python, "-c", code, str(video), str(still), str(frame_index), str(side)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if proc.returncode == 0 and still.is_file():
+        return still
+
+    if side > 0:
+        detail = (proc.stderr or proc.stdout or "").strip()
+        raise RuntimeError(
+            f"Proxy frame extract failed (index={frame_index}): {detail}"
+        )
+
+    # Full-frame ffmpeg fallback (no downscale).
     ffmpeg = shutil.which("ffmpeg")
-    if ffmpeg:
-        _run_streaming(
-            [
-                ffmpeg,
-                "-hide_banner",
-                "-loglevel",
-                "error",
-                "-y",
-                "-i",
-                str(video),
-                "-vf",
-                f"select=eq(n\\,{frame_index})",
-                "-vsync",
-                "vfr",
-                "-frames:v",
-                "1",
-                str(still),
-            ],
-            log=log,
-            cancel=cancel,
-            holder=holder,
+    if not ffmpeg:
+        detail = (proc.stderr or proc.stdout or "").strip()
+        raise RuntimeError(
+            f"Frame extract failed (index={frame_index}): {detail}"
         )
-    else:
-        code = (
-            "import sys,cv2\n"
-            "cap=cv2.VideoCapture(sys.argv[1]); idx=int(sys.argv[2])\n"
-            "cap.set(cv2.CAP_PROP_POS_FRAMES, idx)\n"
-            "ok,frame=cap.read(); cap.release()\n"
-            "if not ok: raise SystemExit('failed to read frame')\n"
-            "cv2.imwrite(sys.argv[3], frame)\n"
-        )
-        _run_streaming(
-            [python, "-c", code, str(video), str(frame_index), str(still)],
-            log=log,
-            cancel=cancel,
-            holder=holder,
-        )
+    _run_streaming(
+        [
+            ffmpeg,
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-y",
+            "-i",
+            str(video),
+            "-vf",
+            f"select=eq(n\\,{frame_index})",
+            "-vsync",
+            "vfr",
+            "-frames:v",
+            "1",
+            str(still),
+        ],
+        log=log,
+        cancel=cancel,
+        holder=holder,
+    )
     if not still.is_file():
         raise RuntimeError(f"Frame extract produced no file (index={frame_index})")
     return still
+
+
+PROXY_SHORT_SIDE = 480
 
 
 def _which_ffmpeg() -> str | None:
