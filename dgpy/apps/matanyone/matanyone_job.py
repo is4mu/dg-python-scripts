@@ -18,7 +18,7 @@ from typing import Any, Callable
 
 import dgpy_paths
 
-__version__ = "0.10.1"
+__version__ = "0.11.1"
 
 ProgressCb = Callable[[str], None]
 StepCb = Callable[[int, int, str], None]
@@ -239,23 +239,27 @@ def export_clip_mp4(clip, out_dir: Path, *, logger) -> Path:
 
 
 class _ProcHolder:
+    """Track one or more subprocesses so Cancel can kill them all."""
+
     def __init__(self) -> None:
-        self.proc: subprocess.Popen | None = None
+        self._procs: dict[str, subprocess.Popen] = {}
         self._lock = threading.Lock()
 
-    def set(self, proc: subprocess.Popen | None) -> None:
+    def set(self, proc: subprocess.Popen | None, key: str = "default") -> None:
         with self._lock:
-            self.proc = proc
+            if proc is None:
+                self._procs.pop(key, None)
+            else:
+                self._procs[key] = proc
 
     def kill(self) -> None:
         with self._lock:
-            proc = self.proc
-        if proc is None:
-            return
-        try:
-            proc.kill()
-        except OSError:
-            pass
+            procs = list(self._procs.values())
+        for proc in procs:
+            try:
+                proc.kill()
+            except OSError:
+                pass
 
 
 def _check_cancel(cancel: threading.Event | None) -> None:
@@ -270,6 +274,7 @@ def _run_streaming(
     log: ProgressCb,
     cancel: threading.Event | None = None,
     holder: _ProcHolder | None = None,
+    holder_key: str = "default",
     tail: int = 40,
 ) -> None:
     log("$ " + " ".join(cmd))
@@ -282,7 +287,7 @@ def _run_streaming(
         bufsize=1,
     )
     if holder is not None:
-        holder.set(proc)
+        holder.set(proc, key=holder_key)
     assert proc.stdout is not None
     recent: list[str] = []
     try:
@@ -297,7 +302,7 @@ def _run_streaming(
         code = proc.wait()
     finally:
         if holder is not None:
-            holder.set(None)
+            holder.set(None, key=holder_key)
     _check_cancel(cancel)
     if code != 0:
         detail = "\n".join(recent[-tail:]) if recent else "(no output)"
@@ -1052,6 +1057,7 @@ def run_matanyone(
     log: ProgressCb,
     cancel: threading.Event | None = None,
     holder: _ProcHolder | None = None,
+    holder_key: str = "default",
 ) -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
     cmd = [
@@ -1076,7 +1082,93 @@ def run_matanyone(
         log=log,
         cancel=cancel,
         holder=holder,
+        holder_key=holder_key,
     )
+
+
+def _clear_dir(path: Path) -> None:
+    import shutil
+
+    if path.exists():
+        shutil.rmtree(path, ignore_errors=True)
+
+
+def _run_matanyone_pair_parallel(
+    *,
+    python: str,
+    inference_script: Path,
+    fwd_source: Path,
+    bwd_source: Path,
+    mask: Path,
+    fwd_out: Path,
+    bwd_out: Path,
+    save_image: bool,
+    log: ProgressCb,
+    cancel: threading.Event | None = None,
+    holder: _ProcHolder | None = None,
+) -> None:
+    """Run Forward and Backward MatAnyone in parallel subprocesses."""
+    log_lock = threading.Lock()
+    errors: dict[str, BaseException] = {}
+
+    def make_log(prefix: str) -> ProgressCb:
+        def _log(msg: str) -> None:
+            with log_lock:
+                log(f"[{prefix}] {msg}")
+
+        return _log
+
+    def run_fwd() -> None:
+        try:
+            run_matanyone(
+                python=python,
+                inference_script=inference_script,
+                source=fwd_source,
+                mask=mask,
+                out_dir=fwd_out,
+                save_image=save_image,
+                log=make_log("fwd"),
+                cancel=cancel,
+                holder=holder,
+                holder_key="fwd",
+            )
+        except BaseException as exc:  # noqa: BLE001
+            errors["fwd"] = exc
+
+    def run_bwd() -> None:
+        try:
+            run_matanyone(
+                python=python,
+                inference_script=inference_script,
+                source=bwd_source,
+                mask=mask,
+                out_dir=bwd_out,
+                save_image=save_image,
+                log=make_log("bwd"),
+                cancel=cancel,
+                holder=holder,
+                holder_key="bwd",
+            )
+        except BaseException as exc:  # noqa: BLE001
+            errors["bwd"] = exc
+
+    t_fwd = threading.Thread(target=run_fwd, name="matanyone-fwd", daemon=True)
+    t_bwd = threading.Thread(target=run_bwd, name="matanyone-bwd", daemon=True)
+    t_fwd.start()
+    t_bwd.start()
+    while t_fwd.is_alive() or t_bwd.is_alive():
+        if cancel is not None and cancel.is_set():
+            if holder is not None:
+                holder.kill()
+            t_fwd.join(timeout=8.0)
+            t_bwd.join(timeout=8.0)
+            raise JobCancelled("Cancelled by user")
+        t_fwd.join(0.2)
+        t_bwd.join(0.2)
+    _check_cancel(cancel)
+    if errors:
+        detail = "\n".join(f"{key}: {err}" for key, err in errors.items())
+        raise RuntimeError(f"Parallel MatAnyone failed:\n{detail}")
 
 
 def _find_outputs(out_dir: Path) -> tuple[Path | None, Path | None, Path | None]:
@@ -1671,6 +1763,9 @@ def run_infer(
         out_dir = work / "out"
         save_image = opts.output_kind == "alpha_sequence"
         seg = work / "seg"
+        out_fwd = work / "out_fwd"
+        out_bwd_raw = work / "out_bwd_raw"
+        out_bwd = work / "out_bwd"
 
         set_step(1)
         _check_cancel(cancel)
@@ -1699,21 +1794,6 @@ def run_infer(
                 cancel=cancel,
                 holder=holder,
             )
-            log(f"Running MatAnyone 2 forward from frame {ref_n}…")
-            run_matanyone(
-                python=python,
-                inference_script=infer,
-                source=fwd_mp4,
-                mask=mask_path,
-                out_dir=work / "out_fwd",
-                save_image=save_image,
-                log=log,
-                cancel=cancel,
-                holder=holder,
-            )
-
-            set_step(2)
-            _check_cancel(cancel)
             bwd_in = make_backward_input_segment(
                 video,
                 ref_n,
@@ -1723,21 +1803,77 @@ def run_infer(
                 cancel=cancel,
                 holder=holder,
             )
-            log(f"Running MatAnyone 2 backward (reverse 0…{ref_n})…")
-            run_matanyone(
-                python=python,
-                inference_script=infer,
-                source=bwd_in,
-                mask=mask_path,
-                out_dir=work / "out_bwd_raw",
-                save_image=save_image,
-                log=log,
-                cancel=cancel,
-                holder=holder,
-            )
+
+            set_step(1, "Forward+Backward (parallel)")
+            _check_cancel(cancel)
+            parallel_ok = False
+            try:
+                log(
+                    f"Running MatAnyone 2 Forward+Backward in parallel "
+                    f"(ref={ref_n})…"
+                )
+                _clear_dir(out_fwd)
+                _clear_dir(out_bwd_raw)
+                _run_matanyone_pair_parallel(
+                    python=python,
+                    inference_script=infer,
+                    fwd_source=fwd_mp4,
+                    bwd_source=bwd_in,
+                    mask=mask_path,
+                    fwd_out=out_fwd,
+                    bwd_out=out_bwd_raw,
+                    save_image=save_image,
+                    log=log,
+                    cancel=cancel,
+                    holder=holder,
+                )
+                parallel_ok = True
+                set_step(2, "Parallel complete")
+            except JobCancelled:
+                raise
+            except Exception as parallel_exc:  # noqa: BLE001
+                log(
+                    "Parallel Forward+Backward failed "
+                    f"({parallel_exc}); falling back to sequential."
+                )
+                _clear_dir(out_fwd)
+                _clear_dir(out_bwd_raw)
+                set_step(1, "Forward MatAnyone (sequential fallback)")
+                _check_cancel(cancel)
+                log(f"Running MatAnyone 2 forward from frame {ref_n}…")
+                run_matanyone(
+                    python=python,
+                    inference_script=infer,
+                    source=fwd_mp4,
+                    mask=mask_path,
+                    out_dir=out_fwd,
+                    save_image=save_image,
+                    log=log,
+                    cancel=cancel,
+                    holder=holder,
+                    holder_key="fwd",
+                )
+                set_step(2, "Backward MatAnyone (sequential fallback)")
+                _check_cancel(cancel)
+                log(f"Running MatAnyone 2 backward (reverse 0…{ref_n})…")
+                run_matanyone(
+                    python=python,
+                    inference_script=infer,
+                    source=bwd_in,
+                    mask=mask_path,
+                    out_dir=out_bwd_raw,
+                    save_image=save_image,
+                    log=log,
+                    cancel=cancel,
+                    holder=holder,
+                    holder_key="bwd",
+                )
+
+            if parallel_ok:
+                log("Parallel Forward+Backward finished.")
             reverse_matanyone_outputs(
-                work / "out_bwd_raw",
-                work / "out_bwd",
+                out_bwd_raw,
+                out_bwd,
                 python=python,
                 log=log,
                 cancel=cancel,
@@ -1747,8 +1883,8 @@ def run_infer(
             _check_cancel(cancel)
             log("Joining backward + forward mattes…")
             join_matanyone_outputs(
-                work / "out_bwd",
-                work / "out_fwd",
+                out_bwd,
+                out_fwd,
                 ref_index=ref_n,
                 dest_out=out_dir,
                 write_foreground=opts.write_foreground,

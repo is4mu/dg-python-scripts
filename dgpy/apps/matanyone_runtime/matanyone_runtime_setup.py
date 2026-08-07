@@ -12,7 +12,7 @@ from typing import Callable
 
 import matanyone_runtime_paths as paths
 
-__version__ = "0.10.0"
+__version__ = "0.11.0"
 
 LogFn = Callable[[str], None]
 StepFn = Callable[[int, int, str], None]
@@ -478,10 +478,6 @@ if __name__ == "__main__":
 
 
 SAM2_REPO_URL = "https://github.com/facebookresearch/sam2.git"
-SAM2_CKPT_URL = (
-    "https://dl.fbaipublicfiles.com/segment_anything_2/092824/"
-    "sam2.1_hiera_large.pt"
-)
 SAM2_CKPT_TINY_URL = (
     "https://dl.fbaipublicfiles.com/segment_anything_2/092824/"
     "sam2.1_hiera_tiny.pt"
@@ -491,7 +487,7 @@ SAM2_SETUP_STEPS: list[tuple[str, int]] = [
     ("Check MatAnyone 2 runtime", 1),
     ("Clone SAM2 repository", 2),
     ("Install SAM2 into runtime venv", 4),
-    ("Download SAM2.1 large + tiny checkpoints", 5),
+    ("Download SAM2.1 tiny checkpoint", 5),
     ("Write helper + READY.sam2", 1),
 ]
 
@@ -531,7 +527,7 @@ def _update_ready_sam2(
     paths.ready_path().write_text(
         json.dumps(data, indent=2) + "\n", encoding="utf-8"
     )
-    _log(log, f"READY.sam2 updated → large={checkpoint} tiny={checkpoint_tiny}")
+    _log(log, f"READY.sam2 updated → tiny={checkpoint_tiny} large={checkpoint}")
 
 
 def _download_ckpt(
@@ -567,11 +563,6 @@ def _download_ckpt(
     _log(log, f"Checkpoint saved: {dest} ({dest.stat().st_size} bytes)")
 
 
-def _large_ckpt_ok(root: Path | None = None) -> bool:
-    ckpt = paths.sam2_checkpoint_path(root, size="large")
-    return ckpt.is_file() and ckpt.stat().st_size >= 1_000_000
-
-
 def _tiny_ckpt_ok(root: Path | None = None) -> bool:
     ckpt = paths.sam2_checkpoint_path(root, size="tiny")
     return ckpt.is_file() and ckpt.stat().st_size >= 100_000
@@ -583,10 +574,10 @@ def setup_sam2(
     step: StepFn | None = None,
     force: bool = False,
 ) -> Path:
-    """Install facebookresearch/sam2 + checkpoints into the MatAnyone runtime.
+    """Install facebookresearch/sam2 + tiny checkpoint into the MatAnyone runtime.
 
     Stays under dgpy_runtimes/matanyone — no OS packages, no …/python/**.
-    Downloads both large (OK final) and tiny (preview) weights.
+    Tiny weights are required; large is optional (kept if already present).
     """
     paths.migrate_legacy_runtime_if_needed(log=log)
     root = paths.runtime_root()
@@ -606,23 +597,21 @@ def setup_sam2(
         raise RuntimeError("Runtime python missing")
 
     if paths.is_sam2_ready() and not force:
-        _log(log, f"SAM2 already ready: {paths.sam2_checkpoint_path()}")
+        _log(log, f"SAM2 already ready: {paths.sam2_checkpoint_path(size='tiny')}")
         _s(len(SAM2_SETUP_STEPS) - 1, "Already ready")
         return root
 
-    # Soft repair: previous Setup left large ready but tiny missing.
+    # Soft repair: previous Setup left package ready but tiny missing / not marked.
     helper_path = root / "sam2_make_mask.py"
-    data = paths.load_ready()
-    sam2_meta = data.get("sam2") if isinstance(data.get("sam2"), dict) else {}
-    mostly_ready = (
+    repo = paths.sam2_repo_dir()
+    marker = repo / "sam2" / "build_sam.py"
+    soft_repair = (
         not force
-        and isinstance(sam2_meta, dict)
-        and bool(sam2_meta.get("ready"))
-        and _large_ckpt_ok()
         and helper_path.is_file()
+        and marker.is_file()
         and not _tiny_ckpt_ok()
     )
-    if mostly_ready:
+    if soft_repair:
         _s(3, "Download SAM2.1 tiny checkpoint (repair)")
         ckpt_dir = root / paths.SAM2_CKPT_DIRNAME
         ckpt_dir.mkdir(parents=True, exist_ok=True)
@@ -637,11 +626,11 @@ def setup_sam2(
         )
         _s(4)
         _write_sam_helper(helper_path)
-        repo = paths.sam2_repo_dir()
+        large_path = ckpt if ckpt.is_file() else ckpt_tiny
         _update_ready_sam2(
-            checkpoint=ckpt if ckpt.is_file() else paths.sam2_checkpoint_path(size="large"),
+            checkpoint=large_path,
             checkpoint_tiny=ckpt_tiny,
-            config=paths.SAM2_CONFIG,
+            config=paths.SAM2_CONFIG if ckpt.is_file() else paths.SAM2_CONFIG_TINY,
             config_tiny=paths.SAM2_CONFIG_TINY,
             repo=repo,
             log=log,
@@ -652,8 +641,6 @@ def setup_sam2(
         return root
 
     _s(1)
-    repo = paths.sam2_repo_dir()
-    marker = repo / "sam2" / "build_sam.py"
     if force and repo.exists():
         _log(log, f"Removing existing SAM2 repo: {repo}")
         shutil.rmtree(repo)
@@ -688,27 +675,25 @@ def setup_sam2(
     ckpt = ckpt_dir / paths.SAM2_CKPT_NAME
     ckpt_tiny = ckpt_dir / paths.SAM2_CKPT_TINY
     _download_ckpt(
-        SAM2_CKPT_URL,
-        ckpt,
-        min_bytes=1_000_000,
-        force=force,
-        log=log,
-    )
-    _download_ckpt(
         SAM2_CKPT_TINY_URL,
         ckpt_tiny,
         min_bytes=100_000,
         force=force,
         log=log,
     )
+    if ckpt.is_file():
+        _log(log, f"Optional large checkpoint already present (kept): {ckpt}")
+    else:
+        _log(log, "Skipping optional large checkpoint download (tiny-only Setup)")
 
     _s(4)
     helper = root / "sam2_make_mask.py"
     _write_sam_helper(helper)
+    large_path = ckpt if ckpt.is_file() else ckpt_tiny
     _update_ready_sam2(
-        checkpoint=ckpt,
+        checkpoint=large_path,
         checkpoint_tiny=ckpt_tiny,
-        config=paths.SAM2_CONFIG,
+        config=paths.SAM2_CONFIG if ckpt.is_file() else paths.SAM2_CONFIG_TINY,
         config_tiny=paths.SAM2_CONFIG_TINY,
         repo=repo,
         log=log,

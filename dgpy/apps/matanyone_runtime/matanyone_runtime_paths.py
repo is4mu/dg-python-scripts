@@ -9,7 +9,7 @@ from typing import Callable
 
 import dgpy_paths
 
-__version__ = "0.10.0"
+__version__ = "0.11.0"
 
 RUNTIME_NAME = "matanyone"
 READY_NAME = "READY.json"
@@ -247,7 +247,7 @@ def sam2_checkpoint_path(
 ) -> Path:
     """Resolve SAM2 checkpoint path.
 
-    ``size`` is ``"large"`` (default / OK final) or ``"tiny"`` (preview).
+    ``size`` is ``"large"`` (legacy / optional) or ``"tiny"`` (required preview+OK).
     """
     data = load_ready(root)
     sam2 = data.get("sam2") if isinstance(data.get("sam2"), dict) else {}
@@ -280,15 +280,12 @@ def sam2_config_id(
 
 
 def is_sam2_ready(root: Path | None = None) -> bool:
-    """True when MatAnyone 2 READY plus SAM2 large+tiny checkpoints are present."""
+    """True when MatAnyone 2 READY plus SAM2 tiny checkpoint are present."""
     if not is_ready(root):
         return False
     data = load_ready(root)
     sam2 = data.get("sam2")
     if not isinstance(sam2, dict) or not sam2.get("ready"):
-        return False
-    ckpt = sam2_checkpoint_path(root, size="large")
-    if not ckpt.is_file() or ckpt.stat().st_size < 1_000_000:
         return False
     tiny = sam2_checkpoint_path(root, size="tiny")
     if not tiny.is_file() or tiny.stat().st_size < 100_000:

@@ -11,7 +11,7 @@ from PySide6 import QtCore, QtWidgets
 
 import matanyone_runtime_setup as setup
 
-__version__ = "0.10.0"
+__version__ = "0.11.0"
 
 # Keep alive while the background job runs (menu callback returns immediately).
 _ACTIVE_SETUP: SetupProgressDialog | None = None
@@ -356,8 +356,8 @@ class Sam2SetupProgressDialog(_ProgressDialogBase):
             self,
             "MatAnyone SAM2",
             "SAM2 ready.\n\n"
-            f"checkpoint={paths.sam2_checkpoint_path()}\n"
-            f"config={paths.sam2_config_id()}",
+            f"checkpoint={paths.sam2_checkpoint_path(size='tiny')}\n"
+            f"config={paths.sam2_config_id(size='tiny')}",
         )
 
     @QtCore.Slot(str)

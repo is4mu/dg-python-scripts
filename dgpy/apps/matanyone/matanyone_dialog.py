@@ -1,4 +1,4 @@
-"""MatAnyone mask-prep dialog (PySide6) — Flame / SAM2 tabs + ref frame (v0.10)."""
+"""MatAnyone mask-prep dialog (PySide6) — Flame / SAM2 tabs + ref frame."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 import matanyone_sam2 as sam
 import matanyone_selection as selection
 
-__version__ = "0.10.1"
+__version__ = "0.11.1"
 
 _WINDOW: QtWidgets.QWidget | None = None
 
@@ -148,6 +148,7 @@ class _ImagePreview(QtWidgets.QLabel):
         self._tool = _TOOL_POS
         self._brush_radius = 20.0
         self._painting = False
+        self._cursor_widget: QtCore.QPointF | None = None
         # Cached layout for paint/hit-testing (avoid re-scale every mouse move).
         self._scaled: QtGui.QPixmap | None = None
         self._x_off = 0.0
@@ -160,9 +161,13 @@ class _ImagePreview(QtWidgets.QLabel):
 
     def set_tool(self, tool: str) -> None:
         self._tool = tool
+        if tool not in (_TOOL_PAINT_ADD, _TOOL_PAINT_ERASE):
+            self._cursor_widget = None
+        self.update()
 
     def set_brush_radius(self, radius: float) -> None:
         self._brush_radius = max(1.0, float(radius))
+        self.update()
 
     def set_image_path(
         self, path: Path | None, *, clear_overlay: bool = True
@@ -292,10 +297,37 @@ class _ImagePreview(QtWidgets.QLabel):
         painter.end()
         self.setPixmap(canvas)
 
+    def paintEvent(self, event) -> None:  # noqa: N802
+        super().paintEvent(event)
+        if not self._interactive:
+            return
+        if self._tool not in (_TOOL_PAINT_ADD, _TOOL_PAINT_ERASE):
+            return
+        if self._cursor_widget is None or self._scaled is None or self._scaled.isNull():
+            return
+        rx = self._brush_radius * max(self._sx, 1e-6)
+        ry = self._brush_radius * max(self._sy, 1e-6)
+        if self._tool == _TOOL_PAINT_ADD:
+            color = QtGui.QColor(0, 255, 120, 220)
+        else:
+            color = QtGui.QColor(255, 72, 72, 220)
+        painter = QtGui.QPainter(self)
+        painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
+        painter.setBrush(QtCore.Qt.BrushStyle.NoBrush)
+        painter.setPen(QtGui.QPen(color, 1.5))
+        painter.drawEllipse(self._cursor_widget, rx, ry)
+        painter.end()
+
     def resizeEvent(self, event) -> None:  # noqa: N802
         super().resizeEvent(event)
         self._scaled = None
         self._refresh()
+
+    def leaveEvent(self, event) -> None:  # noqa: N802
+        if self._cursor_widget is not None:
+            self._cursor_widget = None
+            self.update()
+        super().leaveEvent(event)
 
     def mousePressEvent(self, event) -> None:  # noqa: N802
         if not self._accept_input:
@@ -307,9 +339,12 @@ class _ImagePreview(QtWidgets.QLabel):
             return
         ix, iy = xy
         if self._tool in (_TOOL_PAINT_ADD, _TOOL_PAINT_ERASE):
+            pos = event.position() if hasattr(event, "position") else event.localPos()
+            self._cursor_widget = QtCore.QPointF(float(pos.x()), float(pos.y()))
             self._painting = True
             add = self._tool == _TOOL_PAINT_ADD
             self.paint_at.emit(ix, iy, add)
+            self.update()
             return
         label = 1 if self._tool == _TOOL_POS else 0
         self._points.append((ix, iy, label))
@@ -317,15 +352,31 @@ class _ImagePreview(QtWidgets.QLabel):
         self.point_added.emit(ix, iy, label)
 
     def mouseMoveEvent(self, event) -> None:  # noqa: N802
-        if not self._painting or not self._accept_input:
+        if not self._accept_input:
             return
-        if not (event.buttons() & QtCore.Qt.MouseButton.LeftButton):
+        if self._tool in (_TOOL_PAINT_ADD, _TOOL_PAINT_ERASE):
+            pos = event.position() if hasattr(event, "position") else event.localPos()
+            xy = self._image_xy(event)
+            if xy is None:
+                if self._cursor_widget is not None:
+                    self._cursor_widget = None
+                    self.update()
+            else:
+                self._cursor_widget = QtCore.QPointF(
+                    float(pos.x()), float(pos.y())
+                )
+                self.update()
+            if (
+                self._painting
+                and (event.buttons() & QtCore.Qt.MouseButton.LeftButton)
+                and xy is not None
+            ):
+                add = self._tool == _TOOL_PAINT_ADD
+                self.paint_at.emit(xy[0], xy[1], add)
             return
-        xy = self._image_xy(event)
-        if xy is None:
-            return
-        add = self._tool == _TOOL_PAINT_ADD
-        self.paint_at.emit(xy[0], xy[1], add)
+        if self._cursor_widget is not None:
+            self._cursor_widget = None
+            self.update()
 
     def mouseReleaseEvent(self, event) -> None:  # noqa: N802
         if event.button() == QtCore.Qt.MouseButton.LeftButton and self._painting:
@@ -541,7 +592,7 @@ class MatAnyoneDialog(QtWidgets.QDialog):
         self._clear_btn = clear_pts
 
         self._sam_status = QtWidgets.QLabel(
-            "SAM2: + / − points and paint. Preview uses tiny; OK finalizes with large."
+            "SAM2: + / − points and paint (tiny). OK combines object masks."
             if self._sam2_ready
             else "SAM2 is not set up. Run DGpy → MatAnyone → SAM2 Setup…"
         )
@@ -796,7 +847,7 @@ class MatAnyoneDialog(QtWidgets.QDialog):
         self._worker_ready = True
         self._image_on_worker = self._still if self._still.is_file() else None
         self._sam_status.setText(
-            "SAM2 ready (tiny preview). Use + / − / paint, then OK for large."
+            "SAM2 ready (tiny). Use + / − / paint, then OK."
         )
         self._set_sam_busy(False)
 
@@ -1127,7 +1178,7 @@ class MatAnyoneDialog(QtWidgets.QDialog):
             QtCore.QTimer.singleShot(0, self._run_sam2_preview)
             return
         self._sam_status.setText(
-            "SAM2 preview ready. Refine with ± / paint, then OK (large)."
+            "SAM2 preview ready. Refine with ± / paint, then OK."
         )
 
     def _on_preview_err(self, message: str) -> None:
@@ -1186,43 +1237,39 @@ class MatAnyoneDialog(QtWidgets.QDialog):
 
         self._finalizing = True
         self._set_sam_busy(True)
-        self._sam_status.setText("Finalizing mask (large)…")
-        worker = self._worker
-        rpaths = self._rpaths
-        still = self._still
+        self._sam_status.setText("Finalizing mask…")
         slots_snapshot = list(self._objects)
         work = self._work
+        worker = self._worker
 
         def work_fn():
-            assert rpaths is not None
-            worker.switch_model(
-                rpaths.sam2_checkpoint_path(size="large"),
-                rpaths.sam2_config_id(size="large"),
-            )
-            worker.set_image(still)
             edits: list[QtGui.QImage] = []
             for slot in slots_snapshot:
                 base_p, paint_p, edit_p = slot.paths(work)
                 base_p.parent.mkdir(parents=True, exist_ok=True)
-                if slot.has_positive():
-                    worker.predict(list(slot.points), base_p)
-                    base = sam.load_qimage_l(base_p)
-                    if slot.paint is not None and not slot.paint.isNull():
-                        paint = slot.paint
-                    elif paint_p.is_file():
-                        paint = sam.load_qimage_l(paint_p)
-                    else:
-                        paint = _blank_gray(
-                            base.width(), base.height(), _PAINT_NEUTRAL
-                        )
-                    edit = _compose_base_paint(base, paint)
-                    sam.save_qimage_l(base, base_p)
-                    sam.save_qimage_l(paint, paint_p)
-                    sam.save_qimage_l(edit, edit_p)
-                    edits.append(edit)
-                elif slot.edit is not None and not slot.edit.isNull():
+                if slot.edit is not None and not slot.edit.isNull():
                     sam.save_qimage_l(slot.edit, edit_p)
                     edits.append(slot.edit)
+                    continue
+                if not slot.has_positive():
+                    continue
+                # Points exist but preview edit missing — one tiny predict.
+                assert worker is not None
+                worker.predict(list(slot.points), base_p)
+                base = sam.load_qimage_l(base_p)
+                if slot.paint is not None and not slot.paint.isNull():
+                    paint = slot.paint
+                elif paint_p.is_file():
+                    paint = sam.load_qimage_l(paint_p)
+                else:
+                    paint = _blank_gray(
+                        base.width(), base.height(), _PAINT_NEUTRAL
+                    )
+                edit = _compose_base_paint(base, paint)
+                sam.save_qimage_l(base, base_p)
+                sam.save_qimage_l(paint, paint_p)
+                sam.save_qimage_l(edit, edit_p)
+                edits.append(edit)
             if not edits:
                 raise RuntimeError("no object masks to combine")
             combined = edits[0] if len(edits) == 1 else sam.or_qimages(edits)
@@ -1248,7 +1295,7 @@ class MatAnyoneDialog(QtWidgets.QDialog):
             self._set_sam_busy(False)
             self._sam_status.setText(f"Finalize failed: {message}")
             QtWidgets.QMessageBox.warning(
-                self, "MatAnyone", f"Final mask (large) failed:\n{message}"
+                self, "MatAnyone", f"Final mask failed:\n{message}"
             )
 
         self._run_bg(work_fn, ok, err)

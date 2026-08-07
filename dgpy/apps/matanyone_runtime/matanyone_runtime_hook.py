@@ -13,7 +13,7 @@ for _p in (_DGPY_ROOT, _APP_DIR):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
-__version__ = "0.10.0"
+__version__ = "0.11.0"
 
 
 def _setup(_selection=None) -> None:
@@ -120,7 +120,7 @@ def _setup_sam2(_selection=None) -> None:
         if not dgpy_gui.confirm(
             None,
             "MatAnyone",
-            f"SAM2 already ready:\n{paths.sam2_checkpoint_path()}\n\n"
+            f"SAM2 already ready:\n{paths.sam2_checkpoint_path(size='tiny')}\n\n"
             "Reinstall (force)?",
         ):
             return
@@ -132,10 +132,10 @@ def _setup_sam2(_selection=None) -> None:
             "MatAnyone",
             "Install SAM2 into the MatAnyone runtime?\n\n"
             f"Target:\n{paths.sam2_repo_dir()}\n"
-            f"Checkpoint:\n{paths.runtime_root()}/checkpoints/"
-            f"{paths.SAM2_CKPT_NAME}\n\n"
+            f"Checkpoint (tiny):\n{paths.runtime_root()}/checkpoints/"
+            f"{paths.SAM2_CKPT_TINY}\n\n"
             "Uses the existing runtime venv (no system Python / dnf).\n"
-            "Download is ~1 GB. Non-modal progress — Flame stays usable.",
+            "Download is ~40 MB (tiny). Non-modal progress — Flame stays usable.",
         ):
             return
 
