@@ -15,7 +15,7 @@ for _p in (_DGPY_ROOT, _APP_DIR):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
-__version__ = "0.11.1"
+__version__ = "0.12.0"
 
 _pending_selection: list | None = None
 
@@ -38,6 +38,9 @@ def _scope_visible(selection) -> bool:
 
         if not rpaths.is_ready():
             logger.debug("MatAnyone isVisible=False (runtime not ready)")
+            return False
+        if not rpaths.is_sam2_ready():
+            logger.debug("MatAnyone isVisible=False (SAM2 not ready)")
             return False
     except Exception as exc:  # noqa: BLE001
         logger.warning("MatAnyone isVisible runtime check error: %s", exc)

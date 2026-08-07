@@ -1,4 +1,4 @@
-"""MatAnyone mask-prep dialog (PySide6) — Flame / SAM2 tabs + ref frame."""
+"""MatAnyone mask-prep dialog (PySide6) — SAM2 + ref frame."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 import matanyone_sam2 as sam
 import matanyone_selection as selection
 
-__version__ = "0.11.1"
+__version__ = "0.12.0"
 
 _WINDOW: QtWidgets.QWidget | None = None
 
@@ -405,7 +405,7 @@ class _BgCall(QtCore.QObject):
 
 
 class MatAnyoneDialog(QtWidgets.QDialog):
-    """Mask preparation after export (v0.10 SAM2 resident worker)."""
+    """Mask preparation after export (SAM2-only)."""
 
     def __init__(
         self,
@@ -428,7 +428,6 @@ class MatAnyoneDialog(QtWidgets.QDialog):
         self._ref_dir.mkdir(parents=True, exist_ok=True)
         self._ref_still = self._ref_dir / "ref_frame.png"
         self._sam_mask = work_dir / "mask_sam2.png"
-        self._flame_mask: Path | None = None
         self._sam_busy = False
         self._frame_busy = False
         self._finalizing = False
@@ -504,28 +503,6 @@ class MatAnyoneDialog(QtWidgets.QDialog):
         ref_row.addWidget(self._frame_label)
         layout.addLayout(ref_row)
 
-        self._tabs = QtWidgets.QTabWidget()
-        flame_page = QtWidgets.QWidget()
-        flame_l = QtWidgets.QVBoxLayout(flame_page)
-        row = QtWidgets.QHBoxLayout()
-        self._mask_edit = QtWidgets.QLineEdit()
-        self._mask_edit.setPlaceholderText(
-            "Path to reference-frame mask (PNG / EXR)…"
-        )
-        browse = QtWidgets.QPushButton("Browse…")
-        browse.clicked.connect(self._browse_mask)
-        row.addWidget(self._mask_edit)
-        row.addWidget(browse)
-        flame_l.addLayout(row)
-        flame_l.addWidget(
-            QtWidgets.QLabel(
-                "Mask overlays the source. Scrub the reference frame until they align."
-            )
-        )
-        self._flame_preview = _ImagePreview(interactive=False)
-        flame_l.addWidget(self._flame_preview, 1)
-        self._tabs.addTab(flame_page, "Flame")
-
         sam_page = QtWidgets.QWidget()
         sam_l = QtWidgets.QVBoxLayout(sam_page)
 
@@ -598,14 +575,7 @@ class MatAnyoneDialog(QtWidgets.QDialog):
         )
         self._sam_status.setWordWrap(True)
         sam_l.addWidget(self._sam_status)
-        self._tabs.addTab(sam_page, "SAM2")
-        if not self._sam2_ready:
-            self._tabs.setTabEnabled(1, False)
-            self._tabs.setTabToolTip(
-                1, "Run DGpy → MatAnyone → SAM2 Setup… to enable this tab."
-            )
-        self._tabs.currentChanged.connect(self._on_tab_changed)
-        layout.addWidget(self._tabs, 1)
+        layout.addWidget(sam_page, 1)
 
         out_box = QtWidgets.QGroupBox("Output")
         out_layout = QtWidgets.QFormLayout(out_box)
@@ -708,11 +678,6 @@ class MatAnyoneDialog(QtWidgets.QDialog):
                 log=_log,
             )
             self._still = self._ref_still
-            self._flame_preview.set_image_path(
-                self._ref_still, clear_overlay=False
-            )
-            if self._flame_mask is not None:
-                self._flame_preview.set_mask_path(self._flame_mask)
             self._sam_preview.set_image_path(self._ref_still, clear_overlay=True)
             self._sam_preview.set_points([])
             if self._worker_ready and self._worker is not None:
@@ -806,10 +771,6 @@ class MatAnyoneDialog(QtWidgets.QDialog):
         self._brush_label.setText(str(value))
         self._sam_preview.set_brush_radius(float(value))
 
-    def _on_tab_changed(self, index: int) -> None:
-        if index == 1 and self._sam2_ready and not self._worker_ready:
-            self._ensure_worker()
-
     # --- worker lifecycle --------------------------------------------------
 
     def _ensure_worker(self) -> None:
@@ -821,7 +782,7 @@ class MatAnyoneDialog(QtWidgets.QDialog):
         ):
             return
         if self._rpaths is None:
-            self._disable_sam2_tab("SAM2 paths unavailable")
+            self._disable_sam2_ui("SAM2 paths unavailable")
             return
         self._worker_starting = True
         self._sam_status.setText("Starting SAM2 worker (tiny)…")
@@ -854,15 +815,14 @@ class MatAnyoneDialog(QtWidgets.QDialog):
     def _on_worker_start_err(self, message: str) -> None:
         self._worker_starting = False
         self._worker_failed = True
-        self._disable_sam2_tab(message)
+        self._disable_sam2_ui(message)
 
-    def _disable_sam2_tab(self, message: str) -> None:
+    def _disable_sam2_ui(self, message: str) -> None:
         self._sam2_ready = False
-        self._tabs.setTabEnabled(1, False)
-        self._tabs.setTabToolTip(1, message)
         self._sam_status.setText(f"SAM2 worker failed: {message}")
-        if self._tabs.currentIndex() == 1:
-            self._tabs.setCurrentIndex(0)
+        self._sam_preview.set_accept_input(False)
+        if self._ok_btn is not None:
+            self._ok_btn.setEnabled(False)
         QtWidgets.QMessageBox.warning(
             self, "MatAnyone", f"Could not start SAM2 worker:\n{message}"
         )
@@ -926,15 +886,6 @@ class MatAnyoneDialog(QtWidgets.QDialog):
             not lock and len(self._objects) < sam.MAX_OBJECTS
         )
         self._obj_del.setEnabled(not lock and len(self._objects) > 1)
-        if self._finalizing:
-            self._tabs.setTabEnabled(0, False)
-            self._tabs.setTabEnabled(1, False)
-        else:
-            self._tabs.setTabEnabled(0, not busy)
-            if self._sam2_ready and not self._worker_failed:
-                self._tabs.setTabEnabled(1, True)
-            else:
-                self._tabs.setTabEnabled(1, False)
 
     def _run_bg(self, fn, on_ok, on_err) -> None:
         """Serialize background calls (one QThread at a time)."""
@@ -981,21 +932,6 @@ class MatAnyoneDialog(QtWidgets.QDialog):
             cb(message)
 
     # --- SAM preview / paint -----------------------------------------------
-
-    def _browse_mask(self) -> None:
-        path, _ = QtWidgets.QFileDialog.getOpenFileName(
-            self,
-            "Reference-frame mask",
-            "",
-            "Images (*.png *.exr *.jpg *.jpeg *.tif *.tiff);;All (*)",
-        )
-        if not path:
-            return
-        self._mask_edit.setText(path)
-        self._flame_mask = Path(path)
-        if self._still.is_file():
-            self._flame_preview.set_image_path(self._still, clear_overlay=False)
-        self._flame_preview.set_mask_path(self._flame_mask)
 
     def _on_point(self, x: float, y: float, label: int) -> None:
         if not self._worker_ready:
@@ -1196,22 +1132,6 @@ class MatAnyoneDialog(QtWidgets.QDialog):
             QtWidgets.QMessageBox.information(
                 self, "MatAnyone", "Still busy. Wait a moment."
             )
-            return
-        tab = self._tabs.currentIndex()
-        dest = self._work / "mask.png"
-        if tab == 0:
-            raw = self._mask_edit.text().strip()
-            if not raw or not Path(raw).is_file():
-                QtWidgets.QMessageBox.warning(
-                    self, "MatAnyone", "Choose a valid mask image on the Flame tab."
-                )
-                return
-            src = Path(raw)
-            if src.resolve() != dest.resolve():
-                shutil.copy2(src, dest)
-            mask_source = "flame"
-            points: list[tuple[float, float]] = []
-            self._finish_accept(mask_source, dest, points)
             return
 
         if not self._sam2_ready or not self._worker_ready or self._worker is None:

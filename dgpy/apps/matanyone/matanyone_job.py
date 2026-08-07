@@ -18,7 +18,7 @@ from typing import Any, Callable
 
 import dgpy_paths
 
-__version__ = "0.11.1"
+__version__ = "0.12.0"
 
 ProgressCb = Callable[[str], None]
 StepCb = Callable[[int, int, str], None]
@@ -63,7 +63,7 @@ _WARN_FLAGS = (
 @dataclass
 class JobOptions:
     clip: Any
-    mask_source: str = "flame"  # "flame" | "sam2"
+    mask_source: str = "sam2"  # "sam2" (legacy "flame" unused in UI)
     mask_path: Path | None = None
     sam_points: list[tuple[float, float]] = field(default_factory=list)
     sam_points_provider: Callable[[Path], list[tuple[float, float]] | None] | None = None
