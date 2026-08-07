@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import shutil
+import sys
 import threading
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -12,7 +13,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 import matanyone_sam2 as sam
 import matanyone_selection as selection
 
-__version__ = "0.12.6"
+__version__ = "0.12.10"
 
 _TOOL_POS = "pos"
 _TOOL_NEG = "neg"
@@ -623,7 +624,9 @@ class MatAnyoneDialog(QtWidgets.QDialog):
         self._request_ref_index(0, force=True)
 
         if self._sam2_ready:
-            QtCore.QTimer.singleShot(0, self._ensure_worker)
+            # macOS: delay worker start until the dialog has painted; Linux: 0.
+            worker_delay = 250 if sys.platform == "darwin" else 0
+            QtCore.QTimer.singleShot(worker_delay, self._ensure_worker)
 
     # --- ref frame ---------------------------------------------------------
 
@@ -1423,6 +1426,11 @@ def open_mask_dialog(
     work_dir: Path,
     ignored_count: int = 0,
 ) -> DialogResult | None:
+    """Blocking mask dialog (Linux / default). Prefer async on macOS."""
+    import dgpy_log
+
+    log = dgpy_log.setup()
+    log.info("MatAnyone: MatAnyoneDialog construct…")
     dlg = MatAnyoneDialog(
         clip,
         still_path=still_path,
@@ -1430,11 +1438,77 @@ def open_mask_dialog(
         work_dir=work_dir,
         ignored_count=ignored_count,
     )
+    log.info("MatAnyone: MatAnyoneDialog exec…")
     try:
         if dlg.exec() != QtWidgets.QDialog.DialogCode.Accepted:
             return None
         return dlg.result_data()
     finally:
+        log.info("MatAnyone: MatAnyoneDialog teardown")
         # Belt-and-suspenders if reject path missed shutdown.
         if hasattr(dlg, "_shutdown_worker"):
             dlg._shutdown_worker()
+
+
+_MASK_WINDOW: MatAnyoneDialog | None = None
+
+
+def open_mask_dialog_async(
+    clip,
+    *,
+    still_path: Path,
+    source_video: Path,
+    work_dir: Path,
+    ignored_count: int = 0,
+    on_finished,
+) -> None:
+    """Non-modal mask dialog for macOS (avoids nested QDialog.exec under Flame)."""
+    global _MASK_WINDOW
+    import dgpy_log
+
+    log = dgpy_log.setup()
+    if _MASK_WINDOW is not None:
+        try:
+            _MASK_WINDOW.raise_()
+            _MASK_WINDOW.activateWindow()
+        except RuntimeError:
+            _MASK_WINDOW = None
+        if _MASK_WINDOW is not None:
+            log.info("MatAnyone: mask dialog already open; raised")
+            return
+
+    log.info("MatAnyone: MatAnyoneDialog construct (async)…")
+    dlg = MatAnyoneDialog(
+        clip,
+        still_path=still_path,
+        source_video=source_video,
+        work_dir=work_dir,
+        ignored_count=ignored_count,
+    )
+    dlg.setModal(False)
+    dlg.setWindowModality(QtCore.Qt.WindowModality.NonModal)
+    dlg.setWindowFlags(
+        QtCore.Qt.WindowType.Window
+        | QtCore.Qt.WindowType.WindowStaysOnTopHint
+    )
+
+    def _done(code: int) -> None:
+        global _MASK_WINDOW
+        log.info("MatAnyone: MatAnyoneDialog finished code=%s", code)
+        opts = None
+        if code == int(QtWidgets.QDialog.DialogCode.Accepted):
+            opts = dlg.result_data()
+        try:
+            dlg._shutdown_worker()
+        except Exception:  # noqa: BLE001
+            pass
+        if _MASK_WINDOW is dlg:
+            _MASK_WINDOW = None
+        on_finished(opts)
+
+    dlg.finished.connect(_done)
+    _MASK_WINDOW = dlg
+    log.info("MatAnyone: MatAnyoneDialog show (async)…")
+    dlg.show()
+    dlg.raise_()
+    dlg.activateWindow()

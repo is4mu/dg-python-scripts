@@ -12,7 +12,7 @@ from typing import Callable
 
 import matanyone_runtime_paths as paths
 
-__version__ = "0.11.3"
+__version__ = "0.11.5"
 
 LogFn = Callable[[str], None]
 StepFn = Callable[[int, int, str], None]
@@ -362,6 +362,133 @@ def patch_inference_matanyone2(
     path.write_text(text3, encoding="utf-8")
     _log(log, f"Patched {path.name}: fix max_size mask resize (new_h UnboundLocalError)")
     return True
+
+
+_VIDEO_FALLBACK_MARK = "# dgpy-patch: opencv-video-fallback-v1"
+
+
+def patch_inference_utils_read_video(
+    repo: Path | None = None,
+    *,
+    log: LogFn | None = None,
+) -> bool:
+    """Fall back to OpenCV when ``torchvision.io.read_video`` is missing.
+
+    torchvision ≥0.26 removed OSS ``read_video`` (Mac fresh installs hit this).
+    Linux with older torchvision keeps the original API path via getattr.
+    """
+    root = repo or paths.repo_dir()
+    path = root / "matanyone2" / "utils" / "inference_utils.py"
+    if not path.is_file():
+        _log(log, f"inference_utils.py missing, skip video patch: {path}")
+        return False
+    text = path.read_text(encoding="utf-8")
+    if _VIDEO_FALLBACK_MARK in text:
+        return False
+
+    old = (
+        "        frames, _, info = torchvision.io.read_video("
+        "filename=frame_root, pts_unit='sec', output_format='TCHW') # RGB\n"
+        "        fps = info['video_fps']\n"
+    )
+    if old not in text:
+        # Slight whitespace variants
+        import re
+
+        old_re = re.compile(
+            r"[ \t]*frames, _, info = torchvision\.io\.read_video\("
+            r"filename=frame_root, pts_unit=['\"]sec['\"], "
+            r"output_format=['\"]TCHW['\"]\)[^\n]*\n"
+            r"[ \t]*fps = info\[['\"]video_fps['\"]\]\n"
+        )
+        if not old_re.search(text):
+            _log(
+                log,
+                "inference_utils.py layout unexpected; "
+                "cannot apply opencv video fallback",
+            )
+            return False
+        new = (
+            "        read_video = getattr(torchvision.io, \"read_video\", None)\n"
+            "        if read_video is not None:\n"
+            "            frames, _, info = read_video(\n"
+            "                filename=frame_root, pts_unit=\"sec\", "
+            "output_format=\"TCHW\")  # RGB\n"
+            "            fps = info[\"video_fps\"]\n"
+            "        else:\n"
+            f"            {_VIDEO_FALLBACK_MARK}\n"
+            "            # torchvision>=0.26 removed read_video; OpenCV RGB TCHW.\n"
+            "            cap = cv2.VideoCapture(frame_root)\n"
+            "            if not cap.isOpened():\n"
+            "                raise RuntimeError(f\"Cannot open video: {frame_root}\")\n"
+            "            fps_v = float(cap.get(cv2.CAP_PROP_FPS) or 0.0)\n"
+            "            fps = fps_v if fps_v > 1e-3 else 24.0\n"
+            "            buf = []\n"
+            "            while True:\n"
+            "                ok, bgr = cap.read()\n"
+            "                if not ok:\n"
+            "                    break\n"
+            "                buf.append(bgr[..., ::-1])  # BGR→RGB\n"
+            "            cap.release()\n"
+            "            if not buf:\n"
+            "                raise RuntimeError(f\"No frames in video: {frame_root}\")\n"
+            "            frames = torch.from_numpy(\n"
+            "                np.ascontiguousarray(np.stack(buf))\n"
+            "            ).permute(0, 3, 1, 2).contiguous()  # TCHW uint8\n"
+        )
+        text2, n = old_re.subn(new, text, count=1)
+        if n != 1:
+            _log(log, "inference_utils.py: video fallback patch failed")
+            return False
+        path.write_text(text2, encoding="utf-8")
+        _log(log, f"Patched {path.relative_to(root)}: OpenCV read_video fallback")
+        return True
+
+    new = (
+        "        read_video = getattr(torchvision.io, \"read_video\", None)\n"
+        "        if read_video is not None:\n"
+        "            frames, _, info = read_video(\n"
+        "                filename=frame_root, pts_unit='sec', "
+        "output_format='TCHW') # RGB\n"
+        "            fps = info['video_fps']\n"
+        "        else:\n"
+        f"            {_VIDEO_FALLBACK_MARK}\n"
+        "            # torchvision>=0.26 removed read_video; OpenCV RGB TCHW.\n"
+        "            cap = cv2.VideoCapture(frame_root)\n"
+        "            if not cap.isOpened():\n"
+        "                raise RuntimeError(f\"Cannot open video: {frame_root}\")\n"
+        "            fps_v = float(cap.get(cv2.CAP_PROP_FPS) or 0.0)\n"
+        "            fps = fps_v if fps_v > 1e-3 else 24.0\n"
+        "            buf = []\n"
+        "            while True:\n"
+        "                ok, bgr = cap.read()\n"
+        "                if not ok:\n"
+        "                    break\n"
+        "                buf.append(bgr[..., ::-1])  # BGR→RGB\n"
+        "            cap.release()\n"
+        "            if not buf:\n"
+        "                raise RuntimeError(f\"No frames in video: {frame_root}\")\n"
+        "            frames = torch.from_numpy(\n"
+        "                np.ascontiguousarray(np.stack(buf))\n"
+        "            ).permute(0, 3, 1, 2).contiguous()  # TCHW uint8\n"
+    )
+    path.write_text(text.replace(old, new, 1), encoding="utf-8")
+    _log(log, f"Patched {path.relative_to(root)}: OpenCV read_video fallback")
+    return True
+
+
+def ensure_matanyone2_patches(
+    repo: Path | None = None,
+    *,
+    log: LogFn | None = None,
+) -> list[str]:
+    """Apply all known MatAnyone2 source patches; return labels applied."""
+    applied: list[str] = []
+    if patch_inference_matanyone2(repo, log=log):
+        applied.append("max_size-mask-resize")
+    if patch_inference_utils_read_video(repo, log=log):
+        applied.append("opencv-video-fallback")
+    return applied
 
 
 def _purge_matanyone_v1(root: Path, *, log: LogFn | None = None) -> None:
@@ -856,6 +983,7 @@ def setup_runtime(
         _log(log, f"Repo already present: {repo}")
     _patch_matanyone_deps(repo, log=log)
     patch_inference_matanyone2(repo, log=log)
+    patch_inference_utils_read_video(repo, log=log)
 
     _step(step, 3)
     venv_dir = root / paths.VENV_DIRNAME

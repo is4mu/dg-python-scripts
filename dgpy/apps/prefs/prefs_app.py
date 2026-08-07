@@ -8,13 +8,14 @@ from pathlib import Path
 from PySide6 import QtCore, QtGui, QtWidgets
 
 import dgpy_config
+import dgpy_ffmpeg_setup
 import dgpy_gui
 import dgpy_log
 import dgpy_paths
 import dgpy_prefs
 import dgpy_tools
 
-__version__ = "0.1.3"
+__version__ = "0.1.4"
 
 _WINDOW: QtWidgets.QWidget | None = None
 
@@ -272,15 +273,98 @@ class PreferencesDialog(QtWidgets.QDialog):
                 )
                 form.addRow(f"{title} version", _mono(hit.version_line or "(unknown)"))
             else:
-                detail = hit.version_line or "not found (env / PATH / dgpy_runtimes/bin)"
+                detail = hit.version_line or (
+                    "not found (env / dgpy_runtimes/bin / PATH)"
+                )
                 form.addRow(title, _mono(f"missing — {detail}"))
         form.addRow(
             "resolve order",
             _mono(
                 f"1) ${dgpy_tools.ENV_FFMPEG}/${dgpy_tools.ENV_FFPROBE}  "
-                "2) PATH  3) dgpy_runtimes/bin"
+                "2) dgpy_runtimes/bin  3) PATH"
             ),
         )
+        form.addRow(
+            "license",
+            _mono(
+                "FFmpeg (LGPL/GPL) via ffbinaries.com — "
+                "https://ffmpeg.org/legal.html"
+            ),
+        )
+        btn_row = QtWidgets.QHBoxLayout()
+        install_btn = QtWidgets.QPushButton("Install ffmpeg…")
+        install_btn.clicked.connect(self._on_install_ffmpeg)
+        btn_row.addWidget(install_btn)
+        remove_btn = QtWidgets.QPushButton("Remove bundled…")
+        remove_btn.clicked.connect(self._on_remove_ffmpeg)
+        btn_row.addWidget(remove_btn)
+        btn_row.addStretch(1)
+        wrap = QtWidgets.QWidget()
+        wrap.setLayout(btn_row)
+        form.addRow("actions", wrap)
+
+    def _on_install_ffmpeg(self) -> None:
+        force = False
+        if dgpy_ffmpeg_setup.bundled_ready():
+            if not dgpy_gui.confirm(
+                self,
+                "DGpy Preferences",
+                "Bundled ffmpeg/ffprobe already exist under "
+                "dgpy_runtimes/bin.\n\nRe-download and overwrite?",
+            ):
+                return
+            force = True
+        lines: list[str] = []
+
+        def _log(msg: str) -> None:
+            lines.append(msg)
+            self._logger.info("%s", msg)
+            QtWidgets.QApplication.processEvents()
+
+        try:
+            dest = dgpy_ffmpeg_setup.install_ffmpeg_tools(force=force, log=_log)
+        except Exception as exc:  # noqa: BLE001
+            dgpy_gui.error(
+                self,
+                "DGpy Preferences",
+                "ffmpeg install failed:\n"
+                + "\n".join(lines[-8:] + [str(exc)]),
+            )
+            return
+        dgpy_gui.info(
+            self,
+            "DGpy Preferences",
+            f"Installed under:\n{dest}\n\n" + "\n".join(lines[-6:]),
+        )
+        self.refresh()
+
+    def _on_remove_ffmpeg(self) -> None:
+        if not dgpy_gui.confirm(
+            self,
+            "DGpy Preferences",
+            "Remove bundled ffmpeg/ffprobe from dgpy_runtimes/bin?\n"
+            "(PATH / env tools are not touched.)",
+        ):
+            return
+        lines: list[str] = []
+
+        def _log(msg: str) -> None:
+            lines.append(msg)
+            self._logger.info("%s", msg)
+
+        try:
+            dgpy_ffmpeg_setup.remove_ffmpeg_tools(log=_log)
+        except Exception as exc:  # noqa: BLE001
+            dgpy_gui.error(
+                self, "DGpy Preferences", f"Remove failed:\n{exc}"
+            )
+            return
+        dgpy_gui.info(
+            self,
+            "DGpy Preferences",
+            "\n".join(lines) or "Nothing removed.",
+        )
+        self.refresh()
 
     def _fill_log(self) -> None:
         form = self._log_box

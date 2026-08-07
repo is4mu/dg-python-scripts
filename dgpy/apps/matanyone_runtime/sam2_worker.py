@@ -4,6 +4,9 @@
 Runs inside the MatAnyone runtime venv. No Flame imports.
 Protocol: one JSON object per line on stdin; one JSON response per line on stdout.
 Logs go to stderr. On start emits {"ok":true,"ready":true} then waits.
+
+Heavy deps (numpy/torch/PIL) load only when executed as __main__ so Flame's
+hook scanner can import this file without error (it lives under apps/).
 """
 
 from __future__ import annotations
@@ -15,9 +18,24 @@ import traceback
 from pathlib import Path
 from typing import Any
 
-import numpy as np
-import torch
-from PIL import Image
+# Populated by _ensure_ml() before _Session is used as a worker.
+np: Any = None
+torch: Any = None
+Image: Any = None
+
+
+def _ensure_ml() -> None:
+    """Import ML stack once (runtime venv only — not Flame's Python)."""
+    global np, torch, Image
+    if np is not None:
+        return
+    import numpy as _np
+    import torch as _torch
+    from PIL import Image as _Image
+
+    np = _np
+    torch = _torch
+    Image = _Image
 
 
 def _unshadow_sam2_package() -> None:
@@ -49,14 +67,16 @@ def _err(req_id: Any, message: str) -> None:
 
 class _Session:
     def __init__(self) -> None:
+        _ensure_ml()
         self.predictor = None
-        self._image: np.ndarray | None = None
+        self._image = None
         self._image_path: str | None = None
         self._ckpt: str | None = None
         self._config: str | None = None
         self._device = "cuda" if torch.cuda.is_available() else "cpu"
 
     def init_model(self, checkpoint: str, config: str) -> None:
+        _ensure_ml()
         _unshadow_sam2_package()
         from sam2.build_sam import build_sam2
         from sam2.sam2_image_predictor import SAM2ImagePredictor
@@ -79,6 +99,7 @@ class _Session:
         self._image_path = None
 
     def set_image(self, path: str) -> None:
+        _ensure_ml()
         if self.predictor is None:
             raise RuntimeError("model not initialized; send init first")
         image = np.array(Image.open(path).convert("RGB"))
@@ -88,6 +109,7 @@ class _Session:
         self._image_path = path
 
     def predict(self, points: list[dict], out: str) -> str:
+        _ensure_ml()
         if self.predictor is None:
             raise RuntimeError("model not initialized; send init first")
         if self._image is None:
@@ -151,6 +173,7 @@ def _handle(session: _Session, msg: dict[str, Any]) -> None:
 
 
 def main() -> int:
+    _ensure_ml()
     _unshadow_sam2_package()
     _reply({"ok": True, "ready": True})
     session = _Session()

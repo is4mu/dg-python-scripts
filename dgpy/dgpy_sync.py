@@ -17,13 +17,20 @@ import dgpy_semver
 from dgpy_http import download_asset_to, download_to
 from dgpy_manifest import Manifest, ManifestPackage
 
-__version__ = "0.3.16"
+__version__ = "0.3.18"
 
 STATUS_NEW = "New"
 STATUS_UPDATE = "Update"
 STATUS_UP_TO_DATE = "Up to date"
 STATUS_LOCAL_ONLY = "Local only"
 STATUS_UNKNOWN = "Unknown"
+
+ISSUE_MISSING_PACKAGE = "missing_package"
+ISSUE_VERSION_BEHIND = "version_behind"
+ISSUE_FILE_MISSING = "file_missing"
+ISSUE_HASH_MISMATCH = "hash_mismatch"
+ISSUE_ASSET_MISSING = "asset_missing"
+ISSUE_ASSET_HASH_MISMATCH = "asset_hash_mismatch"
 
 # Script Manager list: always first, in this order.
 _PINNED_ORDER = {"core": 0, "manager": 1}
@@ -44,6 +51,16 @@ class PackageRow:
     status: str
     location: str
     remote_pkg: ManifestPackage | None = None
+
+
+@dataclass
+class VerifyIssue:
+    """One mismatch between remote manifest and local install."""
+
+    package_id: str
+    code: str
+    detail: str
+    path: str = ""
 
 
 def actionable(rows: list[PackageRow]) -> list[PackageRow]:
@@ -137,6 +154,169 @@ def _host_assets_missing(pkg: ManifestPackage, base: Path) -> bool:
         if not target.is_file():
             return True
     return False
+
+
+def _local_path_for_file(
+    pkg: ManifestPackage, rel_path: str, base: Path
+) -> Path | None:
+    """Resolve an on-disk path for a manifest file entry, or None if missing."""
+    rel = rel_path.lstrip("/")
+    name = Path(rel).name
+    if pkg.package_id in ("core", "manager"):
+        candidate = base / rel
+        return candidate if candidate.is_file() else None
+    candidates = [
+        base / "apps" / pkg.package_id / rel,
+        base / "apps" / pkg.package_id / name,
+        base / rel,
+    ]
+    for c in candidates:
+        if c.is_file():
+            return c
+    return None
+
+
+def verify_install(
+    manifest: Manifest, root: Path | None = None
+) -> list[VerifyIssue]:
+    """Compare remote manifest files/assets to local disk (including sha256)."""
+    base = root or dgpy_paths.dgpy_root()
+    host = dgpy_paths.host_platform_id()
+    issues: list[VerifyIssue] = []
+
+    for pkg in manifest.packages:
+        local_ver = _installed_version(base, pkg.package_id)
+        if local_ver is None:
+            issues.append(
+                VerifyIssue(
+                    package_id=pkg.package_id,
+                    code=ISSUE_MISSING_PACKAGE,
+                    detail=f"not installed (remote {pkg.version})",
+                )
+            )
+            continue
+
+        if dgpy_semver.gt(pkg.version, local_ver):
+            issues.append(
+                VerifyIssue(
+                    package_id=pkg.package_id,
+                    code=ISSUE_VERSION_BEHIND,
+                    detail=f"installed {local_ver} < remote {pkg.version}",
+                )
+            )
+            # Still check files so Repair gets a full picture; version alone is enough
+            # to select the package for repair.
+
+        for f in pkg.files:
+            local = _local_path_for_file(pkg, f.path, base)
+            if local is None:
+                issues.append(
+                    VerifyIssue(
+                        package_id=pkg.package_id,
+                        code=ISSUE_FILE_MISSING,
+                        detail="file missing",
+                        path=f.path,
+                    )
+                )
+                continue
+            try:
+                digest = _sha256_file(local)
+            except OSError as exc:
+                issues.append(
+                    VerifyIssue(
+                        package_id=pkg.package_id,
+                        code=ISSUE_FILE_MISSING,
+                        detail=f"unreadable: {exc}",
+                        path=f.path,
+                    )
+                )
+                continue
+            if digest.lower() != f.sha256.lower():
+                issues.append(
+                    VerifyIssue(
+                        package_id=pkg.package_id,
+                        code=ISSUE_HASH_MISMATCH,
+                        detail=f"sha256 mismatch (local {digest[:12]}…)",
+                        path=f.path,
+                    )
+                )
+
+        matched_assets = [a for a in pkg.assets if a.platform == host]
+        for asset in matched_assets:
+            rel = asset.path.lstrip("/")
+            target = base / rel
+            if not target.is_file():
+                issues.append(
+                    VerifyIssue(
+                        package_id=pkg.package_id,
+                        code=ISSUE_ASSET_MISSING,
+                        detail=f"asset missing ({host})",
+                        path=rel,
+                    )
+                )
+                continue
+            try:
+                digest = _sha256_file(target)
+            except OSError as exc:
+                issues.append(
+                    VerifyIssue(
+                        package_id=pkg.package_id,
+                        code=ISSUE_ASSET_MISSING,
+                        detail=f"asset unreadable: {exc}",
+                        path=rel,
+                    )
+                )
+                continue
+            if digest.lower() != asset.sha256.lower():
+                issues.append(
+                    VerifyIssue(
+                        package_id=pkg.package_id,
+                        code=ISSUE_ASSET_HASH_MISMATCH,
+                        detail=f"asset sha256 mismatch (local {digest[:12]}…)",
+                        path=rel,
+                    )
+                )
+
+    return issues
+
+
+def format_verify_report(issues: list[VerifyIssue]) -> str:
+    if not issues:
+        return "Verify OK — local matches remote manifest."
+    lines = [f"Verify found {len(issues)} issue(s):", ""]
+    for issue in issues:
+        loc = f"  [{issue.path}]" if issue.path else ""
+        lines.append(f"- {issue.package_id}: {issue.code}{loc} — {issue.detail}")
+    return "\n".join(lines)
+
+
+def packages_for_repair(
+    issues: list[VerifyIssue],
+    manifest: Manifest,
+    *,
+    include_missing_manual: bool = False,
+) -> list[ManifestPackage]:
+    """Unique remote packages to reinstall for the given issues.
+
+    ``missing_package`` with ``auto_install=False`` is skipped unless
+    ``include_missing_manual`` (Repair Selected).
+    """
+    by_id = manifest.by_id()
+    ordered: list[ManifestPackage] = []
+    seen: set[str] = set()
+    for issue in issues:
+        pkg = by_id.get(issue.package_id)
+        if pkg is None or pkg.package_id in seen:
+            continue
+        if (
+            issue.code == ISSUE_MISSING_PACKAGE
+            and not pkg.auto_install
+            and not include_missing_manual
+        ):
+            continue
+        seen.add(pkg.package_id)
+        ordered.append(pkg)
+    return ordered
 
 
 def compare(manifest: Manifest, root: Path | None = None) -> list[PackageRow]:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 import matanyone_dialog as dialog
@@ -9,7 +10,12 @@ import matanyone_job as job
 import matanyone_job_progress as job_progress
 import matanyone_selection as selection
 
-__version__ = "0.12.6"
+__version__ = "0.12.10"
+
+# Linux keeps the historical 50ms handoff. macOS needs extra settle time after
+# the export progress window tears down (Flame SIGSEGV otherwise).
+_EXPORT_PROGRESS_SETTLE_MS = 50
+_MASK_DIALOG_EXTRA_MS = 500 if sys.platform == "darwin" else 0
 
 
 def run_from_selection(selection_items) -> None:
@@ -113,6 +119,34 @@ def run_from_selection(selection_items) -> None:
     def _open_mask_then_infer(
         video: Path, still: Path, work_dir: Path
     ) -> None:
+        logger.info(
+            "MatAnyone: mask dialog open (platform=%s still=%s)",
+            sys.platform,
+            still,
+        )
+
+        def _after_mask(opts_ui: dialog.DialogResult | None) -> None:
+            logger.info(
+                "MatAnyone: mask dialog closed (accepted=%s)",
+                opts_ui is not None,
+            )
+            if opts_ui is None:
+                return
+            _start_infer(opts_ui, video)
+
+        # macOS: non-modal dialog — nested QDialog.exec under Flame SIGSEGVs.
+        # Linux: blocking exec (unchanged).
+        if sys.platform == "darwin":
+            dialog.open_mask_dialog_async(
+                clip,
+                still_path=still,
+                source_video=video,
+                work_dir=work_dir,
+                ignored_count=ignored,
+                on_finished=_after_mask,
+            )
+            return
+
         opts_ui = dialog.open_mask_dialog(
             clip,
             still_path=still,
@@ -120,11 +154,14 @@ def run_from_selection(selection_items) -> None:
             work_dir=work_dir,
             ignored_count=ignored,
         )
-        if opts_ui is None:
-            return
-        _start_infer(opts_ui, video)
+        _after_mask(opts_ui)
 
     def _on_export_finished(result: job.JobResult) -> None:
+        logger.info(
+            "MatAnyone: export finished ok=%s cancelled=%s",
+            result.ok,
+            result.cancelled,
+        )
         if result.cancelled:
             dgpy_gui.info(None, "MatAnyone", "Export cancelled.")
             return
@@ -138,12 +175,25 @@ def run_from_selection(selection_items) -> None:
             dgpy_gui.error(None, "MatAnyone", "Export finished but files are missing.")
             return
 
-        def _go() -> None:
+        def _after_progress_close() -> None:
             job_progress.close_finished_progress()
-            _open_mask_then_infer(video, still, work_dir)
+            logger.info(
+                "MatAnyone: export progress closed; mask in %sms",
+                _MASK_DIALOG_EXTRA_MS,
+            )
+
+            def _open() -> None:
+                _open_mask_then_infer(video, still, work_dir)
+
+            # Linux: open immediately in this callback (same as pre-0.12.8).
+            # macOS: extra settle so Flame finishes tearing down the progress UI.
+            if _MASK_DIALOG_EXTRA_MS > 0:
+                QtCore.QTimer.singleShot(_MASK_DIALOG_EXTRA_MS, _open)
+            else:
+                _open()
 
         # Let the export progress window close before opening the mask dialog.
-        QtCore.QTimer.singleShot(50, _go)
+        QtCore.QTimer.singleShot(_EXPORT_PROGRESS_SETTLE_MS, _after_progress_close)
 
     started = job_progress.start_job_nonblocking(
         job.JobOptions(

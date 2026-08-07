@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 import threading
 import time
 from typing import Callable
@@ -10,7 +11,7 @@ from PySide6 import QtCore, QtWidgets
 
 import matanyone_job as job
 
-__version__ = "0.12.6"
+__version__ = "0.12.10"
 
 _ACTIVE: JobProgressDialog | None = None
 
@@ -214,7 +215,10 @@ class JobProgressDialog(QtWidgets.QDialog):
             self._step_label.setText("Failed")
             self._on_log("— failed —")
             self._on_log(result.message)
-        # For export success, close immediately so the mask dialog is not buried.
+        # For export success, hide so the mask dialog is not buried.
+        # Linux: destroy progress immediately (historical).
+        # macOS: only hide — immediate QDialog.close() here has caused Flame SIGSEGV
+        # before the mask UI opens; app closes it later via close_finished_progress().
         auto_close = result.ok and self._opts.phase == "export"
         if auto_close:
             self.hide()
@@ -226,7 +230,7 @@ class JobProgressDialog(QtWidgets.QDialog):
         self._on_finished = None
         if cb is not None:
             cb(result)
-        if auto_close:
+        if auto_close and sys.platform != "darwin":
             QtCore.QTimer.singleShot(0, self.close)
 
     def closeEvent(self, event) -> None:  # noqa: N802

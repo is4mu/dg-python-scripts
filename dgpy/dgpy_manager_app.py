@@ -12,7 +12,7 @@ import dgpy_manifest
 import dgpy_paths
 import dgpy_sync
 
-__version__ = "0.3.17"
+__version__ = "0.3.18"
 
 _WINDOW: QtWidgets.QWidget | None = None
 
@@ -32,6 +32,7 @@ class ManagerWindow(QtWidgets.QDialog):
         self._cfg = dgpy_config.load()
         self._rows: list[dgpy_sync.PackageRow] = []
         self._manifest: dgpy_manifest.Manifest | None = None
+        self._verify_issues: list[dgpy_sync.VerifyIssue] = []
         self._warn_once = False
 
         root = self._cfg.resolved_install_root()
@@ -71,6 +72,27 @@ class ManagerWindow(QtWidgets.QDialog):
         self._btn_all = QtWidgets.QPushButton("Update All")
         self._btn_all.clicked.connect(self.install_all)
         toolbar.addWidget(self._btn_all)
+
+        self._btn_verify = QtWidgets.QPushButton("Verify…")
+        self._btn_verify.setToolTip(
+            "Compare local files to GitHub manifest (including sha256)"
+        )
+        self._btn_verify.clicked.connect(self.verify_install)
+        toolbar.addWidget(self._btn_verify)
+
+        self._btn_repair_sel = QtWidgets.QPushButton("Repair Selected")
+        self._btn_repair_sel.setToolTip(
+            "Re-download selected packages that Verify flagged (or New/Update)"
+        )
+        self._btn_repair_sel.clicked.connect(self.repair_selected)
+        toolbar.addWidget(self._btn_repair_sel)
+
+        self._btn_repair_all = QtWidgets.QPushButton("Repair All Issues")
+        self._btn_repair_all.setToolTip(
+            "Re-download packages with Verify issues (skips manual-only New)"
+        )
+        self._btn_repair_all.clicked.connect(self.repair_all_issues)
+        toolbar.addWidget(self._btn_repair_all)
 
         self._btn_uninstall = QtWidgets.QPushButton("Uninstall Selected")
         self._btn_uninstall.clicked.connect(self.uninstall_selected)
@@ -169,6 +191,9 @@ class ManagerWindow(QtWidgets.QDialog):
             self._btn_refresh,
             self._btn_install,
             self._btn_all,
+            self._btn_verify,
+            self._btn_repair_sel,
+            self._btn_repair_all,
             self._btn_uninstall,
             self._channel,
         ):
@@ -296,6 +321,156 @@ class ManagerWindow(QtWidgets.QDialog):
             )
             return
         self._run_install([r.remote_pkg for r in rows if r.remote_pkg])
+
+    def verify_install(self) -> None:
+        self._set_busy(True)
+        try:
+            self._cfg = dgpy_config.load()
+            try:
+                self._manifest = dgpy_manifest.fetch_manifest(self._cfg)
+            except Exception as exc:  # noqa: BLE001
+                self._logger.error("Verify: manifest fetch failed: %s", exc)
+                dgpy_gui.warning(
+                    self,
+                    "DG Script Manager",
+                    f"マニフェストを取得できませんでした。\n{exc}",
+                )
+                return
+            root = self._cfg.resolved_install_root()
+            self._verify_issues = dgpy_sync.verify_install(self._manifest, root)
+            report = dgpy_sync.format_verify_report(self._verify_issues)
+            self._detail.setPlainText(report)
+            self._logger.info(
+                "Verify done: %s issue(s) channel=%s",
+                len(self._verify_issues),
+                self._cfg.channel,
+            )
+            # Refresh status column (missing files still show as Update).
+            self._rows = dgpy_sync.compare(self._manifest, root)
+            self._table.setRowCount(len(self._rows))
+            for i, row in enumerate(self._rows):
+                self._table.setItem(i, 0, QtWidgets.QTableWidgetItem(row.name))
+                self._table.setItem(i, 1, QtWidgets.QTableWidgetItem(row.installed))
+                self._table.setItem(i, 2, QtWidgets.QTableWidgetItem(row.remote))
+                self._table.setItem(i, 3, QtWidgets.QTableWidgetItem(row.status))
+                self._table.setItem(i, 4, QtWidgets.QTableWidgetItem(row.package_id))
+
+            if not self._verify_issues:
+                dgpy_gui.info(
+                    self,
+                    "DG Script Manager",
+                    f"Verify OK.\n"
+                    f"{len(self._manifest.packages)} package(s) match "
+                    f"channel={self._cfg.channel}.",
+                )
+                return
+
+            n_pkg = len({i.package_id for i in self._verify_issues})
+            preview = report
+            if len(preview) > 2500:
+                preview = preview[:2500] + "\n…"
+            if dgpy_gui.confirm(
+                self,
+                "DG Script Manager",
+                f"Verify: {len(self._verify_issues)} issue(s) "
+                f"in {n_pkg} package(s).\n\n{preview}\n\n"
+                "Repair All Issues now?",
+            ):
+                self._repair_from_issues(
+                    include_missing_manual=False, ask_confirm=False
+                )
+        finally:
+            self._set_busy(False)
+
+    def repair_selected(self) -> None:
+        if self._manifest is None:
+            dgpy_gui.info(
+                self,
+                "DG Script Manager",
+                "先に Refresh または Verify… を実行してください。",
+            )
+            return
+        selected = {r.package_id for r in self._selected_rows()}
+        if not selected:
+            dgpy_gui.info(
+                self, "DG Script Manager", "Repair する行を選んでください。"
+            )
+            return
+        issues = [
+            i for i in self._verify_issues if i.package_id in selected
+        ]
+        # Also treat New/Update selection as repairable without prior Verify.
+        for row in self._selected_rows():
+            if (
+                row.remote_pkg
+                and row.status
+                in (dgpy_sync.STATUS_NEW, dgpy_sync.STATUS_UPDATE)
+                and row.package_id not in {i.package_id for i in issues}
+            ):
+                issues.append(
+                    dgpy_sync.VerifyIssue(
+                        package_id=row.package_id,
+                        code=(
+                            dgpy_sync.ISSUE_MISSING_PACKAGE
+                            if row.status == dgpy_sync.STATUS_NEW
+                            else dgpy_sync.ISSUE_VERSION_BEHIND
+                        ),
+                        detail=f"status={row.status}",
+                    )
+                )
+        if not issues:
+            dgpy_gui.info(
+                self,
+                "DG Script Manager",
+                "選択行に Verify の問題も New/Update もありません。\n"
+                "先に Verify… を実行するか、New/Update 行を選んでください。",
+            )
+            return
+        self._repair_from_issues(
+            issues=issues, include_missing_manual=True
+        )
+
+    def repair_all_issues(self) -> None:
+        if not self._verify_issues:
+            dgpy_gui.info(
+                self,
+                "DG Script Manager",
+                "修復対象がありません。先に Verify… を実行してください。",
+            )
+            return
+        self._repair_from_issues(include_missing_manual=False)
+
+    def _repair_from_issues(
+        self,
+        *,
+        issues: list[dgpy_sync.VerifyIssue] | None = None,
+        include_missing_manual: bool,
+        ask_confirm: bool = True,
+    ) -> None:
+        if self._manifest is None:
+            return
+        issues = issues if issues is not None else self._verify_issues
+        packages = dgpy_sync.packages_for_repair(
+            issues,
+            self._manifest,
+            include_missing_manual=include_missing_manual,
+        )
+        if not packages:
+            dgpy_gui.info(
+                self,
+                "DG Script Manager",
+                "Repair 対象のパッケージがありません"
+                "（manual-only New は Repair All から除外されます）。",
+            )
+            return
+        names = ", ".join(p.name for p in packages)
+        if ask_confirm and not dgpy_gui.confirm(
+            self,
+            "DG Script Manager",
+            f"次を再インストール（Repair）しますか？\n\n{names}",
+        ):
+            return
+        self._run_install(packages)
 
     def uninstall_selected(self) -> None:
         rows = self._selected_rows()

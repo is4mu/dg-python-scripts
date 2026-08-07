@@ -19,7 +19,7 @@ from typing import Any, Callable
 
 import dgpy_paths
 
-__version__ = "0.12.6"
+__version__ = "0.12.10"
 
 ProgressCb = Callable[[str], None]
 StepCb = Callable[[int, int, str], None]
@@ -1099,16 +1099,17 @@ def run_matanyone(
     holder_key: str = "default",
 ) -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
-    # Repair upstream MatAnyone2 bug on already-installed runtimes (no Setup).
+    # Repair upstream MatAnyone2 issues on already-installed runtimes (no Setup).
     try:
         import matanyone_runtime_setup as rsetup
 
-        if rsetup.patch_inference_matanyone2(
+        applied = rsetup.ensure_matanyone2_patches(
             inference_script.parent, log=log
-        ):
-            log("Applied MatAnyone2 inference patch (max_size mask resize).")
+        )
+        for label in applied:
+            log(f"Applied MatAnyone2 patch: {label}")
     except Exception as exc:  # noqa: BLE001
-        log(f"Warning: could not patch inference script: {exc}")
+        log(f"Warning: could not patch MatAnyone2 sources: {exc}")
     cmd = [
         python,
         str(inference_script),
@@ -1617,17 +1618,23 @@ def import_path(path_str: str, destination) -> None:
 
 
 def gpu_vram_warning() -> str | None:
-    """Return a warning string if Flame appears to hold a lot of VRAM."""
-    smi = subprocess.run(
-        [
-            "nvidia-smi",
-            "--query-compute-apps=pid,process_name,used_memory",
-            "--format=csv,noheader,nounits",
-        ],
-        text=True,
-        capture_output=True,
-        check=False,
-    )
+    """Return a warning string if Flame appears to hold a lot of VRAM.
+
+    No-op when ``nvidia-smi`` is missing (macOS / no NVIDIA driver).
+    """
+    try:
+        smi = subprocess.run(
+            [
+                "nvidia-smi",
+                "--query-compute-apps=pid,process_name,used_memory",
+                "--format=csv,noheader,nounits",
+            ],
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+    except (FileNotFoundError, OSError):
+        return None
     if smi.returncode != 0:
         return None
     flame_mb = 0
