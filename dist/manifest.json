@@ -17,57 +17,57 @@
         {
           "path": "dgpy_paths.py",
           "sha256": "c1f4cd109594369a7b32876083bae965598b0e7ebbb9270a31539fb36357a68c",
-          "url": "https://api.github.com/repos/is4mu/dg-python-scripts/contents/dgpy/dgpy_paths.py?ref=main"
+          "url": "https://raw.githubusercontent.com/is4mu/dg-python-scripts/5a6d5a37d63f6a07750e807ee21941e4bed7d2fe/dgpy/dgpy_paths.py"
         },
         {
           "path": "dgpy_log.py",
           "sha256": "a6ec331b23e76fde01ac878971527ba6128d21cffe6c73d1ed81b642fca1cc08",
-          "url": "https://api.github.com/repos/is4mu/dg-python-scripts/contents/dgpy/dgpy_log.py?ref=main"
+          "url": "https://raw.githubusercontent.com/is4mu/dg-python-scripts/5a6d5a37d63f6a07750e807ee21941e4bed7d2fe/dgpy/dgpy_log.py"
         },
         {
           "path": "dgpy_config.py",
           "sha256": "42cf0161142770a82ccdb09c693714bcff368a216f7b966ba94a7f9b0131d665",
-          "url": "https://api.github.com/repos/is4mu/dg-python-scripts/contents/dgpy/dgpy_config.py?ref=main"
+          "url": "https://raw.githubusercontent.com/is4mu/dg-python-scripts/5a6d5a37d63f6a07750e807ee21941e4bed7d2fe/dgpy/dgpy_config.py"
         },
         {
           "path": "dgpy_gui.py",
           "sha256": "fca77519e673015de7487fde528338ae3dc1cee8691af9fcb30ceefcad430e80",
-          "url": "https://api.github.com/repos/is4mu/dg-python-scripts/contents/dgpy/dgpy_gui.py?ref=main"
+          "url": "https://raw.githubusercontent.com/is4mu/dg-python-scripts/5a6d5a37d63f6a07750e807ee21941e4bed7d2fe/dgpy/dgpy_gui.py"
         },
         {
           "path": "dgpy_semver.py",
           "sha256": "237a5ffe5e9fc7fbfde0e56ef4eb0ca2e2920b241ec04afb1f6b8acdab4426aa",
-          "url": "https://api.github.com/repos/is4mu/dg-python-scripts/contents/dgpy/dgpy_semver.py?ref=main"
+          "url": "https://raw.githubusercontent.com/is4mu/dg-python-scripts/5a6d5a37d63f6a07750e807ee21941e4bed7d2fe/dgpy/dgpy_semver.py"
         },
         {
           "path": "dgpy_http.py",
           "sha256": "c1c69e8a4dbefe29d3ce0a3ddad24d8511ed86e200a65312349e4c6d603227d9",
-          "url": "https://api.github.com/repos/is4mu/dg-python-scripts/contents/dgpy/dgpy_http.py?ref=main"
+          "url": "https://raw.githubusercontent.com/is4mu/dg-python-scripts/5a6d5a37d63f6a07750e807ee21941e4bed7d2fe/dgpy/dgpy_http.py"
         },
         {
           "path": "dgpy_project.py",
           "sha256": "c9c25c8801859786a5cf112f1a6854b51cebc9ddf7b5b42050ebd99b8efaf1f7",
-          "url": "https://api.github.com/repos/is4mu/dg-python-scripts/contents/dgpy/dgpy_project.py?ref=main"
+          "url": "https://raw.githubusercontent.com/is4mu/dg-python-scripts/5a6d5a37d63f6a07750e807ee21941e4bed7d2fe/dgpy/dgpy_project.py"
         },
         {
           "path": "dgpy_flame_types.py",
           "sha256": "d0b804aac55a919728af923c8085b741769c928f495969352af87c19ce0c2dd4",
-          "url": "https://api.github.com/repos/is4mu/dg-python-scripts/contents/dgpy/dgpy_flame_types.py?ref=main"
+          "url": "https://raw.githubusercontent.com/is4mu/dg-python-scripts/5a6d5a37d63f6a07750e807ee21941e4bed7d2fe/dgpy/dgpy_flame_types.py"
         },
         {
           "path": "dgpy_batch_prefs.py",
           "sha256": "e61a7a92f2ce3b0050deea5764c0af376bfeeb157b9233d32cbcd595f0e813dd",
-          "url": "https://api.github.com/repos/is4mu/dg-python-scripts/contents/dgpy/dgpy_batch_prefs.py?ref=main"
+          "url": "https://raw.githubusercontent.com/is4mu/dg-python-scripts/5a6d5a37d63f6a07750e807ee21941e4bed7d2fe/dgpy/dgpy_batch_prefs.py"
         },
         {
           "path": "dgpy_flame_attr.py",
           "sha256": "d0dc17d5e5109e630d7ecac7adfcb49dd383285f903e8cbfa4dacca077bc7a44",
-          "url": "https://api.github.com/repos/is4mu/dg-python-scripts/contents/dgpy/dgpy_flame_attr.py?ref=main"
+          "url": "https://raw.githubusercontent.com/is4mu/dg-python-scripts/5a6d5a37d63f6a07750e807ee21941e4bed7d2fe/dgpy/dgpy_flame_attr.py"
         },
         {
           "path": "dgpy_menu_layout.py",
           "sha256": "7184a3ed6edc53aa02e8b2f25fb96935bb74341c39da47dc4c29cabe862bce6b",
-          "url": "https://api.github.com/repos/is4mu/dg-python-scripts/contents/dgpy/dgpy_menu_layout.py?ref=main"
+          "url": "https://raw.githubusercontent.com/is4mu/dg-python-scripts/5a6d5a37d63f6a07750e807ee21941e4bed7d2fe/dgpy/dgpy_menu_layout.py"
         }
       ]
     },
@@ -86,37 +86,37 @@
         {
           "path": "manager_hook.py",
           "sha256": "dab396f625849d901606289a7d80b27fd20948481dc7fa298e89397b6fe2bb83",
-          "url": "https://api.github.com/repos/is4mu/dg-python-scripts/contents/dgpy/manager_hook.py?ref=main"
+          "url": "https://raw.githubusercontent.com/is4mu/dg-python-scripts/5a6d5a37d63f6a07750e807ee21941e4bed7d2fe/dgpy/manager_hook.py"
         },
         {
           "path": "dgpy_manager_app.py",
           "sha256": "228fa4edf4e14db2e0d5d660253bd5e1a9123b67a669709215c57e0e3af8297d",
-          "url": "https://api.github.com/repos/is4mu/dg-python-scripts/contents/dgpy/dgpy_manager_app.py?ref=main"
+          "url": "https://raw.githubusercontent.com/is4mu/dg-python-scripts/5a6d5a37d63f6a07750e807ee21941e4bed7d2fe/dgpy/dgpy_manager_app.py"
         },
         {
           "path": "dgpy_local_inventory.py",
           "sha256": "16aaf938a45f0b0ad9e5408745813414cda323e9d5b3f34fb17968906c5b3555",
-          "url": "https://api.github.com/repos/is4mu/dg-python-scripts/contents/dgpy/dgpy_local_inventory.py?ref=main"
+          "url": "https://raw.githubusercontent.com/is4mu/dg-python-scripts/5a6d5a37d63f6a07750e807ee21941e4bed7d2fe/dgpy/dgpy_local_inventory.py"
         },
         {
           "path": "dgpy_manifest.py",
           "sha256": "7511b61e782cfa2e768cbb83703eecac2a682eb8fb42117af68ecb4bbc026b8a",
-          "url": "https://api.github.com/repos/is4mu/dg-python-scripts/contents/dgpy/dgpy_manifest.py?ref=main"
+          "url": "https://raw.githubusercontent.com/is4mu/dg-python-scripts/5a6d5a37d63f6a07750e807ee21941e4bed7d2fe/dgpy/dgpy_manifest.py"
         },
         {
           "path": "dgpy_sync.py",
           "sha256": "90514dc218d2620c5dfcafce78460ba1b49c122f88093464bd0d25f49efac694",
-          "url": "https://api.github.com/repos/is4mu/dg-python-scripts/contents/dgpy/dgpy_sync.py?ref=main"
+          "url": "https://raw.githubusercontent.com/is4mu/dg-python-scripts/5a6d5a37d63f6a07750e807ee21941e4bed7d2fe/dgpy/dgpy_sync.py"
         },
         {
           "path": "dgpy_flame_util.py",
           "sha256": "fd767f3e37112c11d4f14e890c1154882e20eac607758ecbbe6bb39f3a58e11b",
-          "url": "https://api.github.com/repos/is4mu/dg-python-scripts/contents/dgpy/dgpy_flame_util.py?ref=main"
+          "url": "https://raw.githubusercontent.com/is4mu/dg-python-scripts/5a6d5a37d63f6a07750e807ee21941e4bed7d2fe/dgpy/dgpy_flame_util.py"
         },
         {
           "path": "dgpy_startup.py",
           "sha256": "0a8429672e89a5abd243ccf88fae0c48592e3a5eaf5f010e3229119cacb1ac29",
-          "url": "https://api.github.com/repos/is4mu/dg-python-scripts/contents/dgpy/dgpy_startup.py?ref=main"
+          "url": "https://raw.githubusercontent.com/is4mu/dg-python-scripts/5a6d5a37d63f6a07750e807ee21941e4bed7d2fe/dgpy/dgpy_startup.py"
         }
       ]
     },
@@ -135,12 +135,12 @@
         {
           "path": "rename_hook.py",
           "sha256": "1746e7c45cd11565be5fd1db538d06df454bd170949a5761196637d30ba155d4",
-          "url": "https://api.github.com/repos/is4mu/dg-python-scripts/contents/dgpy/apps/rename/rename_hook.py?ref=main"
+          "url": "https://raw.githubusercontent.com/is4mu/dg-python-scripts/5a6d5a37d63f6a07750e807ee21941e4bed7d2fe/dgpy/apps/rename/rename_hook.py"
         },
         {
           "path": "rename_dialog.py",
           "sha256": "2c8e6d0180b608a62e5eefefe0808231c085cf59ab437eac9e44e7ce8fe17ddc",
-          "url": "https://api.github.com/repos/is4mu/dg-python-scripts/contents/dgpy/apps/rename/rename_dialog.py?ref=main"
+          "url": "https://raw.githubusercontent.com/is4mu/dg-python-scripts/5a6d5a37d63f6a07750e807ee21941e4bed7d2fe/dgpy/apps/rename/rename_dialog.py"
         }
       ]
     },
@@ -159,7 +159,7 @@
         {
           "path": "color_hook.py",
           "sha256": "be4f8c2be4c1f0734b67862d69c17eecc3d58021fed0d2108679566c486e19e4",
-          "url": "https://api.github.com/repos/is4mu/dg-python-scripts/contents/dgpy/apps/color/color_hook.py?ref=main"
+          "url": "https://raw.githubusercontent.com/is4mu/dg-python-scripts/5a6d5a37d63f6a07750e807ee21941e4bed7d2fe/dgpy/apps/color/color_hook.py"
         }
       ]
     },
@@ -178,12 +178,12 @@
         {
           "path": "list_plugins_hook.py",
           "sha256": "967e3a806aab2beb85402baece2f960d1e05d52362a791ba1ad5c8b82865aa29",
-          "url": "https://api.github.com/repos/is4mu/dg-python-scripts/contents/dgpy/apps/list_plugins/list_plugins_hook.py?ref=main"
+          "url": "https://raw.githubusercontent.com/is4mu/dg-python-scripts/5a6d5a37d63f6a07750e807ee21941e4bed7d2fe/dgpy/apps/list_plugins/list_plugins_hook.py"
         },
         {
           "path": "list_plugins_app.py",
           "sha256": "cfb3797633c2de4297380f43e7d728e0c8cce6a458304f3aad8d7f851c55680a",
-          "url": "https://api.github.com/repos/is4mu/dg-python-scripts/contents/dgpy/apps/list_plugins/list_plugins_app.py?ref=main"
+          "url": "https://raw.githubusercontent.com/is4mu/dg-python-scripts/5a6d5a37d63f6a07750e807ee21941e4bed7d2fe/dgpy/apps/list_plugins/list_plugins_app.py"
         }
       ]
     },
@@ -202,7 +202,7 @@
         {
           "path": "open_batch_hook.py",
           "sha256": "616fdd1e92e74fa6b6a2bd5112cb64c27c143b6876a20559af4ed0e75bbabd3e",
-          "url": "https://api.github.com/repos/is4mu/dg-python-scripts/contents/dgpy/apps/open_batch/open_batch_hook.py?ref=main"
+          "url": "https://raw.githubusercontent.com/is4mu/dg-python-scripts/5a6d5a37d63f6a07750e807ee21941e4bed7d2fe/dgpy/apps/open_batch/open_batch_hook.py"
         }
       ]
     },
@@ -221,12 +221,12 @@
         {
           "path": "batch_move_to_origin_hook.py",
           "sha256": "4f4a0c58e89b02b3fbb102ec5be8727bfa2301648259bf29629406f45d797ced",
-          "url": "https://api.github.com/repos/is4mu/dg-python-scripts/contents/dgpy/apps/batch_move_to_origin/batch_move_to_origin_hook.py?ref=main"
+          "url": "https://raw.githubusercontent.com/is4mu/dg-python-scripts/5a6d5a37d63f6a07750e807ee21941e4bed7d2fe/dgpy/apps/batch_move_to_origin/batch_move_to_origin_hook.py"
         },
         {
           "path": "batch_move_to_origin_app.py",
           "sha256": "694860f1251373de28c8053c74832fb45ee10e8f0f2d339537964ccb93743fff",
-          "url": "https://api.github.com/repos/is4mu/dg-python-scripts/contents/dgpy/apps/batch_move_to_origin/batch_move_to_origin_app.py?ref=main"
+          "url": "https://raw.githubusercontent.com/is4mu/dg-python-scripts/5a6d5a37d63f6a07750e807ee21941e4bed7d2fe/dgpy/apps/batch_move_to_origin/batch_move_to_origin_app.py"
         }
       ]
     },
@@ -245,12 +245,12 @@
         {
           "path": "save_batch_setup_hook.py",
           "sha256": "64c4b1db1604aa267ca8fe0c58ec95f2d8105208288dd10d229423be98c78b45",
-          "url": "https://api.github.com/repos/is4mu/dg-python-scripts/contents/dgpy/apps/save_batch_setup/save_batch_setup_hook.py?ref=main"
+          "url": "https://raw.githubusercontent.com/is4mu/dg-python-scripts/5a6d5a37d63f6a07750e807ee21941e4bed7d2fe/dgpy/apps/save_batch_setup/save_batch_setup_hook.py"
         },
         {
           "path": "save_batch_setup_app.py",
           "sha256": "a31aaf1dec86bf889001ad1a600a0a1dd1346ab3ed6bc9aa6443cb85fac84790",
-          "url": "https://api.github.com/repos/is4mu/dg-python-scripts/contents/dgpy/apps/save_batch_setup/save_batch_setup_app.py?ref=main"
+          "url": "https://raw.githubusercontent.com/is4mu/dg-python-scripts/5a6d5a37d63f6a07750e807ee21941e4bed7d2fe/dgpy/apps/save_batch_setup/save_batch_setup_app.py"
         }
       ]
     },
@@ -269,7 +269,7 @@
         {
           "path": "render_batch_hook.py",
           "sha256": "c54abf23c7070ae7f3d160fe7c92ded374ccbd5fab162cc234563c68716ad8f8",
-          "url": "https://api.github.com/repos/is4mu/dg-python-scripts/contents/dgpy/apps/render_batch/render_batch_hook.py?ref=main"
+          "url": "https://raw.githubusercontent.com/is4mu/dg-python-scripts/5a6d5a37d63f6a07750e807ee21941e4bed7d2fe/dgpy/apps/render_batch/render_batch_hook.py"
         }
       ]
     },
@@ -288,12 +288,12 @@
         {
           "path": "render_sequence_hook.py",
           "sha256": "ecd8344bfb7f94ed97e3a3ee828c6774c786f3983a7df2a35b7826d492f1a1b8",
-          "url": "https://api.github.com/repos/is4mu/dg-python-scripts/contents/dgpy/apps/render_sequence/render_sequence_hook.py?ref=main"
+          "url": "https://raw.githubusercontent.com/is4mu/dg-python-scripts/5a6d5a37d63f6a07750e807ee21941e4bed7d2fe/dgpy/apps/render_sequence/render_sequence_hook.py"
         },
         {
           "path": "render_sequence_app.py",
           "sha256": "c5a05156b28eb07103897302f0dafdcd26b562699d430dc2297cea1bf2f07e3e",
-          "url": "https://api.github.com/repos/is4mu/dg-python-scripts/contents/dgpy/apps/render_sequence/render_sequence_app.py?ref=main"
+          "url": "https://raw.githubusercontent.com/is4mu/dg-python-scripts/5a6d5a37d63f6a07750e807ee21941e4bed7d2fe/dgpy/apps/render_sequence/render_sequence_app.py"
         }
       ]
     },
@@ -312,12 +312,12 @@
         {
           "path": "create_batch_from_clip_hook.py",
           "sha256": "cdfe30b0023655de8de2c14654f0d2814ef7143361cb72ad259a78eb461ebc89",
-          "url": "https://api.github.com/repos/is4mu/dg-python-scripts/contents/dgpy/apps/create_batch_from_clip/create_batch_from_clip_hook.py?ref=main"
+          "url": "https://raw.githubusercontent.com/is4mu/dg-python-scripts/5a6d5a37d63f6a07750e807ee21941e4bed7d2fe/dgpy/apps/create_batch_from_clip/create_batch_from_clip_hook.py"
         },
         {
           "path": "create_batch_from_clip_app.py",
           "sha256": "f5ef6c427ee254ec9b87ab9245a9e5f5565617e6a9a60a84a68ec446270f7aba",
-          "url": "https://api.github.com/repos/is4mu/dg-python-scripts/contents/dgpy/apps/create_batch_from_clip/create_batch_from_clip_app.py?ref=main"
+          "url": "https://raw.githubusercontent.com/is4mu/dg-python-scripts/5a6d5a37d63f6a07750e807ee21941e4bed7d2fe/dgpy/apps/create_batch_from_clip/create_batch_from_clip_app.py"
         }
       ]
     },
@@ -336,12 +336,12 @@
         {
           "path": "batch_resize_clips_hook.py",
           "sha256": "6b1a23d44c5fac35964827e29ecd4dfe77d89a59933d15aae78b38ad8b9da4e5",
-          "url": "https://api.github.com/repos/is4mu/dg-python-scripts/contents/dgpy/apps/batch_resize_clips/batch_resize_clips_hook.py?ref=main"
+          "url": "https://raw.githubusercontent.com/is4mu/dg-python-scripts/5a6d5a37d63f6a07750e807ee21941e4bed7d2fe/dgpy/apps/batch_resize_clips/batch_resize_clips_hook.py"
         },
         {
           "path": "batch_resize_clips_app.py",
           "sha256": "685dc9fa6e7ae8441903dc97a43489718aaf6eeff6cb793c52a633a04dae2a38",
-          "url": "https://api.github.com/repos/is4mu/dg-python-scripts/contents/dgpy/apps/batch_resize_clips/batch_resize_clips_app.py?ref=main"
+          "url": "https://raw.githubusercontent.com/is4mu/dg-python-scripts/5a6d5a37d63f6a07750e807ee21941e4bed7d2fe/dgpy/apps/batch_resize_clips/batch_resize_clips_app.py"
         }
       ]
     },
@@ -360,12 +360,12 @@
         {
           "path": "keep_video_tracks_hook.py",
           "sha256": "78584f2ff010f04efedd7e7ad1756fcf41ab986997853ea7db269e06df267769",
-          "url": "https://api.github.com/repos/is4mu/dg-python-scripts/contents/dgpy/apps/keep_video_tracks/keep_video_tracks_hook.py?ref=main"
+          "url": "https://raw.githubusercontent.com/is4mu/dg-python-scripts/5a6d5a37d63f6a07750e807ee21941e4bed7d2fe/dgpy/apps/keep_video_tracks/keep_video_tracks_hook.py"
         },
         {
           "path": "keep_video_tracks_app.py",
           "sha256": "0b092deeede45741ac6f700a58ffdbe6b9e5aed82cbf7640dc843399aeb3cc82",
-          "url": "https://api.github.com/repos/is4mu/dg-python-scripts/contents/dgpy/apps/keep_video_tracks/keep_video_tracks_app.py?ref=main"
+          "url": "https://raw.githubusercontent.com/is4mu/dg-python-scripts/5a6d5a37d63f6a07750e807ee21941e4bed7d2fe/dgpy/apps/keep_video_tracks/keep_video_tracks_app.py"
         }
       ]
     },
@@ -384,12 +384,12 @@
         {
           "path": "cutout_edge_frame_hook.py",
           "sha256": "79007355dee5a4d62643ca3f1604650f626960fdd84cace41b1810acb7f83429",
-          "url": "https://api.github.com/repos/is4mu/dg-python-scripts/contents/dgpy/apps/cutout_edge_frame/cutout_edge_frame_hook.py?ref=main"
+          "url": "https://raw.githubusercontent.com/is4mu/dg-python-scripts/5a6d5a37d63f6a07750e807ee21941e4bed7d2fe/dgpy/apps/cutout_edge_frame/cutout_edge_frame_hook.py"
         },
         {
           "path": "cutout_edge_frame_app.py",
           "sha256": "97b47ae5592d1b875c2ac84fd9830531ff7067103402b80a0d1309fcfd818ff7",
-          "url": "https://api.github.com/repos/is4mu/dg-python-scripts/contents/dgpy/apps/cutout_edge_frame/cutout_edge_frame_app.py?ref=main"
+          "url": "https://raw.githubusercontent.com/is4mu/dg-python-scripts/5a6d5a37d63f6a07750e807ee21941e4bed7d2fe/dgpy/apps/cutout_edge_frame/cutout_edge_frame_app.py"
         }
       ]
     },
@@ -408,12 +408,12 @@
         {
           "path": "goto_frame_hook.py",
           "sha256": "9ae0edba4174ec9d00f46abc64c4b835e339ffab50191e1b0826bafaa8520fb9",
-          "url": "https://api.github.com/repos/is4mu/dg-python-scripts/contents/dgpy/apps/goto_frame/goto_frame_hook.py?ref=main"
+          "url": "https://raw.githubusercontent.com/is4mu/dg-python-scripts/5a6d5a37d63f6a07750e807ee21941e4bed7d2fe/dgpy/apps/goto_frame/goto_frame_hook.py"
         },
         {
           "path": "goto_frame_app.py",
           "sha256": "89c755204fcb80bd7379225414f6a96040c647ce771d6bc40e592379fadb0868",
-          "url": "https://api.github.com/repos/is4mu/dg-python-scripts/contents/dgpy/apps/goto_frame/goto_frame_app.py?ref=main"
+          "url": "https://raw.githubusercontent.com/is4mu/dg-python-scripts/5a6d5a37d63f6a07750e807ee21941e4bed7d2fe/dgpy/apps/goto_frame/goto_frame_app.py"
         }
       ]
     },
@@ -432,12 +432,12 @@
         {
           "path": "set_start_frame_1_hook.py",
           "sha256": "eb5f06b92782914a43d0db5edcaf418d3b003d5d36127f55b852e97940e5c7c4",
-          "url": "https://api.github.com/repos/is4mu/dg-python-scripts/contents/dgpy/apps/set_start_frame_1/set_start_frame_1_hook.py?ref=main"
+          "url": "https://raw.githubusercontent.com/is4mu/dg-python-scripts/5a6d5a37d63f6a07750e807ee21941e4bed7d2fe/dgpy/apps/set_start_frame_1/set_start_frame_1_hook.py"
         },
         {
           "path": "set_start_frame_1_app.py",
           "sha256": "913ef48d11ffe872d16cefc002a4ae685b89716f3d3c358828329988bba4b3ee",
-          "url": "https://api.github.com/repos/is4mu/dg-python-scripts/contents/dgpy/apps/set_start_frame_1/set_start_frame_1_app.py?ref=main"
+          "url": "https://raw.githubusercontent.com/is4mu/dg-python-scripts/5a6d5a37d63f6a07750e807ee21941e4bed7d2fe/dgpy/apps/set_start_frame_1/set_start_frame_1_app.py"
         }
       ]
     },
@@ -456,12 +456,12 @@
         {
           "path": "delete_all_markers_hook.py",
           "sha256": "67498b49583285af8e9e86ce812706a58ff4af84b270f64562c1acc739645896",
-          "url": "https://api.github.com/repos/is4mu/dg-python-scripts/contents/dgpy/apps/delete_all_markers/delete_all_markers_hook.py?ref=main"
+          "url": "https://raw.githubusercontent.com/is4mu/dg-python-scripts/5a6d5a37d63f6a07750e807ee21941e4bed7d2fe/dgpy/apps/delete_all_markers/delete_all_markers_hook.py"
         },
         {
           "path": "delete_all_markers_app.py",
           "sha256": "211bfeb7f4bd6863997b372955208160afbfe9e44fa2621009eeb31c276743fb",
-          "url": "https://api.github.com/repos/is4mu/dg-python-scripts/contents/dgpy/apps/delete_all_markers/delete_all_markers_app.py?ref=main"
+          "url": "https://raw.githubusercontent.com/is4mu/dg-python-scripts/5a6d5a37d63f6a07750e807ee21941e4bed7d2fe/dgpy/apps/delete_all_markers/delete_all_markers_app.py"
         }
       ]
     },
@@ -480,12 +480,12 @@
         {
           "path": "cutdata_hook.py",
           "sha256": "3e4547480edc7ef91c571a9ddaee4c31837501a25c873d5d02a6c13d0e556c34",
-          "url": "https://api.github.com/repos/is4mu/dg-python-scripts/contents/dgpy/apps/cutdata/cutdata_hook.py?ref=main"
+          "url": "https://raw.githubusercontent.com/is4mu/dg-python-scripts/5a6d5a37d63f6a07750e807ee21941e4bed7d2fe/dgpy/apps/cutdata/cutdata_hook.py"
         },
         {
           "path": "cutdata_app.py",
           "sha256": "b2f9907e4e21a13798d7cbaa0b723f74085682ee02cf48b2ec1984dbb088e41d",
-          "url": "https://api.github.com/repos/is4mu/dg-python-scripts/contents/dgpy/apps/cutdata/cutdata_app.py?ref=main"
+          "url": "https://raw.githubusercontent.com/is4mu/dg-python-scripts/5a6d5a37d63f6a07750e807ee21941e4bed7d2fe/dgpy/apps/cutdata/cutdata_app.py"
         }
       ]
     },
@@ -504,12 +504,12 @@
         {
           "path": "audio_lock_hook.py",
           "sha256": "04e3bbfc6741cd556e0ee4db4879fbc4aff70d17813ab633aea1c4a22e303f13",
-          "url": "https://api.github.com/repos/is4mu/dg-python-scripts/contents/dgpy/apps/audio_lock/audio_lock_hook.py?ref=main"
+          "url": "https://raw.githubusercontent.com/is4mu/dg-python-scripts/5a6d5a37d63f6a07750e807ee21941e4bed7d2fe/dgpy/apps/audio_lock/audio_lock_hook.py"
         },
         {
           "path": "audio_lock_app.py",
           "sha256": "f66c09cb2720b161d4cfa30feb7dafd30bfbeefac0673821358f2ae536df8075",
-          "url": "https://api.github.com/repos/is4mu/dg-python-scripts/contents/dgpy/apps/audio_lock/audio_lock_app.py?ref=main"
+          "url": "https://raw.githubusercontent.com/is4mu/dg-python-scripts/5a6d5a37d63f6a07750e807ee21941e4bed7d2fe/dgpy/apps/audio_lock/audio_lock_app.py"
         }
       ]
     },
@@ -528,12 +528,12 @@
         {
           "path": "audio_cleanup_hook.py",
           "sha256": "b4db14c3f9f1805da5b9fd1d182faf28bda4d04467da85776e9fa31432e778e8",
-          "url": "https://api.github.com/repos/is4mu/dg-python-scripts/contents/dgpy/apps/audio_cleanup/audio_cleanup_hook.py?ref=main"
+          "url": "https://raw.githubusercontent.com/is4mu/dg-python-scripts/5a6d5a37d63f6a07750e807ee21941e4bed7d2fe/dgpy/apps/audio_cleanup/audio_cleanup_hook.py"
         },
         {
           "path": "audio_cleanup_app.py",
           "sha256": "e11cf79b2bf606e06a617a1a52bc788f60a668452230017fefc29a32aac2bd2e",
-          "url": "https://api.github.com/repos/is4mu/dg-python-scripts/contents/dgpy/apps/audio_cleanup/audio_cleanup_app.py?ref=main"
+          "url": "https://raw.githubusercontent.com/is4mu/dg-python-scripts/5a6d5a37d63f6a07750e807ee21941e4bed7d2fe/dgpy/apps/audio_cleanup/audio_cleanup_app.py"
         }
       ]
     },
@@ -552,12 +552,12 @@
         {
           "path": "archive_toc_hook.py",
           "sha256": "36f01cfea1a448b802725b58fe9c70117e6a32c3f5f0667068b8f57e655dcd3c",
-          "url": "https://api.github.com/repos/is4mu/dg-python-scripts/contents/dgpy/apps/archive_toc/archive_toc_hook.py?ref=main"
+          "url": "https://raw.githubusercontent.com/is4mu/dg-python-scripts/5a6d5a37d63f6a07750e807ee21941e4bed7d2fe/dgpy/apps/archive_toc/archive_toc_hook.py"
         },
         {
           "path": "archive_toc_clear.py",
           "sha256": "31868d92475f2c584eb2dd1bd9da493e1f6b14a8521aa46bde3e34362c580c13",
-          "url": "https://api.github.com/repos/is4mu/dg-python-scripts/contents/dgpy/apps/archive_toc/archive_toc_clear.py?ref=main"
+          "url": "https://raw.githubusercontent.com/is4mu/dg-python-scripts/5a6d5a37d63f6a07750e807ee21941e4bed7d2fe/dgpy/apps/archive_toc/archive_toc_clear.py"
         }
       ]
     },
@@ -576,47 +576,47 @@
         {
           "path": "dg_export_hook.py",
           "sha256": "5ba6b4bb1920fb6e26297b095d636849d22f56e68554bc975e5dea26d85d46c6",
-          "url": "https://api.github.com/repos/is4mu/dg-python-scripts/contents/dgpy/apps/dg_export/dg_export_hook.py?ref=main"
+          "url": "https://raw.githubusercontent.com/is4mu/dg-python-scripts/5a6d5a37d63f6a07750e807ee21941e4bed7d2fe/dgpy/apps/dg_export/dg_export_hook.py"
         },
         {
           "path": "dg_export_selection.py",
           "sha256": "d73ee91742b1476af1f30e6c471c0c9ea62de8d4acf9c9bdb6e810c55be8daec",
-          "url": "https://api.github.com/repos/is4mu/dg-python-scripts/contents/dgpy/apps/dg_export/dg_export_selection.py?ref=main"
+          "url": "https://raw.githubusercontent.com/is4mu/dg-python-scripts/5a6d5a37d63f6a07750e807ee21941e4bed7d2fe/dgpy/apps/dg_export/dg_export_selection.py"
         },
         {
           "path": "dg_export_presets.py",
           "sha256": "0f00da8192a9762c5f0e6eb26a653350be9b749002ded65efe75b4c19d0971de",
-          "url": "https://api.github.com/repos/is4mu/dg-python-scripts/contents/dgpy/apps/dg_export/dg_export_presets.py?ref=main"
+          "url": "https://raw.githubusercontent.com/is4mu/dg-python-scripts/5a6d5a37d63f6a07750e807ee21941e4bed7d2fe/dgpy/apps/dg_export/dg_export_presets.py"
         },
         {
           "path": "dg_export_job.py",
           "sha256": "74b12725b97b3258947297681ac2b082a0d31289688812b3576287d27c2449fb",
-          "url": "https://api.github.com/repos/is4mu/dg-python-scripts/contents/dgpy/apps/dg_export/dg_export_job.py?ref=main"
+          "url": "https://raw.githubusercontent.com/is4mu/dg-python-scripts/5a6d5a37d63f6a07750e807ee21941e4bed7d2fe/dgpy/apps/dg_export/dg_export_job.py"
         },
         {
           "path": "presets/.gitkeep",
           "sha256": "b03f338b145eeaa6defe22f7240670cf06e8281e476489a6f1966ab341e88827",
-          "url": "https://api.github.com/repos/is4mu/dg-python-scripts/contents/dgpy/apps/dg_export/presets/.gitkeep?ref=main"
+          "url": "https://raw.githubusercontent.com/is4mu/dg-python-scripts/5a6d5a37d63f6a07750e807ee21941e4bed7d2fe/dgpy/apps/dg_export/presets/.gitkeep"
         },
         {
           "path": "presets/Master.xml",
           "sha256": "e95069da497d448f9c7007aba534fa8d49759054596ae8da8b9b4dcec800057e",
-          "url": "https://api.github.com/repos/is4mu/dg-python-scripts/contents/dgpy/apps/dg_export/presets/Master.xml?ref=main"
+          "url": "https://raw.githubusercontent.com/is4mu/dg-python-scripts/5a6d5a37d63f6a07750e807ee21941e4bed7d2fe/dgpy/apps/dg_export/presets/Master.xml"
         },
         {
           "path": "presets/OA_Master.xml",
           "sha256": "0b417074dc651a9f48334c3301952b60eafc95b3d728d9dcd8146924ccd67538",
-          "url": "https://api.github.com/repos/is4mu/dg-python-scripts/contents/dgpy/apps/dg_export/presets/OA_Master.xml?ref=main"
+          "url": "https://raw.githubusercontent.com/is4mu/dg-python-scripts/5a6d5a37d63f6a07750e807ee21941e4bed7d2fe/dgpy/apps/dg_export/presets/OA_Master.xml"
         },
         {
           "path": "presets/to_MA.xml",
           "sha256": "421c5534ee198c7f55047be5f7272263cfb5ddcfcbd54797839870d7a0321529",
-          "url": "https://api.github.com/repos/is4mu/dg-python-scripts/contents/dgpy/apps/dg_export/presets/to_MA.xml?ref=main"
+          "url": "https://raw.githubusercontent.com/is4mu/dg-python-scripts/5a6d5a37d63f6a07750e807ee21941e4bed7d2fe/dgpy/apps/dg_export/presets/to_MA.xml"
         },
         {
           "path": "presets/YouTube.xml",
           "sha256": "b17d665de5faa6a47ee5b697525f9d989babc306ba75405bf886b0a0a5ab6fa3",
-          "url": "https://api.github.com/repos/is4mu/dg-python-scripts/contents/dgpy/apps/dg_export/presets/YouTube.xml?ref=main"
+          "url": "https://raw.githubusercontent.com/is4mu/dg-python-scripts/5a6d5a37d63f6a07750e807ee21941e4bed7d2fe/dgpy/apps/dg_export/presets/YouTube.xml"
         }
       ]
     },
@@ -635,37 +635,37 @@
         {
           "path": "action_tidy_hook.py",
           "sha256": "738787fb68ec8513efd5d32d14f59194fe6a56eaced6283178ca73b60bd0937d",
-          "url": "https://api.github.com/repos/is4mu/dg-python-scripts/contents/dgpy/apps/action_tidy/action_tidy_hook.py?ref=main"
+          "url": "https://raw.githubusercontent.com/is4mu/dg-python-scripts/5a6d5a37d63f6a07750e807ee21941e4bed7d2fe/dgpy/apps/action_tidy/action_tidy_hook.py"
         },
         {
           "path": "action_tidy_selection.py",
           "sha256": "752560107b6ef3347416e17ff3bb4f3d358c2fd4b28e8e282de5b81d04ff57f3",
-          "url": "https://api.github.com/repos/is4mu/dg-python-scripts/contents/dgpy/apps/action_tidy/action_tidy_selection.py?ref=main"
+          "url": "https://raw.githubusercontent.com/is4mu/dg-python-scripts/5a6d5a37d63f6a07750e807ee21941e4bed7d2fe/dgpy/apps/action_tidy/action_tidy_selection.py"
         },
         {
           "path": "action_tidy_job.py",
           "sha256": "afc261ba2ad99174c45e1ea69bc449dab0b12087811cb322bd3f5d044149801d",
-          "url": "https://api.github.com/repos/is4mu/dg-python-scripts/contents/dgpy/apps/action_tidy/action_tidy_job.py?ref=main"
+          "url": "https://raw.githubusercontent.com/is4mu/dg-python-scripts/5a6d5a37d63f6a07750e807ee21941e4bed7d2fe/dgpy/apps/action_tidy/action_tidy_job.py"
         },
         {
           "path": "action_tidy_merge.py",
           "sha256": "f355c14b5d7c2ed585aea988b1570a6d4a02fe44e5b524b20768d39f1fb3b67f",
-          "url": "https://api.github.com/repos/is4mu/dg-python-scripts/contents/dgpy/apps/action_tidy/action_tidy_merge.py?ref=main"
+          "url": "https://raw.githubusercontent.com/is4mu/dg-python-scripts/5a6d5a37d63f6a07750e807ee21941e4bed7d2fe/dgpy/apps/action_tidy/action_tidy_merge.py"
         },
         {
           "path": "setups/.gitkeep",
           "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-          "url": "https://api.github.com/repos/is4mu/dg-python-scripts/contents/dgpy/apps/action_tidy/setups/.gitkeep?ref=main"
+          "url": "https://raw.githubusercontent.com/is4mu/dg-python-scripts/5a6d5a37d63f6a07750e807ee21941e4bed7d2fe/dgpy/apps/action_tidy/setups/.gitkeep"
         },
         {
           "path": "setups/cleanup.action",
           "sha256": "7330dc97765b0cfeaed0021019bd2fbcadee0f11008026281761014b48ea453d",
-          "url": "https://api.github.com/repos/is4mu/dg-python-scripts/contents/dgpy/apps/action_tidy/setups/cleanup.action?ref=main"
+          "url": "https://raw.githubusercontent.com/is4mu/dg-python-scripts/5a6d5a37d63f6a07750e807ee21941e4bed7d2fe/dgpy/apps/action_tidy/setups/cleanup.action"
         },
         {
           "path": "setups/cleanup_fit.action",
           "sha256": "8fa217397cb30adb66f9ecb31efc17520bb0027f51b4b118643888873a5c2425",
-          "url": "https://api.github.com/repos/is4mu/dg-python-scripts/contents/dgpy/apps/action_tidy/setups/cleanup_fit.action?ref=main"
+          "url": "https://raw.githubusercontent.com/is4mu/dg-python-scripts/5a6d5a37d63f6a07750e807ee21941e4bed7d2fe/dgpy/apps/action_tidy/setups/cleanup_fit.action"
         }
       ]
     },
@@ -684,12 +684,12 @@
         {
           "path": "comp_cg_hook.py",
           "sha256": "57e9cfb17dda33aadde0edebf96a53bb0c5514d76fbdb7c1a2838de8c2a47fc2",
-          "url": "https://api.github.com/repos/is4mu/dg-python-scripts/contents/dgpy/apps/comp_cg/comp_cg_hook.py?ref=main"
+          "url": "https://raw.githubusercontent.com/is4mu/dg-python-scripts/5a6d5a37d63f6a07750e807ee21941e4bed7d2fe/dgpy/apps/comp_cg/comp_cg_hook.py"
         },
         {
           "path": "comp_cg_app.py",
           "sha256": "82774e57a5c80cf3bf8ecdfa536c43975132a40d2ce8b5419b54ca5780e54c12",
-          "url": "https://api.github.com/repos/is4mu/dg-python-scripts/contents/dgpy/apps/comp_cg/comp_cg_app.py?ref=main"
+          "url": "https://raw.githubusercontent.com/is4mu/dg-python-scripts/5a6d5a37d63f6a07750e807ee21941e4bed7d2fe/dgpy/apps/comp_cg/comp_cg_app.py"
         }
       ]
     },
@@ -708,22 +708,22 @@
         {
           "path": "matanyone_runtime_hook.py",
           "sha256": "8d73e5dd5399c5cf25f5eda58ae2adc4926af253cafa452abbf6beed9e8fb8c3",
-          "url": "https://api.github.com/repos/is4mu/dg-python-scripts/contents/dgpy/apps/matanyone_runtime/matanyone_runtime_hook.py?ref=main"
+          "url": "https://raw.githubusercontent.com/is4mu/dg-python-scripts/5a6d5a37d63f6a07750e807ee21941e4bed7d2fe/dgpy/apps/matanyone_runtime/matanyone_runtime_hook.py"
         },
         {
           "path": "matanyone_runtime_paths.py",
           "sha256": "bb93e38187f0fe8606f91eb3564dc44965bec14c6f45900573ad4bb0efd6c405",
-          "url": "https://api.github.com/repos/is4mu/dg-python-scripts/contents/dgpy/apps/matanyone_runtime/matanyone_runtime_paths.py?ref=main"
+          "url": "https://raw.githubusercontent.com/is4mu/dg-python-scripts/5a6d5a37d63f6a07750e807ee21941e4bed7d2fe/dgpy/apps/matanyone_runtime/matanyone_runtime_paths.py"
         },
         {
           "path": "matanyone_runtime_setup.py",
           "sha256": "c52b832eb1ce99602be8398689dbfd332233d271c45b13c3ff4e59b3c7087c48",
-          "url": "https://api.github.com/repos/is4mu/dg-python-scripts/contents/dgpy/apps/matanyone_runtime/matanyone_runtime_setup.py?ref=main"
+          "url": "https://raw.githubusercontent.com/is4mu/dg-python-scripts/5a6d5a37d63f6a07750e807ee21941e4bed7d2fe/dgpy/apps/matanyone_runtime/matanyone_runtime_setup.py"
         },
         {
           "path": "matanyone_runtime_progress.py",
           "sha256": "2c4d6d511845d317c7b7472ed0fd5af438af23381fae024bec78d576b0de5647",
-          "url": "https://api.github.com/repos/is4mu/dg-python-scripts/contents/dgpy/apps/matanyone_runtime/matanyone_runtime_progress.py?ref=main"
+          "url": "https://raw.githubusercontent.com/is4mu/dg-python-scripts/5a6d5a37d63f6a07750e807ee21941e4bed7d2fe/dgpy/apps/matanyone_runtime/matanyone_runtime_progress.py"
         }
       ],
       "auto_install": false
@@ -744,37 +744,37 @@
         {
           "path": "matanyone_hook.py",
           "sha256": "c52ce37569d4e18234afddca9ed15cccb4cfac29ae505199c03d9f708773fa39",
-          "url": "https://api.github.com/repos/is4mu/dg-python-scripts/contents/dgpy/apps/matanyone/matanyone_hook.py?ref=main"
+          "url": "https://raw.githubusercontent.com/is4mu/dg-python-scripts/5a6d5a37d63f6a07750e807ee21941e4bed7d2fe/dgpy/apps/matanyone/matanyone_hook.py"
         },
         {
           "path": "matanyone_app.py",
           "sha256": "bfe3d8b231adab25160740ec2111d8d922efdf543c1144cede87019dafc2801a",
-          "url": "https://api.github.com/repos/is4mu/dg-python-scripts/contents/dgpy/apps/matanyone/matanyone_app.py?ref=main"
+          "url": "https://raw.githubusercontent.com/is4mu/dg-python-scripts/5a6d5a37d63f6a07750e807ee21941e4bed7d2fe/dgpy/apps/matanyone/matanyone_app.py"
         },
         {
           "path": "matanyone_dialog.py",
           "sha256": "81ee925e840be1f7ede51279015a444707267b4707b6f5b2cb01e7df4d206fa1",
-          "url": "https://api.github.com/repos/is4mu/dg-python-scripts/contents/dgpy/apps/matanyone/matanyone_dialog.py?ref=main"
+          "url": "https://raw.githubusercontent.com/is4mu/dg-python-scripts/5a6d5a37d63f6a07750e807ee21941e4bed7d2fe/dgpy/apps/matanyone/matanyone_dialog.py"
         },
         {
           "path": "matanyone_job.py",
           "sha256": "abc973425085446f70946665ef848572ed676f7546eca57a8f0c33f8a23d76a5",
-          "url": "https://api.github.com/repos/is4mu/dg-python-scripts/contents/dgpy/apps/matanyone/matanyone_job.py?ref=main"
+          "url": "https://raw.githubusercontent.com/is4mu/dg-python-scripts/5a6d5a37d63f6a07750e807ee21941e4bed7d2fe/dgpy/apps/matanyone/matanyone_job.py"
         },
         {
           "path": "matanyone_job_progress.py",
           "sha256": "f1e62ccc808aac961291522f198d7e2661185c4d98b9fc55f64ba59fb4e3b541",
-          "url": "https://api.github.com/repos/is4mu/dg-python-scripts/contents/dgpy/apps/matanyone/matanyone_job_progress.py?ref=main"
+          "url": "https://raw.githubusercontent.com/is4mu/dg-python-scripts/5a6d5a37d63f6a07750e807ee21941e4bed7d2fe/dgpy/apps/matanyone/matanyone_job_progress.py"
         },
         {
           "path": "matanyone_selection.py",
           "sha256": "572dee6b24488a08da31b37b8c63059c763da9ca36bac99b1f45802ed56aed89",
-          "url": "https://api.github.com/repos/is4mu/dg-python-scripts/contents/dgpy/apps/matanyone/matanyone_selection.py?ref=main"
+          "url": "https://raw.githubusercontent.com/is4mu/dg-python-scripts/5a6d5a37d63f6a07750e807ee21941e4bed7d2fe/dgpy/apps/matanyone/matanyone_selection.py"
         },
         {
           "path": "presets/intermediate_mp4.xml",
           "sha256": "4695c4716f18f951e679a03fc499042a65abf8d1652a42a45303b716d2b47b61",
-          "url": "https://api.github.com/repos/is4mu/dg-python-scripts/contents/dgpy/apps/matanyone/presets/intermediate_mp4.xml?ref=main"
+          "url": "https://raw.githubusercontent.com/is4mu/dg-python-scripts/5a6d5a37d63f6a07750e807ee21941e4bed7d2fe/dgpy/apps/matanyone/presets/intermediate_mp4.xml"
         }
       ],
       "auto_install": false
