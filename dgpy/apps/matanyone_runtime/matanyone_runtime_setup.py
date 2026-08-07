@@ -12,25 +12,31 @@ from typing import Callable
 
 import matanyone_runtime_paths as paths
 
-__version__ = "0.2.1"
+__version__ = "0.3.0"
 
 LogFn = Callable[[str], None]
 StepFn = Callable[[int, int, str], None]
 
-REPO_URL = "https://github.com/pq-yang/MatAnyone.git"
-TORCH_INDEX = "https://download.pytorch.org/whl/cu124"
-MIN_PY = (3, 8)
+REPO_URL = "https://github.com/pq-yang/MatAnyone2.git"
+TORCH_INDEXES = (
+    "https://download.pytorch.org/whl/cu124",
+    "https://download.pytorch.org/whl/cu128",
+)
+WEIGHT_URL = (
+    "https://github.com/pq-yang/MatAnyone2/releases/download/v1.0.0/matanyone2.pth"
+)
+MIN_PY = (3, 10)
 
 # Deterministic steps for the progress bar (weights are relative).
 SETUP_STEPS: list[tuple[str, int]] = [
     ("Prepare folders", 1),
-    ("Ensure Miniforge Python >= 3.8", 3),
-    ("Clone MatAnyone repository", 2),
+    ("Ensure Miniforge Python >= 3.10", 3),
+    ("Clone MatAnyone 2 repository", 2),
     ("Create Python venv", 1),
     ("Upgrade pip / wheel", 1),
     ("Install PyTorch (largest download)", 8),
-    ("Install MatAnyone package", 3),
-    ("Install image helpers (Pillow/OpenCV)", 1),
+    ("Install MatAnyone 2 package", 3),
+    ("Fetch weights / image helpers", 2),
     ("Write READY marker", 1),
 ]
 
@@ -119,7 +125,7 @@ def _is_flame_python(executable: str) -> bool:
 
 
 def try_find_host_python(*, log: LogFn | None = None) -> str | None:
-    """Return an isolated Python >=3.8, or None.
+    """Return an isolated Python >=3.10, or None.
 
     Order (no system package install):
     1. MATANYONE_PYTHON (explicit override)
@@ -156,7 +162,7 @@ def try_find_host_python(*, log: LogFn | None = None) -> str | None:
 
 
 def find_host_python(*, log: LogFn | None = None) -> str:
-    """Return Python >=3.8 via Miniforge (or MATANYONE_PYTHON)."""
+    """Return Python >=3.10 via Miniforge (or MATANYONE_PYTHON)."""
     return ensure_host_python(log=log)
 
 
@@ -236,7 +242,7 @@ def _install_python_via_miniforge(*, log: LogFn | None = None) -> str:
 
 
 def ensure_host_python(*, log: LogFn | None = None) -> str:
-    """Find or install Miniforge Python >= 3.8 under the runtime folder.
+    """Find or install Miniforge Python >= 3.10 under the runtime folder.
 
     Does not install OS packages (dnf/yum) and does not use Flame Python.
     Override with MATANYONE_PYTHON if needed.
@@ -272,7 +278,37 @@ def _patch_matanyone_deps(repo: Path, *, log: LogFn | None = None) -> None:
         _log(log, "MatAnyone pyproject.toml: no cchardet pin to patch")
         return
     pyproject.write_text(text, encoding="utf-8")
-    _log(log, "Patched MatAnyone deps: cchardet → faust-cchardet (Py3.10+ build fix)")
+    _log(log, "Patched MatAnyone 2 deps: cchardet → faust-cchardet (Py3.10+ build fix)")
+
+
+def _purge_matanyone_v1(root: Path, *, log: LogFn | None = None) -> None:
+    """Remove leftover MatAnyone v1 clone so Flame/operators do not mix engines."""
+    legacy = root / paths.LEGACY_REPO_DIRNAME
+    if legacy.exists():
+        _log(log, f"Removing MatAnyone v1 tree: {legacy}")
+        shutil.rmtree(legacy)
+
+
+def _ensure_weights(repo: Path, *, log: LogFn | None = None) -> None:
+    """Best-effort download of matanyone2.pth (also auto-fetched on first infer)."""
+    import urllib.request
+
+    dest_dir = repo / "pretrained_models"
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    dest = dest_dir / "matanyone2.pth"
+    if dest.is_file() and dest.stat().st_size > 1_000_000:
+        _log(log, f"Weights already present: {dest}")
+        return
+    _log(log, f"Downloading weights: {WEIGHT_URL}")
+    try:
+        urllib.request.urlretrieve(WEIGHT_URL, str(dest))
+        _log(log, f"Weights saved: {dest}")
+    except Exception as exc:  # noqa: BLE001
+        _log(
+            log,
+            f"Weight download skipped ({exc}). "
+            "First inference may download automatically.",
+        )
 
 
 def _venv_is_usable(venv_python: Path | None, *, log: LogFn | None = None) -> bool:
@@ -409,7 +445,7 @@ def setup_runtime(
     step: StepFn | None = None,
     force: bool = False,
 ) -> Path:
-    """Clone MatAnyone, create venv, install deps, write READY.json."""
+    """Clone MatAnyone 2, create venv, install deps, write READY.json."""
     paths.migrate_legacy_runtime_if_needed(log=log)
     root = paths.runtime_root()
 
@@ -418,7 +454,7 @@ def setup_runtime(
     if paths.is_ready() and not force:
         existing = paths.resolve_python()
         if existing and _venv_is_usable(Path(existing), log=log):
-            _log(log, f"Already ready: {paths.ready_path()}")
+            _log(log, f"Already ready (MatAnyone 2): {paths.ready_path()}")
             _step(step, len(SETUP_STEPS) - 1, "Already ready")
             return root
         _log(
@@ -431,13 +467,27 @@ def setup_runtime(
         _log(log, f"Removing existing runtime: {root}")
         shutil.rmtree(root)
         root.mkdir(parents=True, exist_ok=True)
+    else:
+        _purge_matanyone_v1(root, log=log)
+        # Stale READY from MatAnyone v1
+        ready = paths.ready_path()
+        if ready.is_file() and paths.engine_id() != paths.ENGINE_ID:
+            _log(log, f"Removing stale READY (engine={paths.engine_id()!r})")
+            try:
+                ready.unlink()
+            except OSError:
+                pass
 
     _step(step, 1)
     host_py = ensure_host_python(log=log)
 
     _step(step, 2)
     repo = paths.repo_dir()
-    if not (repo / "inference_matanyone.py").is_file():
+    infer_name = paths.INFERENCE_SCRIPT_NAME
+    if not (repo / infer_name).is_file():
+        if repo.exists():
+            _log(log, f"Removing incomplete repo: {repo}")
+            shutil.rmtree(repo)
         git = _which("git")
         if not git:
             raise RuntimeError("git not found on PATH")
@@ -476,21 +526,35 @@ def setup_runtime(
         "Note: PyTorch download is usually the slowest step "
         "(often several minutes; can exceed 15–30 min on slow links).",
     )
-    try:
-        _run(
-            pip
-            + [
-                "install",
-                "torch",
-                "torchvision",
-                "--index-url",
-                TORCH_INDEX,
-            ],
-            log=log,
-        )
-    except RuntimeError:
-        _log(log, "cu124 torch install failed; trying default PyPI torch")
-        _run(pip + ["install", "torch", "torchvision"], log=log)
+    torch_ok = False
+    last_err: Exception | None = None
+    for index_url in TORCH_INDEXES:
+        try:
+            _run(
+                pip
+                + [
+                    "install",
+                    "torch",
+                    "torchvision",
+                    "--index-url",
+                    index_url,
+                ],
+                log=log,
+            )
+            torch_ok = True
+            break
+        except RuntimeError as exc:
+            last_err = exc
+            _log(log, f"torch install via {index_url} failed; trying next")
+    if not torch_ok:
+        _log(log, "CUDA wheel indexes failed; trying default PyPI torch")
+        try:
+            _run(pip + ["install", "torch", "torchvision"], log=log)
+            torch_ok = True
+        except RuntimeError as exc:
+            last_err = exc
+    if not torch_ok:
+        raise RuntimeError(f"PyTorch install failed: {last_err}")
 
     _step(step, 6)
     # Preinstall maintained fork so pip does not try to compile abandoned cchardet.
@@ -499,17 +563,19 @@ def setup_runtime(
 
     _step(step, 7)
     _run(pip + ["install", "Pillow", "numpy", "opencv-python-headless"], log=log)
+    _ensure_weights(repo, log=log)
 
     _step(step, 8)
     sam_helper = root / "sam2_make_mask.py"
     _write_sam_helper(sam_helper)
 
-    infer = repo / "inference_matanyone.py"
+    infer = repo / infer_name
     if not infer.is_file():
         raise RuntimeError(f"Missing inference script: {infer}")
 
     ready = {
         "version": __version__,
+        "engine": paths.ENGINE_ID,
         "python": str(py_bin),
         "host_python": host_py,
         "repo": str(repo),
@@ -520,7 +586,7 @@ def setup_runtime(
     paths.ready_path().write_text(
         json.dumps(ready, indent=2) + "\n", encoding="utf-8"
     )
-    _log(log, f"READY written: {paths.ready_path()}")
+    _log(log, f"READY written (MatAnyone 2): {paths.ready_path()}")
     return root
 
 

@@ -18,7 +18,7 @@ from typing import Any, Callable
 
 import dgpy_paths
 
-__version__ = "0.2.1"
+__version__ = "0.3.0"
 
 ProgressCb = Callable[[str], None]
 StepCb = Callable[[int, int, str], None]
@@ -28,7 +28,7 @@ JOB_STEPS: list[tuple[str, int]] = [
     ("Prepare work dir", 1),
     ("Export source", 3),
     ("Prepare mask", 2),
-    ("MatAnyone infer", 8),
+    ("MatAnyone 2 infer", 8),
     ("Import to Flame", 2),
     ("Done", 1),
 ]
@@ -358,11 +358,11 @@ def run_matanyone(
         str(mask),
         "-o",
         str(out_dir),
-        "--max_size",
+        "--max-size",
         str(MAX_SIZE),
     ]
     if save_image:
-        cmd.append("--save_image")
+        cmd.append("--save-image")
     _run_streaming(
         cmd,
         cwd=inference_script.parent,
@@ -494,8 +494,9 @@ def run_job(
         return JobResult(
             ok=False,
             message=(
-                "MatAnyone runtime is not set up.\n"
-                "Use DGpy → MatAnyone Runtime Setup…"
+                "MatAnyone 2 runtime is not set up.\n"
+                "Use DGpy → MatAnyone Runtime Setup… "
+                "(upgrades from MatAnyone v1 if present)."
             ),
         )
 
@@ -582,7 +583,7 @@ def run_job(
         set_step(3)
         out_dir = work / "out"
         save_image = opts.output_kind == "alpha_sequence"
-        log("Running MatAnyone (max_size=1080 short side)…")
+        log("Running MatAnyone 2 (max-size=1080 short side)…")
         _check_cancel(cancel)
         run_matanyone(
             python=python,

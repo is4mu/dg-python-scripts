@@ -9,7 +9,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 
 import matanyone_selection as selection
 
-__version__ = "0.2.1"
+__version__ = "0.3.0"
 
 _WINDOW: QtWidgets.QWidget | None = None
 
@@ -111,7 +111,7 @@ class _SamPreview(QtWidgets.QLabel):
 class MatAnyoneDialog(QtWidgets.QDialog):
     def __init__(self, clip, ignored_count: int = 0, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("MatAnyone")
+        self.setWindowTitle("MatAnyone 2")
         self.setMinimumWidth(560)
         self._result: DialogResult | None = None
         self._clip = clip
@@ -122,6 +122,7 @@ class MatAnyoneDialog(QtWidgets.QDialog):
         if ignored_count:
             src += f"  (ignoring {ignored_count} other)"
         layout.addWidget(QtWidgets.QLabel(f"Source: {src}"))
+        layout.addWidget(QtWidgets.QLabel("Engine: MatAnyone 2"))
         layout.addWidget(
             QtWidgets.QLabel("Max size: short side ≤ 1080 (fixed)")
         )

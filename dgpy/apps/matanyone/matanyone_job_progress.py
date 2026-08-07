@@ -10,7 +10,7 @@ from PySide6 import QtCore, QtWidgets
 
 import matanyone_job as job
 
-__version__ = "0.2.1"
+__version__ = "0.3.0"
 
 _ACTIVE: JobProgressDialog | None = None
 
@@ -59,7 +59,7 @@ class JobProgressDialog(QtWidgets.QDialog):
         parent=None,
     ):
         super().__init__(parent)
-        self.setWindowTitle("MatAnyone")
+        self.setWindowTitle("MatAnyone 2")
         self.setMinimumSize(640, 420)
         self.setModal(False)
         self.setWindowModality(QtCore.Qt.WindowModality.NonModal)

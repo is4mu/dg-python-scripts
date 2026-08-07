@@ -11,7 +11,7 @@ from PySide6 import QtCore, QtWidgets
 
 import matanyone_runtime_setup as setup
 
-__version__ = "0.2.1"
+__version__ = "0.3.0"
 
 # Keep alive while the background job runs (menu callback returns immediately).
 _ACTIVE_SETUP: SetupProgressDialog | None = None
@@ -176,10 +176,10 @@ class SetupProgressDialog(_ProgressDialogBase):
 
     def __init__(self, *, force: bool, parent=None):
         super().__init__(
-            "MatAnyone Runtime Setup",
+            "MatAnyone 2 Runtime Setup",
             "Flame stays usable while setup runs. You can keep editing; "
             "this window is non-modal (Hide to tuck it away).\n"
-            "Typical total: ~10–40 min (Miniforge + PyTorch).",
+            "Typical total: ~10–40 min (Miniforge + PyTorch + MatAnyone 2).",
             steps=setup.setup_step_count(),
             parent=parent,
         )
