@@ -33,8 +33,7 @@
 
 ## マニュアルを開く
 
-- **DGpy → Manual…** — このマニュアルの目次（GitHub）  
-- Preferences 内の **Open Manual…** でも同じページを開けます  
+- **DGpy → Preferences…** → **Open Manual…** — このマニュアルの目次（GitHub）
 
 ## トラブルシュート
 

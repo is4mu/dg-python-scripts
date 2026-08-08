@@ -1,7 +1,7 @@
 """
-Flame main-menu: DGpy Preferences + Manual.
+Flame main-menu: DGpy Preferences.
 
-Menus: DGpy → Manual… / Preferences…
+Menu: DGpy → Preferences…
 """
 
 from __future__ import annotations
@@ -22,28 +22,15 @@ def _run_prefs(_selection=None):
     prefs_app.open_preferences()
 
 
-def _run_manual(_selection=None):
-    import prefs_app
-
-    prefs_app.open_manual()
-
-
 def get_main_menu_custom_ui_actions():
     return [
         {
             "hierarchy": ["DGpy"],
             "actions": [
                 {
-                    "name": "Manual…",
-                    # Above Preferences… (900).
-                    "order": 800,
-                    "separator": "above",
-                    "execute": _run_manual,
-                    "minimumVersion": "2025",
-                },
-                {
                     "name": "Preferences…",
                     "order": 900,
+                    "separator": "above",
                     "execute": _run_prefs,
                     "minimumVersion": "2025",
                 },

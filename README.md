@@ -63,4 +63,4 @@ Media Panel などのコンテキストメニュー（接頭辞 **`DG2:`**）お
 - [Manual (index)](manual/README.md)
 - [Getting started](manual/getting-started.md)
 
-In Flame: **DGpy → Manual…** (or Preferences → Open Manual…).
+In Flame: **DGpy → Preferences…** → **Open Manual…**.

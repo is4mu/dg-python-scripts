@@ -15,7 +15,7 @@ import dgpy_paths
 import dgpy_prefs
 import dgpy_tools
 
-__version__ = "0.1.5"
+__version__ = "0.1.6"
 
 _WINDOW: QtWidgets.QWidget | None = None
 

@@ -1,13 +1,13 @@
-# Preferences / Manual
+# Preferences
 
 - **Package**: `prefs`
-- **Menu**: DGpy → Manual… / Preferences…
+- **Menu**: DGpy → Preferences…
 - **Flame**: 2025+
 
 ## できること
 
 パス・Runtime・ffmpeg / ffprobe・GitHub token などを一画面で確認・設定します。
-**Manual…** は Public 上のユーザーマニュアル目次をブラウザで開きます。
+画面内の **Open Manual…** で Public 上のユーザーマニュアル目次をブラウザで開きます。
 
 ## 使い方
 
@@ -15,7 +15,7 @@
 2. MatAnyone が未準備なら **Runtime Setup…** / **SAM2 Setup…**
 3. ffmpeg が無ければ Tools の **Install ffmpeg…**
 4. Private `-dev` 利用時は GitHub token を保存（Contents: Read）
-5. マニュアルは **DGpy → Manual…** または **Open Manual…**
+5. マニュアルは **Open Manual…**
 
 ## 注意
 
@@ -26,4 +26,3 @@
 
 - [Manual index](../README.md)
 - Script Manager でのパッケージ名: `prefs`
-
