@@ -1,4 +1,4 @@
-# DGpy2（Flame / Flare 2025+）
+# DGpy（Flame / Flare 2025+）
 
 Autodesk Flame / Flare 向けの Python ツールセットです。  
 インストール後の追加・更新は、Flame 内の **DG Script Manager** から行います。
@@ -8,7 +8,7 @@ Autodesk Flame / Flare 向けの Python ツールセットです。
 ## 初回インストール
 
 1. [Releases](https://github.com/is4mu/dg-python-scripts/releases) から最新の **`dgpy-bootstrap-*.zip`** をダウンロードする  
-   （Release がまだ無い場合は、このリポジトリの `dgpy/` フォルダを次の表の場所へコピーしてもよい）
+   （現行: [v0.3.12](https://github.com/is4mu/dg-python-scripts/releases/tag/v0.3.12)）
 2. 解凍すると `dgpy/` が出る
 3. **どちらか一方**に置く（ここが Install root になる）
 
@@ -19,31 +19,39 @@ Autodesk Flame / Flare 向けの Python ツールセットです。
 | スタジオ共有 | `/opt/Autodesk/shared/python/dgpy`（書き込み権限が必要） |
 
 4. Flame で **Python → Rescan Python Hooks**（または Flame を再起動）
-5. メインメニュー **`DGpy2` → `DG Script Manager`**
+5. メインメニュー **DGpy → DG Script Manager**
 6. **Refresh** → 必要に応じて **Update All** / 個別 Install
 
 以降のパッケージ追加・更新・アンインストールは Manager 経由で行ってください。  
 `dgpy/` の外にある他の Python スクリプトには影響しません。
 
-移行期間中は、旧ツールが **`DGpy`**、本ツールが **`DGpy2`** として共存できます。
+## メニュー
+
+| 場所 | 名前 |
+|------|------|
+| メインメニュー | **DGpy**（Script Manager / Preferences / List Plugins / Clear Archive TOCs など） |
+| Media Panel ほか | **DG:** 接頭辞（Color / Rename / Batch / Audio / Clip / Segment / Sequence / Export など） |
+
+旧一時名 `DGpy2` / `DG2:` は使いません（2026-07-29 に統合済み）。
 
 ## Script Manager でできること
 
-- 利用可能なパッケージの一覧表示（Install / Update / Up to date）
+- 利用可能なパッケージの一覧（Install / Update / Up to date）
 - **Update All** / 選択して Install・Update
 - アプリの **Uninstall**（Core / Manager はアンインストール不可）
-- 各パッケージの概要・変更履歴の表示
-- チャンネル切替（`latest` / `stable` ※運用に応じて）
+- **Verify…** / Repair（配布ファイルの整合）
+- 各パッケージの概要・変更履歴
+- チャンネル切替（`latest` / 開発用 `dev` ※運用に応じて）
 
 書き込みできない Install root や、ユーザ用と共有用で `dgpy` が二重にある場合は起動時に警告します。
 
 ## 含まれる主な機能
 
-Media Panel などのコンテキストメニュー（接頭辞 **`DG2:`**）およびメインメニュー **`DGpy2`** から利用できます。
+- **DG:** Color / Rename / Batch / Audio / Clip / Segment / Sequence / Sequence Render / Export
+- **DGpy:** Script Manager / Preferences（マニュアル・ffmpeg）/ List Plugins / Clear Archive TOCs
+- MatAnyone（Clip メニュー。Runtime は Preferences から。初回は手動 Install）
 
-例: Color / Rename / Batch（Open・Save Setup・Render）/ Clip・Audio・Sequence 向けユーティリティ / Script Manager / List Plugins / Clear Archive TOCs など。
-
-一覧と版は Manager の Refresh 結果が正です。
+一覧と版の正は Manager の Refresh 結果です。ユーザー向け詳細は [Manual](manual/README.md)。
 
 ## トラブルシューティング
 
@@ -51,8 +59,8 @@ Media Panel などのコンテキストメニュー（接頭辞 **`DG2:`**）お
 |------|----------------|
 | メニューが出ない | `dgpy` の配置パス、Rescan Python Hooks、Flame 2025 以上か |
 | Install / Update が失敗する | ネットワーク、GitHub へのアクセス、Install root の書き込み権限 |
-| `sha256 mismatch` | 一度 Refresh してから再実行。続く場合は Flame を再起動してから再試行 |
-| 旧 `DG:` とメニューが並ぶ | 移行期間の想定どおり。旧を外すと `DG2:` だけになる |
+| `sha256 mismatch` | Refresh → Verify / Repair。続く場合は Flame 再起動後に再試行 |
+| Core / Manager 更新後に不安定 | Flame を再起動してから再操作 |
 
 ## ライセンス・サポート
 
