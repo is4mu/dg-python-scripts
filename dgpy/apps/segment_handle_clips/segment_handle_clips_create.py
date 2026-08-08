@@ -423,6 +423,44 @@ def _delete_clip(clip, logger, *, what: str) -> bool:
         return False
 
 
+def _resolve_host_remove_indices(
+    reel,
+    *,
+    source_idx: int | None,
+    host_idx: int | None,
+    reel_index: int | None,
+    logger,
+) -> list[int]:
+    """
+    Indices of full-length hosts to delete after Create Subclip.
+
+    Subclip may append (source_idx still valid) or insert at/before the
+    source (full-length shifts to source_idx+1). Never delete reel_index.
+    """
+    n = len(_reel_clips(reel))
+    remove: list[int] = []
+    for base in (source_idx, host_idx):
+        if base is None:
+            continue
+        for j in (base, base + 1):
+            if j < 0 or j >= n:
+                continue
+            if reel_index is not None and j == reel_index:
+                continue
+            remove.append(j)
+    out = sorted(set(remove))
+    logger.info(
+        "%s: host remove indices=%s (source_idx=%s host_idx=%s sub=%s n=%s)",
+        TITLE,
+        out,
+        source_idx,
+        host_idx,
+        reel_index,
+        n,
+    )
+    return out
+
+
 def _delete_indices_adjust(
     reel, remove: list[int], reel_index: int | None, logger
 ) -> int | None:
@@ -473,7 +511,7 @@ def subclip_keep_range(clip, reel, start: int, end: int, name: str, logger):
         )
 
     host, host_opened = _open_as_sequence(clip, logger)
-    remove: list[int] = []
+    host_idx: int | None = None
     sub = None
     reel_index: int | None = None
     try:
@@ -497,27 +535,12 @@ def subclip_keep_range(clip, reel, start: int, end: int, name: str, logger):
             )
             return clip, "failed", "n/a", "n/a", None
 
-        for j in (source_idx, host_idx):
-            if j is not None and j != reel_index:
-                remove.append(j)
-
-        if not remove:
-            logger.warning(
-                "%s: no full-length indices to delete "
-                "(source_idx=%s host_idx=%s sub_index=%s)",
-                TITLE,
-                source_idx,
-                host_idx,
-                reel_index,
-            )
-
         logger.info(
-            "%s: Create Subclip → %s reel_index=%s remove=%s "
+            "%s: Create Subclip → %s reel_index=%s "
             "(source_idx=%s host_idx=%s)",
             TITLE,
             dgpy_flame_types.item_label(sub),
             reel_index,
-            remove,
             source_idx,
             host_idx,
         )
@@ -529,7 +552,25 @@ def subclip_keep_range(clip, reel, start: int, end: int, name: str, logger):
     if sub is None:
         return clip, "failed", "n/a", "n/a", None
 
-    hard_status, audio_status = post_subclip_cleanup(sub, logger)
+    # After Subclip: insert can shift the full-length host (source_idx+1).
+    # Delete hosts BEFORE Hard Commit cleanup so indices stay stable.
+    remove = _resolve_host_remove_indices(
+        reel,
+        source_idx=source_idx,
+        host_idx=host_idx,
+        reel_index=reel_index,
+        logger=logger,
+    )
+    if not remove:
+        logger.warning(
+            "%s: no full-length indices to delete "
+            "(source_idx=%s host_idx=%s sub_index=%s)",
+            TITLE,
+            source_idx,
+            host_idx,
+            reel_index,
+        )
+
     reel_index = _delete_indices_adjust(reel, remove, reel_index, logger)
 
     fresh = None
@@ -537,8 +578,17 @@ def subclip_keep_range(clip, reel, start: int, end: int, name: str, logger):
         clips_now = _reel_clips(reel)
         if 0 <= reel_index < len(clips_now):
             fresh = clips_now[reel_index]
+    target = fresh or sub
+
+    hard_status, audio_status = post_subclip_cleanup(target, logger)
+
+    # Hard Commit may refresh the PyClip — re-read by index.
+    if reel_index is not None:
+        clips_now = _reel_clips(reel)
+        if 0 <= reel_index < len(clips_now):
+            target = clips_now[reel_index]
     return (
-        fresh or sub,
+        target,
         "ok",
         audio_status,
         hard_status,
