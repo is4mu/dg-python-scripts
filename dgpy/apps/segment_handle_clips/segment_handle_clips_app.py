@@ -192,7 +192,8 @@ def _count_replaceable_segments(results: list[dict], merged: list) -> int:
     for i, r in enumerate(results):
         if i >= len(merged):
             break
-        if r.get("status") == "ok":
+        # Match replace_merged_results gate (0.6.8): status + cut.
+        if r.get("status") == "ok" and r.get("cut") == "ok":
             n += len(merged[i].seg_indices)
     return n
 

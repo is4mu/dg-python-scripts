@@ -1,4 +1,4 @@
-"""Replace Media: Sources clips → original sequence segments (shortcut)."""
+"""Replace Media: Sources clips → original sequence segments (Console pattern)."""
 
 from __future__ import annotations
 
@@ -7,17 +7,39 @@ from typing import Any
 import dgpy_flame_types
 import dgpy_flame_util
 
-from segment_handle_clips_util import (
-    TITLE,
-    __version__,
-    close_current_sequence,
-    deselect_all,
-    run_shortcut,
-    set_selected,
-    unwrap,
-)
+from segment_handle_clips_util import TITLE, __version__  # noqa: F401
+
 
 SHORTCUT_REPLACE_MEDIA = "Replace Media"
+SHORTCUT_CLOSE_CURRENT = "Close Current Sequence"
+
+
+def _run_shortcut(name: str, logger) -> bool:
+    import flame
+
+    try:
+        ok = bool(flame.execute_shortcut(name))
+        if not ok:
+            logger.warning(
+                "Consolidate Handles: shortcut %r returned False", name
+            )
+        return ok
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "Consolidate Handles: shortcut %r failed: %s", name, exc
+        )
+        return False
+
+
+def _unwrap(obj):
+    if obj is None:
+        return None
+    if hasattr(obj, "get_value"):
+        try:
+            return obj.get_value()
+        except Exception:  # noqa: BLE001
+            return obj
+    return obj
 
 
 def _fmt_sel(obj) -> str:
@@ -29,6 +51,21 @@ def _fmt_sel(obj) -> str:
         return repr(obj)
 
 
+def _set_selected(obj, value: bool, logger, *, what: str) -> bool:
+    try:
+        obj.selected = value
+        return True
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "Consolidate Handles: %s.selected=%s failed: %s (type=%s)",
+            what,
+            value,
+            exc,
+            type(obj).__name__,
+        )
+        return False
+
+
 def clear_job_segment_selection(jobs: list[dict], logger) -> None:
     """Clear segment.selected on all probe jobs (Replace precondition)."""
     n = 0
@@ -36,9 +73,11 @@ def clear_job_segment_selection(jobs: list[dict], logger) -> None:
         seg = job.get("segment")
         if seg is None:
             continue
-        if set_selected(seg, False, logger, what="segment"):
+        if _set_selected(seg, False, logger, what="segment"):
             n += 1
-    logger.info("%s: cleared selected on %s segment(s)", TITLE, n)
+    logger.info(
+        "Consolidate Handles: cleared selected on %s segment(s)", n
+    )
 
 
 def resolve_sequence(segment, owner_clip, logger):
@@ -52,7 +91,7 @@ def resolve_sequence(segment, owner_clip, logger):
             break
         if dgpy_flame_types.is_sequence(obj):
             return obj
-        parent = unwrap(getattr(obj, "parent", None))
+        parent = _unwrap(getattr(obj, "parent", None))
         if parent is None or parent is obj:
             break
         obj = parent
@@ -74,38 +113,45 @@ def _open_sequence(seq, logger) -> Any:
         try:
             open_fn()
             logger.info(
-                "%s: sequence.open() → %s",
-                TITLE,
+                "Consolidate Handles: sequence.open() → %s",
                 dgpy_flame_types.item_label(seq),
             )
             return seq
         except Exception as exc:  # noqa: BLE001
-            logger.warning("%s: sequence.open() failed: %s", TITLE, exc)
+            logger.warning(
+                "Consolidate Handles: sequence.open() failed: %s", exc
+            )
+    # Last resort (prefer open)
     open_as = getattr(seq, "open_as_sequence", None)
     if callable(open_as):
         try:
             opened = open_as()
             if opened is not None:
                 logger.info(
-                    "%s: open_as_sequence fallback → %s",
-                    TITLE,
+                    "Consolidate Handles: open_as_sequence fallback → %s",
                     dgpy_flame_types.item_label(opened),
                 )
                 return opened
         except Exception as exc:  # noqa: BLE001
             logger.warning(
-                "%s: open_as_sequence fallback failed: %s", TITLE, exc
+                "Consolidate Handles: open_as_sequence fallback failed: %s",
+                exc,
             )
     return seq
+
+
+def _close_current_sequence(logger) -> None:
+    """sequence.close() does not exist — use Clip Mgmt shortcut."""
+    logger.info("Consolidate Handles: Close Current Sequence")
+    _run_shortcut(SHORTCUT_CLOSE_CURRENT, logger)
 
 
 def _log_selection(logger, tag: str, *, segment=None, clip=None) -> None:
     import flame
 
     if segment is not None or clip is not None:
-        logger.debug(
-            "%s: [%s] intended segment=%s clip=%s",
-            TITLE,
+        logger.info(
+            "Consolidate Handles: [%s] intended segment=%s clip=%s",
             tag,
             _fmt_sel(segment),
             _fmt_sel(clip),
@@ -114,12 +160,11 @@ def _log_selection(logger, tag: str, *, segment=None, clip=None) -> None:
         entries = list(getattr(flame.media_panel, "selected_entries", None) or [])
     except Exception as exc:  # noqa: BLE001
         entries = []
-        logger.debug(
-            "%s: [%s] selected_entries failed: %s", TITLE, tag, exc
+        logger.warning(
+            "Consolidate Handles: [%s] selected_entries failed: %s", tag, exc
         )
-    logger.debug(
-        "%s: [%s] media_panel.selected_entries (%s) → %s",
-        TITLE,
+    logger.info(
+        "Consolidate Handles: [%s] media_panel.selected_entries (%s) → %s",
         tag,
         len(entries),
         ", ".join(_fmt_sel(e) for e in entries) or "(empty)",
@@ -128,14 +173,15 @@ def _log_selection(logger, tag: str, *, segment=None, clip=None) -> None:
         tl = getattr(flame, "timeline", None)
         tclip = getattr(tl, "clip", None) if tl is not None else None
         if tclip is not None:
-            logger.debug(
-                "%s: [%s] timeline.clip → %s",
-                TITLE,
+            logger.info(
+                "Consolidate Handles: [%s] timeline.clip → %s",
                 tag,
                 _fmt_sel(tclip),
             )
     except Exception as exc:  # noqa: BLE001
-        logger.debug("%s: [%s] timeline.clip failed: %s", TITLE, tag, exc)
+        logger.warning(
+            "Consolidate Handles: [%s] timeline.clip failed: %s", tag, exc
+        )
 
 
 def resolve_sources_clip(
@@ -152,8 +198,7 @@ def resolve_sources_clip(
     if reel_index is not None and 0 <= int(reel_index) < len(clips):
         c = clips[int(reel_index)]
         logger.info(
-            "%s: Sources resolve index=%s → %s",
-            TITLE,
+            "Consolidate Handles: Sources resolve index=%s → %s",
             reel_index,
             dgpy_flame_types.item_label(c),
         )
@@ -161,43 +206,38 @@ def resolve_sources_clip(
 
     want = (clip_name or "").strip().strip("'\"")
     if want:
-        matches = [
-            c for c in clips if dgpy_flame_attr.clip_name(c) == want
-        ]
+        matches = []
+        for c in clips:
+            name = dgpy_flame_attr.clip_name(c)
+            if name == want:
+                matches.append(c)
         if len(matches) == 1:
             logger.info(
-                "%s: Sources resolve name=%r → %s",
-                TITLE,
+                "Consolidate Handles: Sources resolve name=%r → %s",
                 want,
                 dgpy_flame_types.item_label(matches[0]),
             )
             return matches[0]
         if len(matches) > 1:
             logger.warning(
-                "%s: Sources name=%r matches %s clips — need reel_index",
-                TITLE,
+                "Consolidate Handles: Sources name=%r matches %s clips — "
+                "need reel_index",
                 want,
                 len(matches),
             )
         else:
             logger.warning(
-                "%s: Sources name=%r not on reel (%s clips)",
-                TITLE,
+                "Consolidate Handles: Sources name=%r not on reel (%s clips)",
                 want,
                 len(clips),
             )
     else:
         logger.warning(
-            "%s: Sources resolve missing index/name (reel has %s clips)",
-            TITLE,
+            "Consolidate Handles: Sources resolve missing index/name "
+            "(reel has %s clips)",
             len(clips),
         )
     return None
-
-
-def _clear_replace_selection(segment, sources_clip, logger) -> None:
-    set_selected(segment, False, logger, what="segment")
-    set_selected(sources_clip, False, logger, what="sources clip")
 
 
 def replace_one_segment(
@@ -209,9 +249,7 @@ def replace_one_segment(
 ) -> dict:
     """
     Host sequence must already be open.
-
-    Deselect → segment.selected + Sources selected → shortcut Replace Media.
-    No confirm dialog for Replace Media.
+    segment.selected=True; clip.selected=True; Replace Media; selected=False.
     """
     if segment is None or sources_clip is None:
         return {
@@ -221,29 +259,27 @@ def replace_one_segment(
         }
 
     logger.info(
-        "%s: Replace Media — seg=%s sources=%s",
-        TITLE,
+        "Consolidate Handles: Replace Media — seg=%s sources=%s",
         seg_label,
         dgpy_flame_types.item_label(sources_clip),
     )
 
-    deselect_all(logger)
-    ok_seg = set_selected(segment, True, logger, what="segment")
-    ok_clip = set_selected(sources_clip, True, logger, what="sources clip")
+    ok_seg = _set_selected(segment, True, logger, what="segment")
+    ok_clip = _set_selected(sources_clip, True, logger, what="sources clip")
     _log_selection(
         logger, "before Replace Media", segment=segment, clip=sources_clip
     )
 
     if not (ok_seg and ok_clip):
-        _clear_replace_selection(segment, sources_clip, logger)
+        _set_selected(segment, False, logger, what="segment")
         return {
             "status": "failed",
             "label": seg_label,
             "message": "select failed (segment or Sources)",
         }
 
-    if not run_shortcut(SHORTCUT_REPLACE_MEDIA, logger):
-        _clear_replace_selection(segment, sources_clip, logger)
+    if not _run_shortcut(SHORTCUT_REPLACE_MEDIA, logger):
+        _set_selected(segment, False, logger, what="segment")
         _log_selection(logger, "after Replace Media (failed)")
         return {
             "status": "failed",
@@ -251,9 +287,13 @@ def replace_one_segment(
             "message": "Replace Media shortcut failed",
         }
 
-    _clear_replace_selection(segment, sources_clip, logger)
+    _set_selected(segment, False, logger, what="segment")
     _log_selection(logger, "after Replace Media")
-    return {"status": "ok", "label": seg_label, "message": "ok"}
+    return {
+        "status": "ok",
+        "label": seg_label,
+        "message": "Replace Media",
+    }
 
 
 def replace_merged_results(
@@ -268,15 +308,18 @@ def replace_merged_results(
     For each successful Create result, Replace Media onto each source segment.
 
     Sources clip is re-resolved from ``reel`` (not the stale Create handle).
+    Segments reuse ``jobs[].segment``.
+
     Work is grouped by host sequence: open once → replace all → Close Current.
     """
-    pending: list[tuple[int, Any, Any, Any, str]] = []
+    # Collect work items: (seq_key, seq, segment, sources, label)
+    pending: list[tuple[int | None, Any, Any, Any, str]] = []
     early: list[dict] = []
     n = min(len(results), len(merged))
     for i in range(n):
         r = results[i]
         m = merged[i]
-        if r.get("status") != "ok":
+        if r.get("status") != "ok" or r.get("cut") != "ok":
             early.append(
                 {
                     "status": "skip",
@@ -332,24 +375,27 @@ def replace_merged_results(
                 continue
             pending.append((id(seq), seq, seg, sources, label))
 
+    # Group by host sequence (first-seen order).
     group_order: list[int] = []
     groups: dict[int, dict] = {}
     for seq_key, seq, seg, sources, label in pending:
+        assert seq_key is not None
         if seq_key not in groups:
             groups[seq_key] = {"seq": seq, "items": []}
             group_order.append(seq_key)
         groups[seq_key]["items"].append((seg, sources, label))
 
     out: list[dict] = list(early)
-    dgpy_flame_util.ensure_timeline_tab(logger=logger, label=TITLE)
+    dgpy_flame_util.ensure_timeline_tab(
+        logger=logger, label="Consolidate Handles"
+    )
 
     for seq_key in group_order:
         group = groups[seq_key]
         seq = group["seq"]
         items = group["items"]
         logger.info(
-            "%s: Replace group host=%s (%s segment(s))",
-            TITLE,
+            "Consolidate Handles: Replace group host=%s (%s segment(s))",
             dgpy_flame_types.item_label(seq),
             len(items),
         )
@@ -363,6 +409,6 @@ def replace_merged_results(
                     seg_label=label,
                 )
             )
-        close_current_sequence(logger)
+        _close_current_sequence(logger)
 
     return out
