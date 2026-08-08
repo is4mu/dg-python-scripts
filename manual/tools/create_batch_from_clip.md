@@ -4,22 +4,21 @@
 - **Menu**: Media Panel → **DG: Clip** → Create Batch Group
 - **Flame**: 2025+
 
-## できること
+## What it does
 
-クリップから Clip→Render の Batch グループを作成します。リール／シェルフ数は Flame の Batch prefs を参照します。
+Creates a Clip→Render Batch group from a clip. Reel / shelf counts follow Flame Batch prefs.
 
-## 使い方
+## How to use
 
-1. クリップを選択
+1. Select a clip
 2. **DG: Clip → Create Batch Group**
 
-## 注意
+## Notes
 
-- In/Out など一部メタは再取得が必要な場合がある（Flame の T+Click 等）
-- レンダー前にクリップ情報を確認すること
+- Some metadata such as In/Out may need re-fetch (Flame T+Click, etc.)
+- Verify clip info before rendering
 
-## 関連
+## Related
 
 - [Manual index](../README.md)
-- Script Manager でのパッケージ名: `create_batch_from_clip`
-
+- Package name in Script Manager: `create_batch_from_clip`

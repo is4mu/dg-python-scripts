@@ -4,22 +4,21 @@
 - **Menu**: Media Panel → **DG: Sequence** → Only Primary Track / Only Top Track / Set Top as Primary
 - **Flame**: 2025+
 
-## できること
+## What it does
 
-ビデオトラックを Primary のみ／最上段のみに整理したり、最上段を Primary に設定します。
+Trims video tracks to Primary only / top track only, or sets the top track as Primary.
 
-## 使い方
+## How to use
 
-1. シーケンスを選択
-2. 目的の項目を実行
+1. Select a sequence
+2. Run the desired item
 
-## 注意
+## Notes
 
-- Timeline タブが必要な場合がある
-- トラック削除は破壊的。必要トラックが残るか確認
+- Timeline tab may be required
+- Track deletion is destructive. Confirm needed tracks remain
 
-## 関連
+## Related
 
 - [Manual index](../README.md)
-- Script Manager でのパッケージ名: `keep_video_tracks`
-
+- Package name in Script Manager: `keep_video_tracks`

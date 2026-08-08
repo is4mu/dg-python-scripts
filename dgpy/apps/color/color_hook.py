@@ -23,18 +23,18 @@ for _p in (_DGPY_ROOT, _APP_DIR):
 
 __version__ = "1.0.5"
 
-# Redesigned 10-color palette (muted 和色-inspired). Menu names: English short.
+# Muted palette; menu names are English short labels.
 COLORS: dict[str, tuple[float, float, float]] = {
-    "Rose": (0.580, 0.320, 0.430),  # 蘇芳〜牡丹
-    "Red": (0.560, 0.220, 0.230),  # 紅海老茶
-    "Orange": (0.600, 0.360, 0.230),  # 代赭
-    "Gold": (0.560, 0.460, 0.220),  # 黄土
-    "Green": (0.150, 0.450, 0.320),  # 常磐
-    "Teal": (0.100, 0.400, 0.430),  # 青磁
-    "Blue": (0.110, 0.330, 0.510),  # 縹
-    "Purple": (0.470, 0.320, 0.500),  # 古代紫
-    "Black": (0.085, 0.085, 0.065),  # 墨（暖黒）
-    "Gray": (0.280, 0.290, 0.290),  # 鼠
+    "Rose": (0.580, 0.320, 0.430),
+    "Red": (0.560, 0.220, 0.230),
+    "Orange": (0.600, 0.360, 0.230),
+    "Gold": (0.560, 0.460, 0.220),
+    "Green": (0.150, 0.450, 0.320),
+    "Teal": (0.100, 0.400, 0.430),
+    "Blue": (0.110, 0.330, 0.510),
+    "Purple": (0.470, 0.320, 0.500),
+    "Black": (0.085, 0.085, 0.065),
+    "Gray": (0.280, 0.290, 0.290),
 }
 
 # Right-click context captured in isVisible; consumed by execute.

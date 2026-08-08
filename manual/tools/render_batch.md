@@ -4,21 +4,20 @@
 - **Menu**: Media Panel → **DG: Batch** → Render
 - **Flame**: 2025+
 
-## できること
+## What it does
 
-選択した Batch グループをレンダーします。
+Renders the selected Batch group.
 
-## 使い方
+## How to use
 
-1. Batch を選択
+1. Select a Batch
 2. **DG: Batch → Render**
 
-## 注意
+## Notes
 
-- レンダー設定・出力先は Batch / Flame プロジェクト設定に依存
+- Render settings and output depend on Batch / Flame project configuration
 
-## 関連
+## Related
 
 - [Manual index](../README.md)
-- Script Manager でのパッケージ名: `render_batch`
-
+- Package name in Script Manager: `render_batch`

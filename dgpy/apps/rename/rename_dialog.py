@@ -18,7 +18,7 @@ _STATUS_INVALID_REGEX = "Invalid regex — using literal replace"
 
 _WINDOW: QtWidgets.QWidget | None = None
 
-# Flame プロセス生存中のみ（再起動・Rescan でモジュール再読込されると消える）
+# Process-lifetime only (cleared on Flame restart / Rescan module reload).
 _SESSION: dict = {
     "pattern": _DEFAULT_PATTERN,
     "replaces": [("", "")],

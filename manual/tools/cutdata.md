@@ -4,23 +4,22 @@
 - **Menu**: Media Panel → **DG: Sequence** → Add Markers for Cutdata / Create Cutdata from Markers
 - **Flame**: 2025+
 
-## できること
+## What it does
 
-カット位置にマーカーを付け、マーカーからハードコミット済みのカットデータ用クリップを生成します。
+Places markers at cut points and generates hard-committed cutdata clips from those markers.
 
-## 使い方
+## How to use
 
-1. シーケンス／クリップを用意
-2. **Add Markers for Cutdata** でマーカー付与
-3. **Create Cutdata from Markers** でサブクリップ生成
+1. Prepare sequence / clip
+2. **Add Markers for Cutdata** to add markers
+3. **Create Cutdata from Markers** to generate sub-clips
 
-## 注意
+## Notes
 
-- Timeline タブが必要な処理がある
-- 元クリップ削除を含む流れなので実行前に確認
+- Some steps require the Timeline tab
+- Flow may delete source clips — confirm before running
 
-## 関連
+## Related
 
 - [Manual index](../README.md)
-- Script Manager でのパッケージ名: `cutdata`
-
+- Package name in Script Manager: `cutdata`

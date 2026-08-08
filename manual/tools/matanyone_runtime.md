@@ -1,28 +1,27 @@
 # MatAnyone Runtime
 
 - **Package**: `matanyone_runtime`
-- **Menu**: DGpy → Preferences… → MatAnyone（Runtime Setup / SAM2 Setup / Remove）
+- **Menu**: DGpy → Preferences… → MatAnyone (Runtime Setup / SAM2 Setup / Remove)
 - **Flame**: 2025+
 
-## できること
+## What it does
 
-MatAnyone2 と SAM2 を `dgpy_runtimes/matanyone` にセットアップ・削除します（重いデータは python 走査の外）。
+Installs and removes MatAnyone2 and SAM2 under `dgpy_runtimes/matanyone` (heavy data stays outside Python scan paths).
 
-## 使い方
+## How to use
 
-1. **Preferences…** を開く
-2. **Runtime Setup…** で venv / リポ / 重みを導入
-3. **SAM2 Setup…** で tiny チェックポイント等を導入
-4. READY 表示を確認してから MatAnyone を使う
+1. Open **Preferences…**
+2. **Runtime Setup…** — install venv, repo, weights
+3. **SAM2 Setup…** — install tiny checkpoint, etc.
+4. Confirm READY status before using MatAnyone
 
-## 注意
+## Notes
 
-- Script Manager では `auto_install=false`（手動 Install）
-- Setup はネットワークとディスク容量を多く使う
-- Remove All は確認のうえ実行
+- `auto_install=false` in Script Manager (manual Install)
+- Setup uses significant network and disk space
+- Run Remove All only after confirmation
 
-## 関連
+## Related
 
 - [Manual index](../README.md)
-- Script Manager でのパッケージ名: `matanyone_runtime`
-
+- Package name in Script Manager: `matanyone_runtime`

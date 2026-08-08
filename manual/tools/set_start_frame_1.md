@@ -4,21 +4,20 @@
 - **Menu**: Media Panel → **DG: Clip** → Set Start Frame to 1
 - **Flame**: 2025+
 
-## できること
+## What it does
 
-選択クリップのスタートフレームを 1 に設定します。
+Sets the start frame of selected clips to 1.
 
-## 使い方
+## How to use
 
-1. クリップを選択
+1. Select clips
 2. **DG: Clip → Set Start Frame to 1**
 
-## 注意
+## Notes
 
-- タイムコード運用中のクリップでは意図を確認してから実行
+- For clips under timecode workflows, confirm intent before running
 
-## 関連
+## Related
 
 - [Manual index](../README.md)
-- Script Manager でのパッケージ名: `set_start_frame_1`
-
+- Package name in Script Manager: `set_start_frame_1`

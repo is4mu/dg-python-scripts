@@ -1,23 +1,23 @@
-# \<表示名\>
+# \<Display name\>
 
 - **Package**: `<package_id>`
-- **Menu**: （例: Media Panel → DG: Clip → …）
+- **Menu**: (e.g. Media Panel → DG: Clip → …)
 - **Flame**: 2025+
 
-## できること
+## What it does
 
-（2〜5 行）
+(2–5 lines)
 
-## 使い方
+## How to use
 
 1. …
 2. …
 
-## 注意
+## Notes
 
 - …
 
-## 関連
+## Related
 
 - [Manual index](../README.md)
-- Script Manager でのパッケージ名: `…`
+- Package name in Script Manager: `…`

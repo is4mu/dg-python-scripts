@@ -4,22 +4,21 @@
 - **Menu**: Media Panel → **DG: Clip → Go To** → First Frame / Last Frame / In Mark / Out Mark / Custom Frame...
 - **Flame**: 2025+
 
-## できること
+## What it does
 
-クリップの再生ヘッドを指定フレームへ移動します。
+Moves the clip playhead to a specified frame.
 
-## 使い方
+## How to use
 
-1. クリップを選択
-2. **DG: Clip → Go To** から目的の項目
-3. Custom の場合はフレームを入力
+1. Select a clip
+2. **DG: Clip → Go To** → choose the item
+3. For Custom, enter the frame number
 
-## 注意
+## Notes
 
-- In/Out マークが無い場合の挙動は実装・Flame 状態に依存
+- Behavior when In/Out marks are missing depends on implementation and Flame state
 
-## 関連
+## Related
 
 - [Manual index](../README.md)
-- Script Manager でのパッケージ名: `goto_frame`
-
+- Package name in Script Manager: `goto_frame`

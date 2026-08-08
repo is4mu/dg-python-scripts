@@ -1,28 +1,29 @@
-# Consolidate Handles (Probe)
+# Consolidate Handles
 
 - **Package**: `segment_handle_clips`
-- **Menu**: Media Panel / Timeline → **DG: Segment** → Consolidate Handles (Probe)…
+- **Menu**: Media Panel / Timeline → **DG: Segment** → Consolidate Handles…
 - **Flame**: 2025+
 
-## できること
+## What it does
 
-Primary track 上のセグメントについて、現状の IN/OUT と、Handles 込みの **カット予定範囲** を一覧表示します。クリップは作りません。
+Probes Primary-track segments for keep ranges (including Handles and Timewarp where readable), merges by source path, creates consolidated clips on the **Sources** reel, then **Replace Media** back onto the sequence. One Results window drives Create and Replace.
 
-## 使い方
+## How to use
 
-1. セグメント、または Clip/Sequence、または Reel を選択
-2. **DG: Segment → Consolidate Handles (Probe)…**
-3. Handles（既定 5、前後同一）を確認 → OK
-4. 結果ダイアログで一覧を確認（Copy 可）
+1. Select a segment, clip/sequence, or reel
+2. **DG: Segment → Consolidate Handles…**
+3. Set Handles (default 5) and optional merge gap → OK
+4. Review the probe report → **Create** on Sources
+5. When ready → **Replace Media** on the same Results window
 
-## 注意
+## Notes
 
-- Folder / Library は対象外
-- Gap は対象外
-- 可変 TW が読めないセグメントは skip 行（理由付き）
-- 本線の無劣化クリップ生成は停止中（probe で数値確認後に再開予定）
+- Folder / Library and Gaps are excluded
+- Segments with unreadable variable TW are skipped (with reason)
+- Replace uses the **Replace Media** shortcut (not Smart Replace)
+- Core / Manager update is unrelated; restart Flame only if menus look stale after a Manager update
 
-## 関連
+## Related
 
 - [Manual index](../README.md)
-- Script Manager: `segment_handle_clips`
+- Script Manager package id: `segment_handle_clips`

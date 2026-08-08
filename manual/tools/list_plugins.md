@@ -4,22 +4,21 @@
 - **Menu**: DGpy → List Plugins
 - **Flame**: 2025+
 
-## できること
+## What it does
 
-現在の Desktop で使われている OpenFX / Sparks を一覧します（バッチ内・タイムライン FX）。
+Lists OpenFX / Sparks in use on the current Desktop (Batch and timeline FX).
 
-## 使い方
+## How to use
 
 1. **DGpy → List Plugins**
-2. 表示されたリストを確認する
+2. Review the displayed list
 
-## 注意
+## Notes
 
-- BFX 内などで検出できないケースがある
-- プラグインの有無そのものではなく「使用箇所の洗い出し」向け
+- Some cases cannot be detected (e.g. inside BFX)
+- Intended for finding where plugins are used, not for verifying plugin availability
 
-## 関連
+## Related
 
 - [Manual index](../README.md)
-- Script Manager でのパッケージ名: `list_plugins`
-
+- Package name in Script Manager: `list_plugins`

@@ -1,24 +1,23 @@
 # Color
 
 - **Package**: `color`
-- **Menu**: Media Panel 等 → **DG: Color** → 色名（Rose / Red / …）
+- **Menu**: Media Panel, etc. → **DG: Color** → color name (Rose / Red / …)
 - **Flame**: 2025+
 
-## できること
+## What it does
 
-選択オブジェクトのカラーラベルを、10 色のミュートパレットから設定します。
+Sets the color label on selected objects from a 10-color muted palette.
 
-## 使い方
+## How to use
 
-1. フォルダ・リール・クリップなどを選択
-2. **DG: Color** → 目的の色
+1. Select folders, reels, clips, or similar
+2. **DG: Color** → choose the color
 
-## 注意
+## Notes
 
-- 色名はメニュー表示どおり（Rose, Red, Orange, Gold, Green, Teal, Blue, Purple, Black, Gray）
+- Color names match the menu (Rose, Red, Orange, Gold, Green, Teal, Blue, Purple, Black, Gray)
 
-## 関連
+## Related
 
 - [Manual index](../README.md)
-- Script Manager でのパッケージ名: `color`
-
+- Package name in Script Manager: `color`

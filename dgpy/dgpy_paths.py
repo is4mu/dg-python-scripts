@@ -7,7 +7,7 @@ import platform
 import sys
 from pathlib import Path
 
-__version__ = "0.3.32"
+__version__ = "0.3.33"
 
 
 def dgpy_root() -> Path:
@@ -119,10 +119,10 @@ def check_writable(root: Path | None = None) -> tuple[bool, str]:
         hint = ""
         if kind == "shared":
             hint = (
-                " 共有パスです。管理者権限で配置するか、"
-                "ユーザ python に bootstrap し直してください。"
+                " This is a shared path. Install with admin rights, "
+                "or bootstrap into the user python folder instead."
             )
-        return False, f"書き込みできません: {base} ({exc}).{hint}"
+        return False, f"Cannot write to {base} ({exc}).{hint}"
 
 
 def list_dgpy_locations() -> list[tuple[str, Path]]:
@@ -149,9 +149,9 @@ def duplicate_dgpy_warning(current: Path | None = None) -> str | None:
         return None
     paths = ", ".join(f"{k}:{p}" for k, p in locations)
     return (
-        "ユーザと共有の両方に dgpy があります。\n"
-        f"{paths}\n現在の Manager は次を更新します: {live}\n"
-        "どちらか一方だけ残すことを推奨します。"
+        "dgpy exists in both user and shared locations.\n"
+        f"{paths}\nThis Manager will update: {live}\n"
+        "Keeping only one install is recommended."
     )
 
 

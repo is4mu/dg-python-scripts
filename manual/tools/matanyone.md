@@ -4,25 +4,24 @@
 - **Menu**: Media Panel → **DG: Clip** → MatAnyone…
 - **Flame**: 2025+
 
-## できること
+## What it does
 
-クリップを書き出し、SAM2 でマスクを編集し、MatAnyone2 でマットを推論して Flame に取り込みます。
+Exports a clip, edits masks with SAM2, runs MatAnyone2 matting inference, and imports results into Flame.
 
-## 使い方
+## How to use
 
-1. Preferences で **Runtime READY** と **SAM2 READY**、必要なら **ffmpeg** を用意
-2. クリップを選択 → **MatAnyone…**
-3. Export 後、マスク UI で点／ペイント → **OK**
-4. Infer 完了後、Alpha（および設定により Foreground）を確認
+1. In Preferences, ensure **Runtime READY**, **SAM2 READY**, and **ffmpeg** if needed
+2. Select a clip → **MatAnyone…**
+3. After export, use points / paint in the mask UI → **OK**
+4. After inference completes, review Alpha (and Foreground per settings)
 
-## 注意
+## Notes
 
-- macOS ではマスク UI が非モーダル。Linux は従来どおり
-- Infer は時間がかかることがある。進捗ウィンドウで Cancel 可
-- Runtime / SAM2 は Preferences から Setup
+- On macOS the mask UI is non-modal; on Linux it behaves as before
+- Inference can take time. Cancel from the progress window if needed
+- Set up Runtime / SAM2 from Preferences
 
-## 関連
+## Related
 
 - [Manual index](../README.md)
-- Script Manager でのパッケージ名: `matanyone`
-
+- Package name in Script Manager: `matanyone`

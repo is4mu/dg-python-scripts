@@ -4,21 +4,20 @@
 - **Menu**: Media Panel → **DG: Clip** → Comp CG Clips
 - **Flame**: 2025+
 
-## できること
+## What it does
 
-選択クリップを Action に積み、クリップ名からブレンドモードを推測してコンプ用に並べます。
+Stacks selected clips in Action and arranges them for comp, inferring blend mode from clip names.
 
-## 使い方
+## How to use
 
-1. CG / プレート等のクリップを選択
+1. Select CG / plate clips, etc.
 2. **DG: Clip → Comp CG Clips**
 
-## 注意
+## Notes
 
-- ブレンド推定は名前規約に依存。意図と違う場合は Action 側で修正
+- Blend inference depends on naming conventions. Adjust in Action if results differ from intent
 
-## 関連
+## Related
 
 - [Manual index](../README.md)
-- Script Manager でのパッケージ名: `comp_cg`
-
+- Package name in Script Manager: `comp_cg`

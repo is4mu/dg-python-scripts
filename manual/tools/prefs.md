@@ -4,25 +4,25 @@
 - **Menu**: DGpy → Preferences…
 - **Flame**: 2025+
 
-## できること
+## What it does
 
-パス・Runtime・ffmpeg / ffprobe・GitHub token などを一画面で確認・設定します。
-画面内の **Open Manual…** で Public 上のユーザーマニュアル目次をブラウザで開きます。
+View and configure paths, Runtime, ffmpeg / ffprobe, GitHub token, and more on one screen.
+**Open Manual…** in the window opens the Public user manual index in your browser.
 
-## 使い方
+## How to use
 
-1. **DGpy → Preferences…** で状態を確認する
-2. MatAnyone が未準備なら **Runtime Setup…** / **SAM2 Setup…**
-3. ffmpeg が無ければ Tools の **Install ffmpeg…**
-4. Private `-dev` 利用時は GitHub token を保存（Contents: Read）
-5. マニュアルは **Open Manual…**
+1. Open **DGpy → Preferences…** and review status
+2. If MatAnyone is not ready, use **Runtime Setup…** / **SAM2 Setup…**
+3. If ffmpeg is missing, use **Install ffmpeg…** under Tools
+4. For Private `-dev`, save a GitHub token (Contents: Read)
+5. Open the manual via **Open Manual…**
 
-## 注意
+## Notes
 
-- prefs.json は `…/flame/dgpy/prefs.json`（python 走査の外）
-- ffmpeg 解決順: 環境変数 → `dgpy_runtimes/bin` → PATH
+- prefs.json lives at `…/flame/dgpy/prefs.json` (outside Python scan paths)
+- ffmpeg resolution order: environment variables → `dgpy_runtimes/bin` → PATH
 
-## 関連
+## Related
 
 - [Manual index](../README.md)
-- Script Manager でのパッケージ名: `prefs`
+- Package name in Script Manager: `prefs`

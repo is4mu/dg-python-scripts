@@ -1,27 +1,26 @@
 # DG Core
 
 - **Package**: `core`
-- **Menu**: （ユーザーメニューなし — 他パッケージの共通ライブラリ）
+- **Menu**: (no user menu — shared library for other packages)
 - **Flame**: 2025+
 
-## できること
+## What it does
 
-パス・ログ・設定・HTTP・メニューレイアウト・ffmpeg 解決など、全ツールが共有する基盤です。
-Script Manager で **core** として更新されます。
+Shared foundation for all tools: paths, logging, settings, HTTP, menu layout, ffmpeg resolution, and more.
+Updated as **core** in Script Manager.
 
-## 使い方
+## How to use
 
-1. 通常は個別に操作しない
-2. Manager の **Update** / **Update All** で最新化する
-3. Preferences や各ツールが Core の API を利用する
+1. Normally you do not operate it directly
+2. Keep it current via Manager **Update** / **Update All**
+3. Preferences and other tools use Core APIs
 
-## 注意
+## Notes
 
-- Uninstall 不可
-- 版が古いと他パッケージが期待どおり動かないことがある
+- Cannot be uninstalled
+- An outdated version may cause other packages to misbehave
 
-## 関連
+## Related
 
 - [Manual index](../README.md)
-- Script Manager でのパッケージ名: `core`
-
+- Package name in Script Manager: `core`

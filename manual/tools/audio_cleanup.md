@@ -4,21 +4,20 @@
 - **Menu**: Media Panel → **DG: Audio** → Only 1-2 Track / Only 3-4 Track / Delete Mute Tracks / Delete All Audio Tracks
 - **Flame**: 2025+
 
-## できること
+## What it does
 
-オーディオを 1-2 のみ・3-4 のみに残す、ミュート削除、全オーディオ削除などを行います。
+Keeps only tracks 1–2 or 3–4, deletes muted tracks, deletes all audio, and similar cleanup actions.
 
-## 使い方
+## How to use
 
-1. 対象を選択
-2. 目的の項目を実行
+1. Select targets
+2. Run the desired item
 
-## 注意
+## Notes
 
-- **Delete** 系は破壊的。実行前に確認
+- **Delete** actions are destructive. Confirm before running
 
-## 関連
+## Related
 
 - [Manual index](../README.md)
-- Script Manager でのパッケージ名: `audio_cleanup`
-
+- Package name in Script Manager: `audio_cleanup`

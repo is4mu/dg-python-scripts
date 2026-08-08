@@ -4,21 +4,20 @@
 - **Menu**: Media Panel → **DG: Sequence** → Delete All Markers
 - **Flame**: 2025+
 
-## できること
+## What it does
 
-選択クリップ／シーケンス上のマーカーをすべて削除します。
+Deletes all markers on selected clips / sequences.
 
-## 使い方
+## How to use
 
-1. 対象を選択
+1. Select targets
 2. **DG: Sequence → Delete All Markers**
 
-## 注意
+## Notes
 
-- 取り消しは Flame の Undo に依存。実行前に対象を確認
+- Undo depends on Flame Undo. Confirm targets before running
 
-## 関連
+## Related
 
 - [Manual index](../README.md)
-- Script Manager でのパッケージ名: `delete_all_markers`
-
+- Package name in Script Manager: `delete_all_markers`

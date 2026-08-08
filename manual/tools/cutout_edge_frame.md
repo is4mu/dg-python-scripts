@@ -4,21 +4,20 @@
 - **Menu**: Media Panel → **DG: Sequence** → Cutout First Frame / Cutout Last Frame
 - **Flame**: 2025+
 
-## できること
+## What it does
 
-シーケンスの先頭または末尾フレームをカットアウトします。
+Cutouts the first or last frame of a sequence.
 
-## 使い方
+## How to use
 
-1. シーケンスを選択
-2. **Cutout First Frame** または **Cutout Last Frame**
+1. Select a sequence
+2. **Cutout First Frame** or **Cutout Last Frame**
 
-## 注意
+## Notes
 
-- Timeline コンテキストが必要な場合がある
+- Timeline context may be required
 
-## 関連
+## Related
 
 - [Manual index](../README.md)
-- Script Manager でのパッケージ名: `cutout_edge_frame`
-
+- Package name in Script Manager: `cutout_edge_frame`

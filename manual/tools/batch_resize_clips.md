@@ -4,21 +4,20 @@
 - **Menu**: Media Panel → **DG: Clip** → Resize All Clips
 - **Flame**: 2025+
 
-## できること
+## What it does
 
-複数クリップ用に、マスター Resize と mimic_link でつながったリサイズ Batch を作成します。
+For multiple clips, creates a master Resize and linked resize Batches connected via mimic_link.
 
-## 使い方
+## How to use
 
-1. クリップを複数選択
+1. Select multiple clips
 2. **DG: Clip → Resize All Clips**
 
-## 注意
+## Notes
 
-- リサイズノードが mimic で連動する前提のワークフロー向け
+- Workflow assumes resize nodes stay linked via mimic
 
-## 関連
+## Related
 
 - [Manual index](../README.md)
-- Script Manager でのパッケージ名: `batch_resize_clips`
-
+- Package name in Script Manager: `batch_resize_clips`

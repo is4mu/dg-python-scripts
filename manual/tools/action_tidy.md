@@ -4,21 +4,20 @@
 - **Menu**: Media Panel / Action → **DG: Segment** → Clean Up Action / (Fit) / Toggle Fit Method / Strip Expressions
 - **Flame**: 2025+
 
-## できること
+## What it does
 
-Action セグメントの整理、Fit 切替、Expression 除去を行います。
+Tidies Action segments, toggles Fit, and removes Expressions.
 
-## 使い方
+## How to use
 
-1. 対象セグメント／クリップを選択
-2. **DG: Segment** から目的の操作
+1. Select target segments / clips
+2. **DG: Segment** → choose the operation
 
-## 注意
+## Notes
 
-- Clean Up はノード／接続に影響する。重要な Action は事前に複製を推奨
+- Clean Up affects nodes / connections. Duplicate important Actions beforehand
 
-## 関連
+## Related
 
 - [Manual index](../README.md)
-- Script Manager でのパッケージ名: `action_tidy`
-
+- Package name in Script Manager: `action_tidy`

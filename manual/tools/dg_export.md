@@ -1,26 +1,25 @@
 # DG Export
 
 - **Package**: `dg_export`
-- **Menu**: Media Panel → **DG: Export** → （presets 内の各 XML 名）
+- **Menu**: Media Panel → **DG: Export** → (each XML name under presets)
 - **Flame**: 2025+
 
-## できること
+## What it does
 
-Flame の Media Export プリセット（パッケージ同梱 XML）で、選択ソースを所定フォルダへ書き出します。
+Exports selected sources to configured folders using Flame Media Export presets (bundled package XML).
 
-## 使い方
+## How to use
 
-1. クリップ／シーケンス等を選択
-2. **DG: Export** → 使いたいプリセット
-3. 出力先を確認して実行
+1. Select clips / sequences, etc.
+2. **DG: Export** → choose preset
+3. Confirm output path and run
 
-## 注意
+## Notes
 
-- プリセットは `apps/dg_export/presets/*.xml`。無い／空だとメニューに出ない
-- 上書き検出はメディア拡張子ベース
+- Presets live in `apps/dg_export/presets/*.xml`. Missing or empty presets do not appear in the menu
+- Overwrite detection is based on media file extensions
 
-## 関連
+## Related
 
 - [Manual index](../README.md)
-- Script Manager でのパッケージ名: `dg_export`
-
+- Package name in Script Manager: `dg_export`

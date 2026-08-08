@@ -1,24 +1,23 @@
 # Sequence Render
 
 - **Package**: `render_sequence`
-- **Menu**: Media Panel → **DG: Sequence Render** / **DG: Render Sequence Reels**（後者はホットキー向け）
+- **Menu**: Media Panel → **DG: Sequence Render** / **DG: Render Sequence Reels** (latter for hotkeys)
 - **Flame**: 2025+
 
-## できること
+## What it does
 
-選択クリップ／シーケンス、または Sequences リール配下をレンダーします。
+Renders selected clips / sequences, or items under Sequences reels.
 
-## 使い方
+## How to use
 
-1. 対象を選択（またはリール一括用メニュー）
-2. **DG: Sequence Render** 等を実行
+1. Select targets (or use reel batch menu)
+2. Run **DG: Sequence Render**, etc.
 
-## 注意
+## Notes
 
-- ホットキー専用項目は UI 非表示のことがある（Keyboard Shortcut Editor）
+- Hotkey-only items may be hidden from UI (Keyboard Shortcut Editor)
 
-## 関連
+## Related
 
 - [Manual index](../README.md)
-- Script Manager でのパッケージ名: `render_sequence`
-
+- Package name in Script Manager: `render_sequence`

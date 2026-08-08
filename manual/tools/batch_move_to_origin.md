@@ -1,24 +1,23 @@
 # Move to Origin
 
 - **Package**: `batch_move_to_origin`
-- **Menu**: Batch コンテキスト → **DG: Move to Origin**（ショートカット登録可）
+- **Menu**: Batch context → **DG: Move to Origin** (shortcut assignable)
 - **Flame**: 2025+
 
-## できること
+## What it does
 
-Batch 内の選択ノードを、先頭ノードが (0,0) になるよう平行移動します（相対位置は維持）。
+Translates selected nodes in Batch so the first node sits at (0,0), preserving relative positions.
 
-## 使い方
+## How to use
 
-1. Batch を開きノードを選択
+1. Open Batch and select nodes
 2. **DG: Move to Origin**
 
-## 注意
+## Notes
 
-- ノードが無い／選択が空のときは何もしない
+- Does nothing when there are no nodes or selection is empty
 
-## 関連
+## Related
 
 - [Manual index](../README.md)
-- Script Manager でのパッケージ名: `batch_move_to_origin`
-
+- Package name in Script Manager: `batch_move_to_origin`

@@ -1,76 +1,76 @@
-# DGpy（Flame / Flare 2025+）
+# DGpy (Flame / Flare 2025+)
 
-Autodesk Flame / Flare 向けの Python ツールセットです。  
-インストール後の追加・更新は、Flame 内の **DG Script Manager** から行います。
+Python tools for Autodesk Flame / Flare.  
+After the first install, add and update packages from **DG Script Manager** inside Flame.
 
-**無料（[MIT License](LICENSE)）** — Copyright © 2026 Isamu Oue（個人）。  
-開発継続の支援は任意です → **[GitHub Sponsors](https://github.com/sponsors/is4mu)**
+**Free ([MIT License](LICENSE))** — Copyright © 2026 Isamu Oue (personal).  
+Optional support for ongoing development → **[GitHub Sponsors](https://github.com/sponsors/is4mu)**
 
-リポジトリ: https://github.com/is4mu/dg-python-scripts
+Repository: https://github.com/is4mu/dg-python-scripts
 
-## 初回インストール
+## First-time install
 
-1. [Releases](https://github.com/is4mu/dg-python-scripts/releases) から最新の **`dgpy-bootstrap-*.zip`** をダウンロードする  
-   （現行: [v0.3.12](https://github.com/is4mu/dg-python-scripts/releases/tag/v0.3.12)）
-2. 解凍すると `dgpy/` が出る
-3. **どちらか一方**に置く（ここが Install root になる）
+1. Download the latest **`dgpy-bootstrap-*.zip`** from [Releases](https://github.com/is4mu/dg-python-scripts/releases)  
+   (current: [v0.3.12](https://github.com/is4mu/dg-python-scripts/releases/tag/v0.3.12))
+2. Unzip so you get a `dgpy/` folder
+3. Place it in **one** of these locations (this becomes the install root)
 
-| 用途 | パス |
-|------|------|
-| 個人（macOS） | `~/Library/Preferences/Autodesk/flame/python/dgpy` |
-| 個人（Linux） | `~/flame/python/dgpy` |
-| スタジオ共有 | `/opt/Autodesk/shared/python/dgpy`（書き込み権限が必要） |
+| Use | Path |
+|-----|------|
+| Personal (macOS) | `~/Library/Preferences/Autodesk/flame/python/dgpy` |
+| Personal (Linux) | `~/flame/python/dgpy` |
+| Studio shared | `/opt/Autodesk/shared/python/dgpy` (write access required) |
 
-4. Flame で **Python → Rescan Python Hooks**（または Flame を再起動）
-5. メインメニュー **DGpy → DG Script Manager**
-6. **Refresh** → 必要に応じて **Update All** / 個別 Install
+4. In Flame: **Python → Rescan Python Hooks** (or restart Flame)
+5. Main menu **DGpy → DG Script Manager**
+6. **Refresh**, then **Update All** or install packages individually
 
-以降のパッケージ追加・更新・アンインストールは Manager 経由で行ってください。  
-`dgpy/` の外にある他の Python スクリプトには影響しません。
+Use the Manager for later installs, updates, and uninstalls.  
+Other Python scripts outside `dgpy/` are left alone.
 
-## メニュー
+## Menus
 
-| 場所 | 名前 |
-|------|------|
-| メインメニュー | **DGpy**（Script Manager / Preferences / List Plugins / Clear Archive TOCs など） |
-| Media Panel ほか | **DG:** 接頭辞（Color / Rename / Batch / Audio / Clip / Segment / Sequence / Export など） |
+| Where | Name |
+|-------|------|
+| Main menu | **DGpy** (Script Manager / Preferences / List Plugins / Clear Archive TOCs, …) |
+| Media Panel and elsewhere | **DG:** prefix (Color / Rename / Batch / Audio / Clip / Segment / Sequence / Export, …) |
 
 ## Script Manager
 
-| 操作 | 用途 |
-|------|------|
-| **Refresh** | 一覧を GitHub と照合 |
-| **Update All** | 更新があるパッケージをまとめて入れる |
-| **Install / Update Selected** | 表で選んだ行だけ |
-| **Uninstall Selected** | 選んだアプリを外す（Core / Manager は不可） |
-| **Advanced** | チャンネル切替、Verify / Repair、ログ |
+| Action | Purpose |
+|--------|---------|
+| **Refresh** | Compare the package list with GitHub |
+| **Update All** | Install every package that needs an update |
+| **Install / Update Selected** | Selected table rows only |
+| **Uninstall Selected** | Remove selected apps (Core / Manager cannot be removed) |
+| **Advanced** | Channel, Verify / Repair, log |
 
-書き込みできない Install root や、ユーザ用と共有用で `dgpy` が二重にある場合は起動時に警告します。
+Startup warns if the install root is not writable, or if both user and shared `dgpy` folders exist.
 
-## 含まれる主な機能
+## Main features
 
 - **DG:** Color / Rename / Batch / Audio / Clip / Segment / Sequence / Sequence Render / Export
-- **DGpy:** Script Manager / Preferences（マニュアル・ffmpeg）/ List Plugins / Clear Archive TOCs
-- MatAnyone（Clip メニュー。Runtime は Preferences から。初回は手動 Install）
+- **DGpy:** Script Manager / Preferences (manual, ffmpeg) / List Plugins / Clear Archive TOCs
+- MatAnyone (Clip menu; Runtime from Preferences; first install is manual)
 
-一覧と版の正は Manager の Refresh 結果です。ユーザー向け詳細は [Manual](manual/README.md)。
+The Manager Refresh view is the source of truth for package versions. Details: [Manual](manual/README.md).
 
-## トラブルシューティング
+## Troubleshooting
 
-| 症状 | 確認すること |
-|------|----------------|
-| メニューが出ない | `dgpy` の配置パス、Rescan Python Hooks、Flame 2025 以上か |
-| Install / Update が失敗する | ネットワーク、GitHub へのアクセス、Install root の書き込み権限 |
-| `sha256 mismatch` | Advanced → Verify / Repair。続く場合は Flame 再起動後に再試行 |
-| Core / Manager 更新後に不安定 | Flame を再起動してから再操作 |
+| Symptom | Check |
+|---------|-------|
+| Menus missing | `dgpy` path, Rescan Python Hooks, Flame 2025+ |
+| Install / Update fails | Network, GitHub access, write permission on the install root |
+| `sha256 mismatch` | Advanced → Verify / Repair; retry after restarting Flame |
+| Unstable after Core / Manager update | Restart Flame, then try again |
 
-## ライセンス（詳細）
+## License (details)
 
-DGpy（本リポジトリの配布コード）は **[MIT License](LICENSE)** です。
+DGpy distribution code in this repository is under the **[MIT License](LICENSE)**.
 
-**MatAnyone** および関連モデル・ランタイムなど、同梱／別途取得する第三者コンポーネントには **それぞれ別のライセンス・利用条件** が適用されます。商用利用の可否は各条件を確認してください（確認中の項目あり）。
+**MatAnyone** and related models/runtimes may use **separate licenses and terms**. Check those terms for commercial use (some items are still being confirmed).
 
-問題報告はリポジトリの Issues（利用可能な場合）へお願いします。
+Report issues on the repository Issues page when available.
 
 ## User manual
 

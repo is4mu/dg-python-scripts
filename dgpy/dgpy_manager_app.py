@@ -12,7 +12,7 @@ import dgpy_manifest
 import dgpy_paths
 import dgpy_sync
 
-__version__ = "0.3.21"
+__version__ = "0.3.22"
 
 SPONSORS_URL = "https://github.com/sponsors/is4mu"
 
@@ -77,29 +77,29 @@ class ManagerWindow(QtWidgets.QDialog):
         self._update_info_label(root, kind, writable, write_msg)
 
         self._btn_refresh = QtWidgets.QPushButton("Refresh")
-        self._btn_refresh.setToolTip("GitHub と照合して一覧を更新")
+        self._btn_refresh.setToolTip("Compare the list with GitHub")
         self._btn_refresh.clicked.connect(self.refresh_table)
 
         self._btn_all = QtWidgets.QPushButton("Update All")
-        self._btn_all.setToolTip("更新があるパッケージをまとめて入れる")
+        self._btn_all.setToolTip("Install or update every package that needs it")
         self._btn_all.clicked.connect(self.install_all)
 
         self._btn_install = QtWidgets.QPushButton("Install / Update Selected")
-        self._btn_install.setToolTip("表で選んだ行だけ入れる / 更新する")
+        self._btn_install.setToolTip("Install or update the selected rows only")
         self._btn_install.clicked.connect(self.install_selected)
 
         self._btn_uninstall = QtWidgets.QPushButton("Uninstall Selected")
         self._btn_uninstall.setToolTip(
-            "選んだアプリを外す（Core / Manager は不可）"
+            "Remove selected apps (Core / Manager cannot be uninstalled)"
         )
         self._btn_uninstall.clicked.connect(self.uninstall_selected)
 
         layout.addLayout(
-            _action_row("よく使う", self._btn_refresh, self._btn_all)
+            _action_row("Everyday", self._btn_refresh, self._btn_all)
         )
         layout.addLayout(
             _action_row(
-                "選択行", self._btn_install, self._btn_uninstall
+                "Selection", self._btn_install, self._btn_uninstall
             )
         )
 
@@ -142,7 +142,7 @@ class ManagerWindow(QtWidgets.QDialog):
         idx = self._channel.findText(self._cfg.channel)
         self._channel.setCurrentIndex(idx if idx >= 0 else 0)
         self._channel.setToolTip(
-            "通常は latest。dev は開発用（Private・token が必要）"
+            "Use latest for normal installs. dev is for Private -dev (token required)."
         )
         self._channel.currentTextChanged.connect(self._on_channel_changed)
         channel_row.addWidget(self._channel)
@@ -151,25 +151,25 @@ class ManagerWindow(QtWidgets.QDialog):
 
         self._btn_verify = QtWidgets.QPushButton("Verify…")
         self._btn_verify.setToolTip(
-            "ローカルファイルを GitHub manifest（sha256）と照合"
+            "Compare local files to the GitHub manifest (including sha256)"
         )
         self._btn_verify.clicked.connect(self.verify_install)
 
         self._btn_repair_sel = QtWidgets.QPushButton("Repair Selected")
         self._btn_repair_sel.setToolTip(
-            "Verify で問題が出た選択行を再ダウンロード"
+            "Re-download selected packages flagged by Verify"
         )
         self._btn_repair_sel.clicked.connect(self.repair_selected)
 
         self._btn_repair_all = QtWidgets.QPushButton("Repair All Issues")
         self._btn_repair_all.setToolTip(
-            "Verify で問題が出たパッケージをまとめて再ダウンロード"
+            "Re-download every package flagged by Verify"
         )
         self._btn_repair_all.clicked.connect(self.repair_all_issues)
 
         adv_layout.addLayout(
             _action_row(
-                "整合",
+                "Integrity",
                 self._btn_verify,
                 self._btn_repair_sel,
                 self._btn_repair_all,
@@ -192,8 +192,8 @@ class ManagerWindow(QtWidgets.QDialog):
         layout.addWidget(self._tabs, stretch=2)
 
         tip = QtWidgets.QLabel(
-            "Install / Update のあと自動で Rescan します。"
-            " Core と Script Manager は Uninstall できません。"
+            "Install / Update rescans Python hooks automatically. "
+            "Core and Script Manager cannot be uninstalled."
         )
         tip.setWordWrap(True)
         layout.addWidget(tip)
@@ -207,8 +207,8 @@ class ManagerWindow(QtWidgets.QDialog):
         self, root, kind: str, writable: bool, write_msg: str
     ) -> None:
         del kind  # location kind is Advanced-only detail
-        write_ja = "書き込み可" if writable else "書き込み不可"
-        text = f"インストール先: {root}\n状態: {write_ja}"
+        write_en = "writable" if writable else "read-only"
+        text = f"Install folder: {root}\nStatus: {write_en}"
         if not writable and write_msg:
             text += f"\n⚠ {write_msg}"
         self._info.setText(text)
@@ -313,24 +313,24 @@ class ManagerWindow(QtWidgets.QDialog):
                 self._rows = []
                 self._logger.error("Manifest fetch failed: %s", exc)
                 hint = (
-                    "ネットワークと GitHub への接続を確認してください。"
-                    "通常は Advanced の Channel を latest にしてください。"
+                    "Check network access to GitHub. "
+                    "For normal use, set Channel to latest under Advanced."
                 )
                 if self._cfg.channel == "dev":
                     hint = (
-                        "Channel=dev は開発用です。"
-                        "DGpy → Preferences… で GitHub token を設定するか、"
-                        "Channel を latest に戻してください。"
+                        "Channel=dev is for development. "
+                        "Set a GitHub token in DGpy → Preferences… "
+                        "or switch Channel back to latest."
                     )
                 elif self._cfg.channel == "stable":
                     hint = (
-                        "Channel=stable には tag / branch 設定が必要です。"
-                        "通常は latest を使ってください。"
+                        "Channel=stable needs a configured tag/branch. "
+                        "Use latest for normal installs."
                     )
                 dgpy_gui.warning(
                     self,
                     "DG Script Manager",
-                    f"パッケージ一覧を取得できませんでした。\n{exc}\n\n{hint}",
+                    f"Could not fetch the package list.\n{exc}\n\n{hint}",
                 )
 
             self._table.setRowCount(len(self._rows))
@@ -355,7 +355,7 @@ class ManagerWindow(QtWidgets.QDialog):
     def _on_selection_changed(self) -> None:
         rows = self._selected_rows()
         if not rows:
-            self._detail.setPlainText("行を選択すると summary / changelog を表示します。")
+            self._detail.setPlainText("Select a row to show summary / changelog.")
             return
         blocks: list[str] = []
         for row in rows:
@@ -392,7 +392,7 @@ class ManagerWindow(QtWidgets.QDialog):
             dgpy_gui.info(
                 self,
                 "DG Script Manager",
-                "Install / Update 対象の行を選んでください（New または Update）。",
+                "Select New or Update rows to install.",
             )
             return
         self._run_install([r.remote_pkg for r in rows if r.remote_pkg])
@@ -408,7 +408,7 @@ class ManagerWindow(QtWidgets.QDialog):
             dgpy_gui.info(
                 self,
                 "DG Script Manager",
-                "更新・新規インストール対象はありません。",
+                "Nothing to update or install.",
             )
             return
         self._run_install([r.remote_pkg for r in rows if r.remote_pkg])
@@ -424,7 +424,7 @@ class ManagerWindow(QtWidgets.QDialog):
                 dgpy_gui.warning(
                     self,
                     "DG Script Manager",
-                    f"マニフェストを取得できませんでした。\n{exc}",
+                    f"Could not fetch the manifest.\n{exc}",
                 )
                 return
             root = self._cfg.resolved_install_root()
@@ -478,13 +478,13 @@ class ManagerWindow(QtWidgets.QDialog):
             dgpy_gui.info(
                 self,
                 "DG Script Manager",
-                "先に Refresh または Verify… を実行してください。",
+                "Run Refresh or Verify… first.",
             )
             return
         selected = {r.package_id for r in self._selected_rows()}
         if not selected:
             dgpy_gui.info(
-                self, "DG Script Manager", "Repair する行を選んでください。"
+                self, "DG Script Manager", "Select rows to repair."
             )
             return
         issues = [
@@ -513,8 +513,8 @@ class ManagerWindow(QtWidgets.QDialog):
             dgpy_gui.info(
                 self,
                 "DG Script Manager",
-                "選択行に Verify の問題も New/Update もありません。\n"
-                "先に Verify… を実行するか、New/Update 行を選んでください。",
+                "Selected rows have no Verify issues and are not New/Update.\n"
+                "Run Verify… first, or select New/Update rows.",
             )
             return
         self._repair_from_issues(
@@ -526,7 +526,7 @@ class ManagerWindow(QtWidgets.QDialog):
             dgpy_gui.info(
                 self,
                 "DG Script Manager",
-                "修復対象がありません。先に Verify… を実行してください。",
+                "Nothing to repair. Run Verify… first.",
             )
             return
         self._repair_from_issues(include_missing_manual=False)
@@ -550,15 +550,15 @@ class ManagerWindow(QtWidgets.QDialog):
             dgpy_gui.info(
                 self,
                 "DG Script Manager",
-                "Repair 対象のパッケージがありません"
-                "（manual-only New は Repair All から除外されます）。",
+                "No packages to repair "
+                "(manual-only New packages are skipped by Repair All).",
             )
             return
         names = ", ".join(p.name for p in packages)
         if ask_confirm and not dgpy_gui.confirm(
             self,
             "DG Script Manager",
-            f"次を再インストール（Repair）しますか？\n\n{names}",
+            f"Re-install (Repair) these packages?\n\n{names}",
         ):
             return
         self._run_install(packages)
@@ -566,7 +566,7 @@ class ManagerWindow(QtWidgets.QDialog):
     def uninstall_selected(self) -> None:
         rows = self._selected_rows()
         if not rows:
-            dgpy_gui.info(self, "DG Script Manager", "Uninstall する行を選んでください。")
+            dgpy_gui.info(self, "DG Script Manager", "Select rows to uninstall.")
             return
 
         protected = [r for r in rows if r.package_id in dgpy_sync.PROTECTED_PACKAGES]
@@ -575,16 +575,16 @@ class ManagerWindow(QtWidgets.QDialog):
             dgpy_gui.warning(
                 self,
                 "DG Script Manager",
-                "core / manager は Uninstall できません。\n"
-                "完全削除する場合は dgpy/ フォルダ自体を手動で削除してください。",
+                "core / manager cannot be uninstalled.\n"
+                "To remove everything, delete the dgpy/ folder manually.",
             )
             return
         if protected:
             dgpy_gui.warning(
                 self,
                 "DG Script Manager",
-                "選択に core/manager が含まれています。それらはスキップし、"
-                "アプリのみ削除します。",
+                "Selection includes core/manager; those will be skipped.\n"
+                "Only apps will be removed.",
             )
         if not apps:
             return
@@ -593,8 +593,8 @@ class ManagerWindow(QtWidgets.QDialog):
         if not dgpy_gui.confirm(
             self,
             "DG Script Manager",
-            f"次を Uninstall しますか？\n\n{names}\n\n"
-            "dgpy/apps 配下のファイルが削除されます。",
+            f"Uninstall these packages?\n\n{names}\n\n"
+            "Files under dgpy/apps will be deleted.",
         ):
             return
         if not self._ensure_writable():
@@ -607,9 +607,9 @@ class ManagerWindow(QtWidgets.QDialog):
                 root=self._cfg.resolved_install_root(),
             )
             rescanned = dgpy_flame_util.rescan_python_hooks()
-            msg = "Uninstall 完了: " + ", ".join(done)
+            msg = "Uninstall complete: " + ", ".join(done)
             if rescanned:
-                msg += "\n\nRescan Python Hooks を実行しました。"
+                msg += "\n\nRescan Python Hooks ran."
             dgpy_gui.info(self, "DG Script Manager", msg)
         except Exception as exc:  # noqa: BLE001
             self._logger.exception("Uninstall failed: %s", exc)
@@ -638,7 +638,7 @@ class ManagerWindow(QtWidgets.QDialog):
                 return
             if result.error:
                 partial = (
-                    f"\n\n完了済み: {', '.join(result.done)}" if result.done else ""
+                    f"\n\nCompleted: {', '.join(result.done)}" if result.done else ""
                 )
                 dgpy_gui.error(
                     self,
@@ -648,24 +648,24 @@ class ManagerWindow(QtWidgets.QDialog):
                 return
 
             updated_self = any(pid in ("core", "manager") for pid in result.done)
-            msg = "インストール完了: " + (
-                ", ".join(result.done) if result.done else "(なし)"
+            msg = "Install complete: " + (
+                ", ".join(result.done) if result.done else "(none)"
             )
             msg += "\n\n"
             if result.rescans:
                 msg += (
-                    "Rescan Python Hooks を実行しました"
+                    "Rescan Python Hooks ran"
                     f"（{' → '.join(result.rescans)}）。"
                 )
             elif result.done:
                 msg += (
-                    "自動 Rescan に失敗したか、Flame 外のためスキップしました。\n"
-                    "手動で Python → Rescan Python Hooks を実行してください。"
+                    "Automatic Rescan failed or was skipped outside Flame.\n"
+                    "Run Python → Rescan Python Hooks manually."
                 )
             if updated_self:
                 msg += (
-                    "\n\ncore / manager を更新した場合は、"
-                    "Flame の再起動を推奨します。"
+                    "\n\nIf core / manager were updated, "
+                    "restarting Flame is recommended."
                 )
             dgpy_gui.info(self, "DG Script Manager", msg)
         except Exception as exc:  # noqa: BLE001

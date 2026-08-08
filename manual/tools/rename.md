@@ -4,24 +4,23 @@
 - **Menu**: Media Panel / Timeline / Batch / Action → **DG: Rename**
 - **Flame**: 2025+
 
-## できること
+## What it does
 
-選択したクリップ・リール・フォルダ・ノードなどの名前を、パターン・トークン・複数 Replace で一括変更します。
+Batch-rename selected clips, reels, folders, nodes, and more using patterns, tokens, and multiple Replace rules.
 
-## 使い方
+## How to use
 
-1. 対象を選択する
-2. 右クリック → **DG: Rename**
-3. パターン / トークン / Replace 行を設定しプレビューを確認する
+1. Select targets
+2. Right-click → **DG: Rename**
+3. Set pattern / tokens / Replace rows and review the preview
 4. **Apply**
 
-## 注意
+## Notes
 
-- 右クリック対象と execute の selection がずれることがある（Flame の仕様）。意図した対象か確認する
-- Undo は Flame の通常手順に従う
+- Right-click target and execute selection can diverge (Flame behavior). Confirm the intended targets
+- Undo follows Flame’s normal procedure
 
-## 関連
+## Related
 
 - [Manual index](../README.md)
-- Script Manager でのパッケージ名: `rename`
-
+- Package name in Script Manager: `rename`

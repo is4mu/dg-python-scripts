@@ -4,22 +4,21 @@
 - **Menu**: Media Panel → **DG: Batch** → Save Setup
 - **Flame**: 2025+
 
-## できること
+## What it does
 
-Batch セットアップを指定フォルダへ保存します（既定は project の batch/flame 付近）。
+Saves Batch setup to a specified folder (default is near the project’s batch/flame path).
 
-## 使い方
+## How to use
 
-1. 対象 Batch を選択
+1. Select the target Batch
 2. **DG: Batch → Save Setup**
-3. 保存先を確認して実行
+3. Confirm the destination and run
 
-## 注意
+## Notes
 
-- 上書きや既存ファイルの扱いはダイアログ／ログを確認
+- Check the dialog / log for overwrite and existing-file behavior
 
-## 関連
+## Related
 
 - [Manual index](../README.md)
-- Script Manager でのパッケージ名: `save_batch_setup`
-
+- Package name in Script Manager: `save_batch_setup`

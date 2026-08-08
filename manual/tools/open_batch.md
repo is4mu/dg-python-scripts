@@ -4,21 +4,20 @@
 - **Menu**: Media Panel → **DG: Batch** → Open
 - **Flame**: 2025+
 
-## できること
+## What it does
 
-閉じている Batch グループを開きます（選択した PyBatch、または Desktop 配下）。
+Opens closed Batch groups (selected PyBatch or under the Desktop).
 
-## 使い方
+## How to use
 
-1. Batch グループまたは Desktop を選択
+1. Select a Batch group or Desktop
 2. **DG: Batch → Open**
 
-## 注意
+## Notes
 
-- 既に開いている Batch の扱いは Flame 側の状態に依存する
+- Behavior for already-open Batches depends on Flame state
 
-## 関連
+## Related
 
 - [Manual index](../README.md)
-- Script Manager でのパッケージ名: `open_batch`
-
+- Package name in Script Manager: `open_batch`

@@ -4,21 +4,20 @@
 - **Menu**: Media Panel → **DG: Audio** → Lock / Unlock Audio Tracks
 - **Flame**: 2025+
 
-## できること
+## What it does
 
-オーディオトラックのロック／アンロックを行います。
+Locks and unlocks audio tracks.
 
-## 使い方
+## How to use
 
-1. 対象を選択
-2. **Lock Audio Tracks** または **Unlock Audio Tracks**
+1. Select targets
+2. **Lock Audio Tracks** or **Unlock Audio Tracks**
 
-## 注意
+## Notes
 
-- ロック状態はシーケンス構成に依存
+- Lock state depends on sequence layout
 
-## 関連
+## Related
 
 - [Manual index](../README.md)
-- Script Manager でのパッケージ名: `audio_lock`
-
+- Package name in Script Manager: `audio_lock`

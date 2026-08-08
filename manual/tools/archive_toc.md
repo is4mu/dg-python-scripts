@@ -4,22 +4,21 @@
 - **Menu**: DGpy → Clear Archive TOCs
 - **Flame**: 2025+
 
-## できること
+## What it does
 
-`/opt/Autodesk/archive` 配下の Online TOC を削除し、アーカイブタブの読み込みを軽くします。
+Removes Online TOCs under `/opt/Autodesk/archive` to lighten Archive tab loading.
 
-## 使い方
+## How to use
 
 1. **DGpy → Clear Archive TOCs**
-2. 確認ダイアログで実行する
+2. Confirm in the dialog
 
-## 注意
+## Notes
 
-- **破壊的**操作。アーカイブ TOC のみを対象とし、メディア本体は消さない設計だが、実行前に環境を確認すること
-- パスが無い / 権限が無い環境では失敗する
+- **Destructive** operation. Targets archive TOCs only; media files are not deleted by design, but verify your environment before running
+- Fails if the path is missing or permissions are insufficient
 
-## 関連
+## Related
 
 - [Manual index](../README.md)
-- Script Manager でのパッケージ名: `archive_toc`
-
+- Package name in Script Manager: `archive_toc`
