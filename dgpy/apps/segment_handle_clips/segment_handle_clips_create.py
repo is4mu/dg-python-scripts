@@ -451,8 +451,8 @@ def subclip_keep_range(clip, reel, start: int, end: int, name: str, logger):
     Create Subclip from In/Out marks; Hard Commit + audio; drop full-length hosts.
 
     Returns (final_clip, cut_status, audio_status, hard_commit_status, reel_index).
-    ``reel_index`` is taken at Create Subclip time; host deletes use indices
-    recorded before cleanup (stale PyClip id matching is avoided).
+    ``reel_index`` is taken at Create Subclip time. Full-length delete indices
+    are captured **before** Subclip (post-Subclip PyClip id match is unreliable).
     """
     if clip is None:
         return None, "n/a", "n/a", "n/a", None
@@ -463,10 +463,24 @@ def subclip_keep_range(clip, reel, start: int, end: int, name: str, logger):
         )
         return clip, "failed", "n/a", "n/a", None
 
+    # Capture while match/copy handle still matches reel.clips[i].
+    source_idx = _reel_index_of(reel, clip)
+    if source_idx is None:
+        logger.warning(
+            "%s: source not found on Sources before Subclip (%s)",
+            TITLE,
+            dgpy_flame_types.item_label(clip),
+        )
+
     host, host_opened = _open_as_sequence(clip, logger)
+    remove: list[int] = []
+    sub = None
+    reel_index: int | None = None
     try:
         if host is not clip:
             set_keep_marks(host, start, end, logger)
+
+        host_idx = _reel_index_of(reel, host)
 
         before = _reel_ids(reel)
         before.add(id(clip))
@@ -483,26 +497,37 @@ def subclip_keep_range(clip, reel, start: int, end: int, name: str, logger):
             )
             return clip, "failed", "n/a", "n/a", None
 
-        # Indices of full-length hosts to remove — capture while ids are live.
-        remove: list[int] = []
-        for obj in (host, clip):
-            if obj is None or obj is sub:
-                continue
-            j = _reel_index_of(reel, obj)
+        for j in (source_idx, host_idx):
             if j is not None and j != reel_index:
                 remove.append(j)
 
+        if not remove:
+            logger.warning(
+                "%s: no full-length indices to delete "
+                "(source_idx=%s host_idx=%s sub_index=%s)",
+                TITLE,
+                source_idx,
+                host_idx,
+                reel_index,
+            )
+
         logger.info(
-            "%s: Create Subclip → %s reel_index=%s remove=%s",
+            "%s: Create Subclip → %s reel_index=%s remove=%s "
+            "(source_idx=%s host_idx=%s)",
             TITLE,
             dgpy_flame_types.item_label(sub),
             reel_index,
             remove,
+            source_idx,
+            host_idx,
         )
         _set_name(sub, name, logger)
     finally:
         if host_opened:
             close_current_sequence(logger)
+
+    if sub is None:
+        return clip, "failed", "n/a", "n/a", None
 
     hard_status, audio_status = post_subclip_cleanup(sub, logger)
     reel_index = _delete_indices_adjust(reel, remove, reel_index, logger)
