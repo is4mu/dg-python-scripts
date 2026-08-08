@@ -3,6 +3,9 @@
 Autodesk Flame / Flare 向けの Python ツールセットです。  
 インストール後の追加・更新は、Flame 内の **DG Script Manager** から行います。
 
+**無料（[MIT License](LICENSE)）** — Copyright © 2026 Isamu Oue（個人）。  
+開発継続の支援は任意です → **[GitHub Sponsors](https://github.com/sponsors/is4mu)**
+
 リポジトリ: https://github.com/is4mu/dg-python-scripts
 
 ## 初回インストール
@@ -32,16 +35,15 @@ Autodesk Flame / Flare 向けの Python ツールセットです。
 | メインメニュー | **DGpy**（Script Manager / Preferences / List Plugins / Clear Archive TOCs など） |
 | Media Panel ほか | **DG:** 接頭辞（Color / Rename / Batch / Audio / Clip / Segment / Sequence / Export など） |
 
-旧一時名 `DGpy2` / `DG2:` は使いません（2026-07-29 に統合済み）。
+## Script Manager
 
-## Script Manager でできること
-
-- 利用可能なパッケージの一覧（Install / Update / Up to date）
-- **Update All** / 選択して Install・Update
-- アプリの **Uninstall**（Core / Manager はアンインストール不可）
-- **Verify…** / Repair（配布ファイルの整合）
-- 各パッケージの概要・変更履歴
-- チャンネル切替（`latest` / 開発用 `dev` ※運用に応じて）
+| 操作 | 用途 |
+|------|------|
+| **Refresh** | 一覧を GitHub と照合 |
+| **Update All** | 更新があるパッケージをまとめて入れる |
+| **Install / Update Selected** | 表で選んだ行だけ |
+| **Uninstall Selected** | 選んだアプリを外す（Core / Manager は不可） |
+| **Advanced** | チャンネル切替、Verify / Repair、ログ |
 
 書き込みできない Install root や、ユーザ用と共有用で `dgpy` が二重にある場合は起動時に警告します。
 
@@ -59,12 +61,16 @@ Autodesk Flame / Flare 向けの Python ツールセットです。
 |------|----------------|
 | メニューが出ない | `dgpy` の配置パス、Rescan Python Hooks、Flame 2025 以上か |
 | Install / Update が失敗する | ネットワーク、GitHub へのアクセス、Install root の書き込み権限 |
-| `sha256 mismatch` | Refresh → Verify / Repair。続く場合は Flame 再起動後に再試行 |
+| `sha256 mismatch` | Advanced → Verify / Repair。続く場合は Flame 再起動後に再試行 |
 | Core / Manager 更新後に不安定 | Flame を再起動してから再操作 |
 
-## ライセンス・サポート
+## ライセンス（詳細）
 
-社内／個人利用向けの配布物です。問題があればリポジトリの Issues（利用可能な場合）または配布元の担当者へ連絡してください。
+DGpy（本リポジトリの配布コード）は **[MIT License](LICENSE)** です。
+
+**MatAnyone** および関連モデル・ランタイムなど、同梱／別途取得する第三者コンポーネントには **それぞれ別のライセンス・利用条件** が適用されます。商用利用の可否は各条件を確認してください（確認中の項目あり）。
+
+問題報告はリポジトリの Issues（利用可能な場合）へお願いします。
 
 ## User manual
 

@@ -1,4 +1,4 @@
-"""DG Script Manager window (P4: uninstall, changelog, shared-path checks)."""
+"""DG Script Manager window."""
 
 from __future__ import annotations
 
@@ -12,16 +12,29 @@ import dgpy_manifest
 import dgpy_paths
 import dgpy_sync
 
-__version__ = "0.3.19"
+__version__ = "0.3.21"
+
+SPONSORS_URL = "https://github.com/sponsors/is4mu"
 
 _WINDOW: QtWidgets.QWidget | None = None
+
+
+def _action_row(caption: str, *buttons: QtWidgets.QWidget) -> QtWidgets.QHBoxLayout:
+    row = QtWidgets.QHBoxLayout()
+    label = QtWidgets.QLabel(caption)
+    label.setMinimumWidth(88)
+    row.addWidget(label)
+    for btn in buttons:
+        row.addWidget(btn)
+    row.addStretch(1)
+    return row
 
 
 class ManagerWindow(QtWidgets.QDialog):
     def __init__(self, parent: QtWidgets.QWidget | None = None) -> None:
         super().__init__(parent)
         self.setWindowTitle("DG Script Manager")
-        self.resize(900, 600)
+        self.resize(920, 640)
         self.setWindowFlags(
             self.windowFlags()
             | QtCore.Qt.WindowType.Window
@@ -41,64 +54,54 @@ class ManagerWindow(QtWidgets.QDialog):
 
         layout = QtWidgets.QVBoxLayout(self)
 
+        header = QtWidgets.QHBoxLayout()
         self._info = QtWidgets.QLabel()
         self._info.setWordWrap(True)
         self._info.setTextInteractionFlags(
             QtCore.Qt.TextInteractionFlag.TextSelectableByMouse
         )
-        layout.addWidget(self._info)
+        header.addWidget(self._info, stretch=1)
+        self._sponsors_link = QtWidgets.QLabel(
+            f'<a href="{SPONSORS_URL}">Support DGpy…</a>'
+        )
+        self._sponsors_link.setOpenExternalLinks(True)
+        self._sponsors_link.setToolTip(
+            "Free to use (MIT). Optional support via GitHub Sponsors."
+        )
+        self._sponsors_link.setAlignment(
+            QtCore.Qt.AlignmentFlag.AlignRight
+            | QtCore.Qt.AlignmentFlag.AlignTop
+        )
+        header.addWidget(self._sponsors_link)
+        layout.addLayout(header)
         self._update_info_label(root, kind, writable, write_msg)
 
-        channel_row = QtWidgets.QHBoxLayout()
-        channel_row.addWidget(QtWidgets.QLabel("Channel:"))
-        self._channel = QtWidgets.QComboBox()
-        self._channel.addItems(["latest", "stable", "dev"])
-        idx = self._channel.findText(self._cfg.channel)
-        self._channel.setCurrentIndex(idx if idx >= 0 else 0)
-        self._channel.currentTextChanged.connect(self._on_channel_changed)
-        channel_row.addWidget(self._channel)
-        channel_row.addStretch(1)
-        layout.addLayout(channel_row)
-
-        toolbar = QtWidgets.QHBoxLayout()
         self._btn_refresh = QtWidgets.QPushButton("Refresh")
+        self._btn_refresh.setToolTip("GitHub と照合して一覧を更新")
         self._btn_refresh.clicked.connect(self.refresh_table)
-        toolbar.addWidget(self._btn_refresh)
-
-        self._btn_install = QtWidgets.QPushButton("Install / Update Selected")
-        self._btn_install.clicked.connect(self.install_selected)
-        toolbar.addWidget(self._btn_install)
 
         self._btn_all = QtWidgets.QPushButton("Update All")
+        self._btn_all.setToolTip("更新があるパッケージをまとめて入れる")
         self._btn_all.clicked.connect(self.install_all)
-        toolbar.addWidget(self._btn_all)
 
-        self._btn_verify = QtWidgets.QPushButton("Verify…")
-        self._btn_verify.setToolTip(
-            "Compare local files to GitHub manifest (including sha256)"
-        )
-        self._btn_verify.clicked.connect(self.verify_install)
-        toolbar.addWidget(self._btn_verify)
-
-        self._btn_repair_sel = QtWidgets.QPushButton("Repair Selected")
-        self._btn_repair_sel.setToolTip(
-            "Re-download selected packages that Verify flagged (or New/Update)"
-        )
-        self._btn_repair_sel.clicked.connect(self.repair_selected)
-        toolbar.addWidget(self._btn_repair_sel)
-
-        self._btn_repair_all = QtWidgets.QPushButton("Repair All Issues")
-        self._btn_repair_all.setToolTip(
-            "Re-download packages with Verify issues (skips manual-only New)"
-        )
-        self._btn_repair_all.clicked.connect(self.repair_all_issues)
-        toolbar.addWidget(self._btn_repair_all)
+        self._btn_install = QtWidgets.QPushButton("Install / Update Selected")
+        self._btn_install.setToolTip("表で選んだ行だけ入れる / 更新する")
+        self._btn_install.clicked.connect(self.install_selected)
 
         self._btn_uninstall = QtWidgets.QPushButton("Uninstall Selected")
+        self._btn_uninstall.setToolTip(
+            "選んだアプリを外す（Core / Manager は不可）"
+        )
         self._btn_uninstall.clicked.connect(self.uninstall_selected)
-        toolbar.addWidget(self._btn_uninstall)
-        toolbar.addStretch(1)
-        layout.addLayout(toolbar)
+
+        layout.addLayout(
+            _action_row("よく使う", self._btn_refresh, self._btn_all)
+        )
+        layout.addLayout(
+            _action_row(
+                "選択行", self._btn_install, self._btn_uninstall
+            )
+        )
 
         self._table = QtWidgets.QTableWidget(0, 5)
         self._table.setHorizontalHeaderLabels(
@@ -118,50 +121,117 @@ class ManagerWindow(QtWidgets.QDialog):
         )
         self._table.setColumnHidden(4, True)
         self._table.itemSelectionChanged.connect(self._on_selection_changed)
-        layout.addWidget(self._table, stretch=2)
+        layout.addWidget(self._table, stretch=3)
 
-        layout.addWidget(QtWidgets.QLabel("Details / Changelog"))
         self._detail = QtWidgets.QPlainTextEdit()
         self._detail.setReadOnly(True)
         self._detail.setMaximumBlockCount(400)
-        layout.addWidget(self._detail, stretch=1)
 
-        layout.addWidget(QtWidgets.QLabel("Log"))
         self._log_view = QtWidgets.QPlainTextEdit()
         self._log_view.setReadOnly(True)
         self._log_view.setMaximumBlockCount(800)
-        layout.addWidget(self._log_view, stretch=1)
 
-        note = QtWidgets.QLabel(
-            "Install 後は自動 Rescan。core/manager は Uninstall 不可"
-            "（配布基盤のため）。移行期間メニュー: DGpy → DG Script Manager"
+        advanced = QtWidgets.QWidget()
+        adv_layout = QtWidgets.QVBoxLayout(advanced)
+        adv_layout.setContentsMargins(0, 8, 0, 0)
+
+        channel_row = QtWidgets.QHBoxLayout()
+        channel_row.addWidget(QtWidgets.QLabel("Channel:"))
+        self._channel = QtWidgets.QComboBox()
+        self._channel.addItems(["latest", "stable", "dev"])
+        idx = self._channel.findText(self._cfg.channel)
+        self._channel.setCurrentIndex(idx if idx >= 0 else 0)
+        self._channel.setToolTip(
+            "通常は latest。dev は開発用（Private・token が必要）"
         )
-        note.setWordWrap(True)
-        layout.addWidget(note)
+        self._channel.currentTextChanged.connect(self._on_channel_changed)
+        channel_row.addWidget(self._channel)
+        channel_row.addStretch(1)
+        adv_layout.addLayout(channel_row)
+
+        self._btn_verify = QtWidgets.QPushButton("Verify…")
+        self._btn_verify.setToolTip(
+            "ローカルファイルを GitHub manifest（sha256）と照合"
+        )
+        self._btn_verify.clicked.connect(self.verify_install)
+
+        self._btn_repair_sel = QtWidgets.QPushButton("Repair Selected")
+        self._btn_repair_sel.setToolTip(
+            "Verify で問題が出た選択行を再ダウンロード"
+        )
+        self._btn_repair_sel.clicked.connect(self.repair_selected)
+
+        self._btn_repair_all = QtWidgets.QPushButton("Repair All Issues")
+        self._btn_repair_all.setToolTip(
+            "Verify で問題が出たパッケージをまとめて再ダウンロード"
+        )
+        self._btn_repair_all.clicked.connect(self.repair_all_issues)
+
+        adv_layout.addLayout(
+            _action_row(
+                "整合",
+                self._btn_verify,
+                self._btn_repair_sel,
+                self._btn_repair_all,
+            )
+        )
+
+        self._tech_info = QtWidgets.QLabel()
+        self._tech_info.setWordWrap(True)
+        self._tech_info.setTextInteractionFlags(
+            QtCore.Qt.TextInteractionFlag.TextSelectableByMouse
+        )
+        adv_layout.addWidget(self._tech_info)
+        adv_layout.addStretch(1)
+        self._update_tech_info()
+
+        self._tabs = QtWidgets.QTabWidget()
+        self._tabs.addTab(self._detail, "Details")
+        self._tabs.addTab(self._log_view, "Log")
+        self._tabs.addTab(advanced, "Advanced")
+        layout.addWidget(self._tabs, stretch=2)
+
+        tip = QtWidgets.QLabel(
+            "Install / Update のあと自動で Rescan します。"
+            " Core と Script Manager は Uninstall できません。"
+        )
+        tip.setWordWrap(True)
+        layout.addWidget(tip)
 
         dgpy_log.add_listener(self._append_log)
         self.refresh_table()
-        self._logger.info("Manager opened (P4)")
+        self._logger.info("Manager opened")
         QtCore.QTimer.singleShot(0, self._show_startup_warnings)
 
     def _update_info_label(
         self, root, kind: str, writable: bool, write_msg: str
     ) -> None:
-        manifest_url = dgpy_manifest.default_manifest_url(self._cfg)
-        write_state = "writable" if writable else "READ-ONLY"
-        effective_repo = dgpy_manifest.repo_for_channel(self._cfg)
-        text = (
-            f"Install root: {root}  [{kind}, {write_state}]\n"
-            f"Channel: {self._cfg.channel}  |  Repo: {effective_repo}\n"
-            f"Manifest: {manifest_url}"
-        )
-        if self._cfg.channel == "dev":
-            import dgpy_prefs
-
-            text += f"\nDev token: {dgpy_prefs.token_status_label()}"
+        del kind  # location kind is Advanced-only detail
+        write_ja = "書き込み可" if writable else "書き込み不可"
+        text = f"インストール先: {root}\n状態: {write_ja}"
         if not writable and write_msg:
             text += f"\n⚠ {write_msg}"
         self._info.setText(text)
+        self._update_tech_info()
+
+    def _update_tech_info(self) -> None:
+        if not hasattr(self, "_tech_info"):
+            return
+        root = self._cfg.resolved_install_root()
+        kind = dgpy_paths.detect_parent_kind(root)
+        manifest_url = dgpy_manifest.default_manifest_url(self._cfg)
+        repo = dgpy_manifest.repo_for_channel(self._cfg)
+        lines = [
+            f"Location: {kind}",
+            f"Channel: {self._cfg.channel}",
+            f"Repo: {repo}",
+            f"Manifest: {manifest_url}",
+        ]
+        if self._cfg.channel == "dev":
+            import dgpy_prefs
+
+            lines.append(f"Dev token: {dgpy_prefs.token_status_label()}")
+        self._tech_info.setText("\n".join(lines))
 
     def _show_startup_warnings(self) -> None:
         if self._warn_once:
@@ -174,6 +244,16 @@ class ManagerWindow(QtWidgets.QDialog):
         dup = dgpy_paths.duplicate_dgpy_warning(root)
         if dup:
             dgpy_gui.warning(self, "DG Script Manager", dup)
+
+    def _open_sponsors(self) -> None:
+        ok = QtGui.QDesktopServices.openUrl(QtCore.QUrl(SPONSORS_URL))
+        if not ok:
+            self._logger.warning("Could not open Sponsors URL: %s", SPONSORS_URL)
+            dgpy_gui.warning(
+                self,
+                "Support / Donate",
+                f"Open in a browser:\n{SPONSORS_URL}",
+            )
 
     def _on_channel_changed(self, channel: str) -> None:
         if not channel or channel == self._cfg.channel:
@@ -232,14 +312,25 @@ class ManagerWindow(QtWidgets.QDialog):
                 self._manifest = None
                 self._rows = []
                 self._logger.error("Manifest fetch failed: %s", exc)
+                hint = (
+                    "ネットワークと GitHub への接続を確認してください。"
+                    "通常は Advanced の Channel を latest にしてください。"
+                )
+                if self._cfg.channel == "dev":
+                    hint = (
+                        "Channel=dev は開発用です。"
+                        "DGpy → Preferences… で GitHub token を設定するか、"
+                        "Channel を latest に戻してください。"
+                    )
+                elif self._cfg.channel == "stable":
+                    hint = (
+                        "Channel=stable には tag / branch 設定が必要です。"
+                        "通常は latest を使ってください。"
+                    )
                 dgpy_gui.warning(
                     self,
                     "DG Script Manager",
-                    f"マニフェストを取得できませんでした。\n{exc}\n\n"
-                    "channel=dev は Private -dev 用です。"
-                    "DGpy → Preferences… で GitHub token を設定してください。\n"
-                    "channel=stable は tag/branch が必要です。"
-                    "通常は channel=latest を使います。",
+                    f"パッケージ一覧を取得できませんでした。\n{exc}\n\n{hint}",
                 )
 
             self._table.setRowCount(len(self._rows))
