@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-__version__ = "0.8.2"
+__version__ = "0.8.3"
 
 TITLE = "Consolidate Handles"
 SHORTCUT_CLOSE_CURRENT = "Close Current Sequence"
