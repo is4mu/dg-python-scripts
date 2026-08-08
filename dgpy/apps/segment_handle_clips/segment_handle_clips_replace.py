@@ -1,4 +1,4 @@
-"""Replace Media: Sources clips → original sequence segments."""
+"""Replace Media: Sources clips → original sequence segments (shortcut)."""
 
 from __future__ import annotations
 
@@ -213,10 +213,11 @@ def _pump_qt(times: int = 8) -> None:
         pass
 
 
-def _click_smart_replace_confirm(logger) -> bool:
+def _click_positioner_replace_confirm(logger) -> bool:
     """
-    Accept Flame's 'Smart Replace has not found… Positioner to Positioner'
-    dialog by clicking Replace (not Cancel).
+    If Replace Media shows the 'no matching criteria / Positioner' prompt,
+    click Replace (not Cancel). This is not Smart Replace — it accepts
+    Positioner-to-Positioner replace so the shortcut can finish.
     """
     try:
         from PySide6 import QtWidgets
@@ -224,7 +225,6 @@ def _click_smart_replace_confirm(logger) -> bool:
         return False
 
     _pump_qt(12)
-    clicked = False
     for w in QtWidgets.QApplication.topLevelWidgets():
         try:
             if not w.isVisible():
@@ -250,7 +250,6 @@ def _click_smart_replace_confirm(logger) -> bool:
             buttons = list(w.findChildren(QtWidgets.QPushButton))
         except Exception:  # noqa: BLE001
             continue
-        # Prefer explicit Replace over Cancel / OK ambiguity.
         replace_btn = None
         for btn in buttons:
             try:
@@ -264,45 +263,18 @@ def _click_smart_replace_confirm(logger) -> bool:
             continue
         try:
             logger.info(
-                "%s: auto-accept Smart Replace dialog (%r)",
+                "%s: accept Positioner replace dialog (%r)",
                 TITLE,
                 title or "untitled",
             )
             replace_btn.click()
-            clicked = True
             _pump_qt(8)
-            break
+            return True
         except Exception as exc:  # noqa: BLE001
             logger.warning(
-                "%s: Smart Replace dialog click failed: %s", TITLE, exc
+                "%s: Positioner dialog click failed: %s", TITLE, exc
             )
-    return clicked
-
-
-def _try_segment_api_replace(segment, sources_clip, logger) -> str | None:
-    """
-    Prefer PySegment API (no Smart Replace UI).
-
-    Returns method name on success, None if all failed / unavailable.
-    """
-    for method_name in ("smart_replace_media", "smart_replace"):
-        fn = getattr(segment, method_name, None)
-        if not callable(fn):
-            continue
-        try:
-            fn(sources_clip)
-            logger.info(
-                "%s: %s → %s",
-                TITLE,
-                method_name,
-                dgpy_flame_types.item_label(sources_clip),
-            )
-            return method_name
-        except Exception as exc:  # noqa: BLE001
-            logger.warning(
-                "%s: %s failed: %s", TITLE, method_name, exc
-            )
-    return None
+    return False
 
 
 def replace_one_segment(
@@ -315,8 +287,8 @@ def replace_one_segment(
     """
     Host sequence must already be open.
 
-    Prefer ``smart_replace_media`` / ``smart_replace``. Fallback: dual
-    ``selected`` + Replace Media shortcut, auto-accept Positioner dialog.
+    Deselect → segment.selected + Sources selected → shortcut Replace Media.
+    If Flame asks Positioner-to-Positioner, auto-click Replace.
     """
     if segment is None or sources_clip is None:
         return {
@@ -326,21 +298,13 @@ def replace_one_segment(
         }
 
     logger.info(
-        "%s: Replace — seg=%s sources=%s",
+        "%s: Replace Media — seg=%s sources=%s",
         TITLE,
         seg_label,
         dgpy_flame_types.item_label(sources_clip),
     )
 
     deselect_all(logger)
-    api_method = _try_segment_api_replace(segment, sources_clip, logger)
-    if api_method:
-        return {
-            "status": "ok",
-            "label": seg_label,
-            "message": api_method,
-        }
-
     ok_seg = set_selected(segment, True, logger, what="segment")
     ok_clip = set_selected(sources_clip, True, logger, what="sources clip")
     _log_selection(
@@ -364,15 +328,11 @@ def replace_one_segment(
             "message": "Replace Media shortcut failed",
         }
 
-    _click_smart_replace_confirm(logger)
+    _click_positioner_replace_confirm(logger)
     _pump_qt(6)
     _clear_replace_selection(segment, sources_clip, logger)
     _log_selection(logger, "after Replace Media")
-    return {
-        "status": "ok",
-        "label": seg_label,
-        "message": "shortcut (+dialog)",
-    }
+    return {"status": "ok", "label": seg_label, "message": "ok"}
 
 
 def replace_merged_results(
