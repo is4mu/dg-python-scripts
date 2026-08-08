@@ -12,12 +12,12 @@ Day-to-day updates should go through this Manager.
 ## How to use
 
 1. Open **DGpy → DG Script Manager**
-2. **Everyday**: **Refresh**, then **Update All** when needed
-3. **Selection**: select rows → **Install / Update Selected** or **Uninstall Selected**
+2. **Refresh**, then **Update All** when needed
+3. Select rows → **Install / Update Selected** or **Uninstall Selected**
 4. **Advanced** tab: Channel, **Verify…** / **Repair**, technical details, log
 5. After Core / Manager self-updates, **restart Flame** is recommended
 
-Optional: **Support DGpy…** in the header opens GitHub Sponsors (donations are optional; DGpy is free).
+Optional: header **Donate…** opens GitHub Sponsors (donations are optional; DGpy is free).
 
 ## Notes
 

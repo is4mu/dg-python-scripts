@@ -43,6 +43,7 @@ Other Python scripts outside `dgpy/` are left alone.
 | **Update All** | Install every package that needs an update |
 | **Install / Update Selected** | Selected table rows only |
 | **Uninstall Selected** | Remove selected apps (Core / Manager cannot be removed) |
+| **Donate…** | Optional donation (GitHub Sponsors); DGpy stays free |
 | **Advanced** | Channel, Verify / Repair, log |
 
 Startup warns if the install root is not writable, or if both user and shared `dgpy` folders exist.

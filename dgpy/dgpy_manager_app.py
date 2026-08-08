@@ -12,18 +12,15 @@ import dgpy_manifest
 import dgpy_paths
 import dgpy_sync
 
-__version__ = "0.3.22"
+__version__ = "0.3.23"
 
 SPONSORS_URL = "https://github.com/sponsors/is4mu"
 
 _WINDOW: QtWidgets.QWidget | None = None
 
 
-def _action_row(caption: str, *buttons: QtWidgets.QWidget) -> QtWidgets.QHBoxLayout:
+def _button_row(*buttons: QtWidgets.QWidget) -> QtWidgets.QHBoxLayout:
     row = QtWidgets.QHBoxLayout()
-    label = QtWidgets.QLabel(caption)
-    label.setMinimumWidth(88)
-    row.addWidget(label)
     for btn in buttons:
         row.addWidget(btn)
     row.addStretch(1)
@@ -61,18 +58,23 @@ class ManagerWindow(QtWidgets.QDialog):
             QtCore.Qt.TextInteractionFlag.TextSelectableByMouse
         )
         header.addWidget(self._info, stretch=1)
-        self._sponsors_link = QtWidgets.QLabel(
-            f'<a href="{SPONSORS_URL}">Support DGpy…</a>'
+        self._btn_donate = QtWidgets.QPushButton("Donate…")
+        self._btn_donate.setToolTip(
+            "DGpy is free (MIT). Optional donation via GitHub Sponsors."
         )
-        self._sponsors_link.setOpenExternalLinks(True)
-        self._sponsors_link.setToolTip(
-            "Free to use (MIT). Optional support via GitHub Sponsors."
+        self._btn_donate.setCursor(QtGui.QCursor(QtCore.Qt.CursorShape.PointingHandCursor))
+        self._btn_donate.setStyleSheet(
+            "QPushButton {"
+            "  font-weight: 600;"
+            "  padding: 6px 14px;"
+            "  min-width: 96px;"
+            "}"
         )
-        self._sponsors_link.setAlignment(
-            QtCore.Qt.AlignmentFlag.AlignRight
-            | QtCore.Qt.AlignmentFlag.AlignTop
+        self._btn_donate.clicked.connect(self._open_sponsors)
+        header.addWidget(
+            self._btn_donate,
+            alignment=QtCore.Qt.AlignmentFlag.AlignTop,
         )
-        header.addWidget(self._sponsors_link)
         layout.addLayout(header)
         self._update_info_label(root, kind, writable, write_msg)
 
@@ -94,13 +96,9 @@ class ManagerWindow(QtWidgets.QDialog):
         )
         self._btn_uninstall.clicked.connect(self.uninstall_selected)
 
+        layout.addLayout(_button_row(self._btn_refresh, self._btn_all))
         layout.addLayout(
-            _action_row("Everyday", self._btn_refresh, self._btn_all)
-        )
-        layout.addLayout(
-            _action_row(
-                "Selection", self._btn_install, self._btn_uninstall
-            )
+            _button_row(self._btn_install, self._btn_uninstall)
         )
 
         self._table = QtWidgets.QTableWidget(0, 5)
@@ -168,8 +166,7 @@ class ManagerWindow(QtWidgets.QDialog):
         self._btn_repair_all.clicked.connect(self.repair_all_issues)
 
         adv_layout.addLayout(
-            _action_row(
-                "Integrity",
+            _button_row(
                 self._btn_verify,
                 self._btn_repair_sel,
                 self._btn_repair_all,
@@ -251,7 +248,7 @@ class ManagerWindow(QtWidgets.QDialog):
             self._logger.warning("Could not open Sponsors URL: %s", SPONSORS_URL)
             dgpy_gui.warning(
                 self,
-                "Support / Donate",
+                "Donate",
                 f"Open in a browser:\n{SPONSORS_URL}",
             )
 
