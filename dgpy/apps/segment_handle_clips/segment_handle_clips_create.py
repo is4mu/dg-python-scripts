@@ -403,16 +403,18 @@ def subclip_keep_range(clip, reel, start: int, end: int, name: str, logger):
     """
     Create Subclip from In/Out marks; Hard Commit + audio + clear marks; drop host.
 
-    Returns (final_clip, cut_status, audio_status, handles_status).
+    Returns (final_clip, cut_status, audio_status, handles_status, reel_index).
+    ``reel_index`` is captured at Create Subclip time and adjusted when hosts are deleted
+    (post-cleanup PyClip ids often no longer match ``reel.clips``).
     """
     if clip is None:
-        return None, "n/a", "n/a", "n/a"
+        return None, "n/a", "n/a", "n/a", None
 
     if not set_keep_marks(clip, start, end, logger):
         logger.warning(
             "%s: marks failed — skip Create Subclip for %s", TITLE, name
         )
-        return clip, "failed", "skip", "skip"
+        return clip, "failed", "skip", "skip", None
 
     host, _opened = _open_as_sequence(clip, logger)
     if host is not clip:
@@ -424,30 +426,63 @@ def subclip_keep_range(clip, reel, start: int, end: int, name: str, logger):
 
     _select_only(host, logger)
     if not run_shortcut(SHORTCUT_CREATE_SUBCLIP, logger):
-        return clip, "failed", "skip", "skip"
+        return clip, "failed", "skip", "skip", None
 
     sub = None
-    for c in _reel_entries(reel):
+    reel_index = None
+    clips = list(getattr(reel, "clips", None) or [])
+    for i, c in enumerate(clips):
         if id(c) not in before and _looks_like_clip(c):
             sub = c
+            reel_index = i
             break
+    if sub is None:
+        # Subclip may land in sequences list on some setups.
+        for c in _reel_entries(reel):
+            if id(c) not in before and _looks_like_clip(c):
+                sub = c
+                break
+        if sub is not None:
+            reel_index = _reel_index_of(reel, sub)
     if sub is None:
         logger.warning(
             "%s: Create Subclip produced no new clip on Sources", TITLE
         )
-        return clip, "failed", "skip", "skip"
+        return clip, "failed", "skip", "skip", None
 
+    logger.info(
+        "%s: Create Subclip → %s reel_index=%s",
+        TITLE,
+        dgpy_flame_types.item_label(sub),
+        reel_index,
+    )
     _set_name(sub, name, logger)
 
     handles_status, audio_status = post_subclip_cleanup(sub, logger)
     clear_keep_marks(sub, logger)
 
     if host is not sub:
-        _delete_clip(host, logger, what="full-length host")
+        reel_index = _delete_clip_adjust_index(
+            host, reel, reel_index, logger, what="full-length host"
+        )
     if clip is not host and clip is not sub:
-        _delete_clip(clip, logger, what="full-length original")
+        reel_index = _delete_clip_adjust_index(
+            clip, reel, reel_index, logger, what="full-length original"
+        )
 
-    return sub, "ok", audio_status, handles_status
+    # Fresh handle from reel (Create handle may be stale after open/close).
+    fresh = None
+    if reel_index is not None:
+        try:
+            clips_now = list(getattr(reel, "clips", None) or [])
+            if 0 <= reel_index < len(clips_now):
+                fresh = clips_now[reel_index]
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("%s: reel refresh failed: %s", TITLE, exc)
+    if fresh is None:
+        fresh = sub
+
+    return fresh, "ok", audio_status, handles_status, reel_index
 
 
 def _reel_index_of(reel, clip) -> int | None:
@@ -460,6 +495,27 @@ def _reel_index_of(reel, clip) -> int | None:
     except Exception:  # noqa: BLE001
         return None
     return None
+
+
+def _delete_clip_adjust_index(
+    clip, reel, reel_index: int | None, logger, *, what: str
+) -> int | None:
+    """Delete clip on reel; if it sat before ``reel_index``, decrement index."""
+    del_i = _reel_index_of(reel, clip)
+    if not _delete_clip(clip, logger, what=what):
+        return reel_index
+    if (
+        reel_index is not None
+        and del_i is not None
+        and del_i < reel_index
+    ):
+        return reel_index - 1
+    if reel_index is not None and del_i is not None and del_i == reel_index:
+        logger.warning(
+            "%s: deleted %s at reel_index=%s (subclip index)", TITLE, what, del_i
+        )
+        return None
+    return reel_index
 
 
 def create_merged_clip(
@@ -475,7 +531,7 @@ def create_merged_clip(
     """
     Match/copy, Subclip, Hard Commit handles, strip audio, clear marks.
 
-    ``status`` is ok only when Subclip (cut) succeeded.
+    ``status`` is ok only when Subclip (cut) succeeded and reel_index is known.
     """
     label = clip_name or "clip"
     start = max(1, int(keep_start))
@@ -511,13 +567,24 @@ def create_merged_clip(
         }
 
     _set_name(clip, label, logger)
-    final, cut_status, audio_status, handles_status = subclip_keep_range(
-        clip, reel, start, end, label, logger
+    final, cut_status, audio_status, handles_status, reel_index = (
+        subclip_keep_range(clip, reel, start, end, label, logger)
     )
 
-    out_clip = final if cut_status == "ok" else None
-    reel_index = _reel_index_of(reel, out_clip) if out_clip is not None else None
-    if cut_status == "ok" and reel_index is None:
+    if cut_status != "ok":
+        return {
+            "status": "failed",
+            "cut": cut_status,
+            "audio": audio_status,
+            "handles": handles_status,
+            "message": f"keep {start}..{end} via {method}",
+            "label": label,
+            "clip": final,
+            "reel_index": reel_index,
+            "clip_name": label,
+        }
+
+    if reel_index is None:
         logger.warning(
             "%s: Subclip ok but reel_index unresolved for %s", TITLE, label
         )
@@ -528,25 +595,20 @@ def create_merged_clip(
             "handles": handles_status,
             "message": f"keep {start}..{end} via {method} (no reel_index)",
             "label": label,
-            "clip": out_clip,
+            "clip": final,
             "reel_index": None,
             "clip_name": label,
         }
 
-    status = "ok" if cut_status == "ok" else "failed"
-    name = (
-        dgpy_flame_attr.clip_name(out_clip)
-        if out_clip is not None
-        else label
-    )
+    name = dgpy_flame_attr.clip_name(final) if final is not None else label
     return {
-        "status": status,
+        "status": "ok",
         "cut": cut_status,
         "audio": audio_status,
         "handles": handles_status,
         "message": f"keep {start}..{end} via {method}",
         "label": name or label,
-        "clip": out_clip,
+        "clip": final,
         "reel_index": reel_index,
         "clip_name": name or label,
     }
