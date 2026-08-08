@@ -200,83 +200,6 @@ def _clear_replace_selection(segment, sources_clip, logger) -> None:
     set_selected(sources_clip, False, logger, what="sources clip")
 
 
-def _pump_qt(times: int = 8) -> None:
-    try:
-        from PySide6 import QtWidgets
-
-        app = QtWidgets.QApplication.instance()
-        if app is None:
-            return
-        for _ in range(max(1, times)):
-            app.processEvents()
-    except Exception:  # noqa: BLE001
-        pass
-
-
-def _click_positioner_replace_confirm(logger) -> bool:
-    """
-    If Replace Media shows the 'no matching criteria / Positioner' prompt,
-    click Replace (not Cancel). This is not Smart Replace — it accepts
-    Positioner-to-Positioner replace so the shortcut can finish.
-    """
-    try:
-        from PySide6 import QtWidgets
-    except Exception:  # noqa: BLE001
-        return False
-
-    _pump_qt(12)
-    for w in QtWidgets.QApplication.topLevelWidgets():
-        try:
-            if not w.isVisible():
-                continue
-        except Exception:  # noqa: BLE001
-            continue
-        title = ""
-        try:
-            title = str(w.windowTitle() or "")
-        except Exception:  # noqa: BLE001
-            title = ""
-        body = title
-        try:
-            for lab in w.findChildren(QtWidgets.QLabel):
-                body += " " + str(lab.text() or "")
-        except Exception:  # noqa: BLE001
-            pass
-        blob = body.lower()
-        if "smart replace" not in blob and "positioner" not in blob:
-            if "matching criteria" not in blob:
-                continue
-        try:
-            buttons = list(w.findChildren(QtWidgets.QPushButton))
-        except Exception:  # noqa: BLE001
-            continue
-        replace_btn = None
-        for btn in buttons:
-            try:
-                text = str(btn.text() or "").strip().replace("&", "")
-            except Exception:  # noqa: BLE001
-                continue
-            if text.lower() == "replace":
-                replace_btn = btn
-                break
-        if replace_btn is None:
-            continue
-        try:
-            logger.info(
-                "%s: accept Positioner replace dialog (%r)",
-                TITLE,
-                title or "untitled",
-            )
-            replace_btn.click()
-            _pump_qt(8)
-            return True
-        except Exception as exc:  # noqa: BLE001
-            logger.warning(
-                "%s: Positioner dialog click failed: %s", TITLE, exc
-            )
-    return False
-
-
 def replace_one_segment(
     *,
     segment,
@@ -288,7 +211,7 @@ def replace_one_segment(
     Host sequence must already be open.
 
     Deselect → segment.selected + Sources selected → shortcut Replace Media.
-    If Flame asks Positioner-to-Positioner, auto-click Replace.
+    No confirm dialog for Replace Media.
     """
     if segment is None or sources_clip is None:
         return {
@@ -328,8 +251,6 @@ def replace_one_segment(
             "message": "Replace Media shortcut failed",
         }
 
-    _click_positioner_replace_confirm(logger)
-    _pump_qt(6)
     _clear_replace_selection(segment, sources_clip, logger)
     _log_selection(logger, "after Replace Media")
     return {"status": "ok", "label": seg_label, "message": "ok"}
