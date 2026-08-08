@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-__version__ = "0.7.1"
+__version__ = "0.8.0"
 
 TITLE = "Consolidate Handles"
 SHORTCUT_CLOSE_CURRENT = "Close Current Sequence"
+SHORTCUT_DESELECT = "Deselect"
 
 
 def is_skip_tw(rng) -> bool:
@@ -47,6 +48,13 @@ def close_current_sequence(logger) -> None:
     run_shortcut(SHORTCUT_CLOSE_CURRENT, logger)
 
 
+def deselect_all(logger) -> None:
+    try:
+        run_shortcut(SHORTCUT_DESELECT, logger)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("%s: Deselect failed: %s", TITLE, exc)
+
+
 def set_selected(obj, value: bool, logger, *, what: str) -> bool:
     try:
         obj.selected = value
@@ -61,3 +69,11 @@ def set_selected(obj, value: bool, logger, *, what: str) -> bool:
             type(obj).__name__,
         )
         return False
+
+
+def status_counts(results: list[dict]) -> str:
+    """Format ok/failed/skipped line for Results report."""
+    ok_n = sum(1 for r in results if r.get("status") == "ok")
+    fail_n = sum(1 for r in results if r.get("status") == "failed")
+    skip_n = sum(1 for r in results if r.get("status") == "skip")
+    return f"ok={ok_n}  failed={fail_n}  skipped={skip_n}"

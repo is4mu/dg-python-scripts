@@ -26,7 +26,7 @@ from segment_handle_clips_tw import (
     record_duration_frames,
     source_in_out,
 )
-from segment_handle_clips_util import TITLE, __version__, is_skip_tw
+from segment_handle_clips_util import TITLE, __version__, is_skip_tw, status_counts
 
 
 def _fmt_num(val) -> str:
@@ -152,28 +152,31 @@ def _format_create_section(
         "",
         "=== Create on Sources ===",
         f"  Sources reel: {reel_status}",
+        f"  {status_counts(results)}",
     ]
-    ok_n = sum(1 for r in results if r.get("status") == "ok")
-    fail_n = sum(1 for r in results if r.get("status") == "failed")
-    skip_n = sum(1 for r in results if r.get("status") == "skip")
-    lines.append(f"  ok={ok_n}  failed={fail_n}  skipped={skip_n}")
     for i, r in enumerate(results, start=1):
+        extras = []
+        audio = r.get("audio")
+        hard = r.get("hard_commit")
+        if audio and audio not in ("ok", "n/a"):
+            extras.append(f"audio={audio}")
+        if hard and hard not in ("ok", "n/a"):
+            extras.append(f"hard_commit={hard}")
+        extra = ("  " + " ".join(extras)) if extras else ""
         lines.append(
             f"  #{i} {r.get('label', '?'):<28}  "
-            f"status={r.get('status')} "
-            f"cut={r.get('cut')} audio={r.get('audio')} "
-            f"handles={r.get('handles')}  "
+            f"status={r.get('status')} cut={r.get('cut')}{extra}  "
             f"{r.get('message', '')}"
         )
     return "\n".join(lines)
 
 
 def _format_replace_section(results: list[dict]) -> str:
-    lines = ["", "=== Replace Media ==="]
-    ok_n = sum(1 for r in results if r.get("status") == "ok")
-    fail_n = sum(1 for r in results if r.get("status") == "failed")
-    skip_n = sum(1 for r in results if r.get("status") == "skip")
-    lines.append(f"  ok={ok_n}  failed={fail_n}  skipped={skip_n}")
+    lines = [
+        "",
+        "=== Replace Media ===",
+        f"  {status_counts(results)}",
+    ]
     for i, r in enumerate(results, start=1):
         msg = r.get("message") or ""
         extra = f"  {msg}" if msg and msg != "ok" else ""
@@ -189,7 +192,7 @@ def _count_replaceable_segments(results: list[dict], merged: list) -> int:
     for i, r in enumerate(results):
         if i >= len(merged):
             break
-        if r.get("status") == "ok" and r.get("cut") == "ok":
+        if r.get("status") == "ok":
             n += len(merged[i].seg_indices)
     return n
 

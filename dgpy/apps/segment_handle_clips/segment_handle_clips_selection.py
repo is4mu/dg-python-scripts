@@ -7,7 +7,7 @@ from typing import Any
 import dgpy_flame_attr
 import dgpy_flame_types
 
-from segment_handle_clips_util import __version__, unwrap
+from segment_handle_clips_util import TITLE, __version__, unwrap
 
 
 def _is_segment(item: Any) -> bool:
@@ -122,8 +122,8 @@ def resolve_segment_jobs(selection, *, logger=None) -> list[dict]:
                 if not _segment_on_track(item, track):
                     if logger:
                         logger.info(
-                            "Consolidate Handles: skip segment not on "
-                            "Primary track (%s)",
+                            "%s: skip segment not on Primary track (%s)",
+                            TITLE,
                             dgpy_flame_attr.attr_value(item, "name", "?"),
                         )
                     continue

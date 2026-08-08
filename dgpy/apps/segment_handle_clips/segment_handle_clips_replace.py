@@ -272,7 +272,7 @@ def replace_merged_results(
     for i in range(n):
         r = results[i]
         m = merged[i]
-        if r.get("status") != "ok" or r.get("cut") != "ok":
+        if r.get("status") != "ok":
             early.append(
                 {
                     "status": "skip",
