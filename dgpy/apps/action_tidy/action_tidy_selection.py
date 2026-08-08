@@ -4,9 +4,10 @@ from __future__ import annotations
 
 from typing import Any
 
+import dgpy_flame_attr
 import dgpy_flame_types
 
-__version__ = "0.3.3"
+__version__ = "0.3.4"
 
 
 def _attr(obj: Any, name: str, default=None):
@@ -92,12 +93,7 @@ def _segments_on_track(track) -> list:
 
 
 def _primary_version(clip) -> Any:
-    primary = _primary_track(clip)
-    if primary is not None:
-        parent = getattr(primary, "parent", None)
-        if parent is not None:
-            return parent
-    return None
+    return dgpy_flame_attr.primary_version(clip)
 
 
 def _segments_from_clip(clip) -> list:

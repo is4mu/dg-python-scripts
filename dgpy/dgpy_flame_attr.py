@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 _BIT_DEPTH_FP_THRESHOLD = 16
 
@@ -11,13 +11,40 @@ def attr_value(obj, name: str, default=None):
     """Read ``obj.name``, unwrapping ``get_value()`` when present."""
     if obj is None or not hasattr(obj, name):
         return default
-    val = getattr(obj, name)
-    if val is not None and hasattr(val, "get_value"):
+    return unwrap(getattr(obj, name))
+
+
+def unwrap(obj, default=None):
+    """Unwrap PyAttribute via ``get_value()`` when present."""
+    if obj is None:
+        return default
+    if hasattr(obj, "get_value"):
         try:
-            return val.get_value()
+            return obj.get_value()
         except Exception:  # noqa: BLE001
-            pass
-    return val
+            return obj
+    return obj
+
+
+def primary_track(clip):
+    """``clip.primary_track`` unwrapped."""
+    return attr_value(clip, "primary_track", None)
+
+
+def primary_version(clip):
+    """
+    Version that owns ``primary_track`` (parent unwrapped), else versions[0].
+    """
+    track = primary_track(clip)
+    if track is not None:
+        parent = unwrap(getattr(track, "parent", None))
+        if parent is not None:
+            return parent
+    try:
+        versions = list(getattr(clip, "versions", None) or [])
+    except Exception:  # noqa: BLE001
+        versions = []
+    return versions[0] if versions else None
 
 
 def clip_name(clip) -> str:

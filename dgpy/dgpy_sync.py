@@ -17,7 +17,7 @@ import dgpy_semver
 from dgpy_http import download_asset_to, download_to
 from dgpy_manifest import Manifest, ManifestPackage
 
-__version__ = "0.3.18"
+__version__ = "0.3.19"
 
 STATUS_NEW = "New"
 STATUS_UPDATE = "Update"
@@ -88,18 +88,12 @@ def _sha256_file(path: Path) -> str:
     return h.hexdigest()
 
 
-def _app_dir_has_python(app_dir: Path) -> bool:
-    if not app_dir.is_dir():
-        return False
-    return any(p.is_file() and p.suffix == ".py" for p in app_dir.iterdir())
-
-
 def _installed_version(root: Path, package_id: str) -> str | None:
     # Apps: inventory alone is not enough — require apps/<id>/*.py on disk.
     # Stale installed.json after emptying apps/ must not report Up to date.
     if package_id not in ("core", "manager"):
         app_dir = root / "apps" / package_id
-        if not _app_dir_has_python(app_dir):
+        if not dgpy_local_inventory.app_dir_has_python(app_dir):
             return None
         data = dgpy_local_inventory.load_installed(root)
         pkg = (data.get("packages") or {}).get(package_id)
@@ -128,7 +122,7 @@ def _package_files_missing(pkg: ManifestPackage, base: Path) -> bool:
     if not pkg.files:
         if pkg.package_id in ("core", "manager"):
             return False
-        return not _app_dir_has_python(base / "apps" / pkg.package_id)
+        return not dgpy_local_inventory.app_dir_has_python(base / "apps" / pkg.package_id)
     for f in pkg.files:
         rel = f.path.lstrip("/")
         name = Path(rel).name

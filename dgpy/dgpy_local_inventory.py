@@ -8,7 +8,7 @@ from pathlib import Path
 
 import dgpy_paths
 
-__version__ = "0.3.7"
+__version__ = "0.3.8"
 
 
 @dataclass
@@ -101,7 +101,8 @@ def scan_local(root: Path | None = None) -> list[LocalPackage]:
     return rows
 
 
-def _app_dir_has_python(app_dir: Path) -> bool:
+def app_dir_has_python(app_dir: Path) -> bool:
+    """True if ``app_dir`` exists and contains at least one ``.py`` file."""
     if not app_dir.is_dir():
         return False
     return any(p.is_file() and p.suffix == ".py" for p in app_dir.iterdir())
@@ -139,7 +140,7 @@ def ensure_seed_installed(root: Path | None = None) -> None:
     for pid in list(packages):
         if pid in ("core", "manager"):
             continue
-        if not _app_dir_has_python(base / "apps" / pid):
+        if not app_dir_has_python(base / "apps" / pid):
             del packages[pid]
             changed = True
     if changed:

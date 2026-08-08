@@ -13,7 +13,7 @@ from action_tidy_merge import (
 )
 from action_tidy_selection import segment_label
 
-__version__ = "0.3.3"
+__version__ = "0.3.4"
 
 TEMPLATE_CLEAN = "cleanup.action"
 TEMPLATE_FIT = "cleanup_fit.action"

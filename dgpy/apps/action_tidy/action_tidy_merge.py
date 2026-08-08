@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-__version__ = "0.3.3"
+__version__ = "0.3.4"
 
 
 def extract_axis_specifics_with_surface_square(file_path: Path | str) -> str | None:

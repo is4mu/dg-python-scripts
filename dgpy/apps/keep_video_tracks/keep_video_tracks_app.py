@@ -7,7 +7,7 @@ import dgpy_flame_types
 import dgpy_gui
 import dgpy_log
 
-__version__ = "1.0.6"
+__version__ = "1.0.7"
 
 
 def get_targets(selection, *, logger=None) -> list:
@@ -73,7 +73,7 @@ def _version_tracks_for_top(clip) -> list:
         return []
     primary = _primary_track(clip)
     if primary is not None:
-        parent = getattr(primary, "parent", None)
+        parent = dgpy_flame_attr.unwrap(getattr(primary, "parent", None))
         if parent is not None:
             tracks = list(getattr(parent, "tracks", None) or [])
             if tracks:

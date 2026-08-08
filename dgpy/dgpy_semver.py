@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 
-__version__ = "0.3.0"
+__version__ = "0.3.1"
 
 _SEMVER_RE = re.compile(
     r"^v?(?P<major>\d+)\.(?P<minor>\d+)\.(?P<patch>\d+)"
@@ -21,8 +21,8 @@ def parse(version: str) -> tuple[int, int, int, tuple]:
     minor = int(match.group("minor"))
     patch = int(match.group("patch"))
     pre = match.group("pre")
-    # No pre-release sorts after pre-release of same numbers? Spec: plain > pre
-    pre_key: tuple = (0,) if pre is None else (1, pre)
+    # SemVer: release (no pre) sorts AFTER pre-release of the same numbers.
+    pre_key: tuple = (1,) if pre is None else (0, pre)
     return (major, minor, patch, pre_key)
 
 

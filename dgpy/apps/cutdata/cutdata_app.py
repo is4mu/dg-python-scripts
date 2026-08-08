@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import dgpy_flame_attr
 import dgpy_flame_types
+import dgpy_flame_util
 import dgpy_gui
 import dgpy_log
 
-__version__ = "1.0.9"
+__version__ = "1.0.10"
 
 CUTDATA_REEL_NAME = "Cutdata"
 MARKER_TIME_OFFSET = -1
@@ -115,32 +117,19 @@ def _versions(clip) -> list:
 
 def _as_timeline_sequence(clip, logger, label: str):
     """
-    Open clip in Timeline for shortcut ops.
+    Ensure Timeline host for shortcut ops.
 
-    ``open_as_sequence()`` returns the live PySequence and may invalidate
-    the previous reference — always use the return value.
+    Already-a-sequence → no open. PyClip → open_as_sequence and use return.
+    Returns ``(host, opened)``.
     """
-    open_fn = getattr(clip, "open_as_sequence", None)
-    if open_fn is None:
-        return clip
-    try:
-        opened = open_fn()
-        if opened is not None:
-            logger.info(
-                "%s: open_as_sequence → %s (use returned object)",
-                label,
-                dgpy_flame_types.item_label(opened),
-            )
-            return opened
-    except Exception as exc:  # noqa: BLE001
-        logger.warning(
-            "%s: open_as_sequence failed for %s: %s",
-            label,
-            dgpy_flame_types.item_label(clip),
-            exc,
-        )
-    return clip
+    return dgpy_flame_util.open_clip_as_sequence(
+        clip, logger=logger, label=label
+    )
 
+
+def _close_if_opened(opened: bool, logger, label: str) -> None:
+    if opened:
+        dgpy_flame_util.close_current_sequence(logger=logger, label=label)
 
 def _marker_time_from_transition(transition):
     """record_time + MARKER_TIME_OFFSET (-1 frame)."""
@@ -348,37 +337,12 @@ def _select_only(clip, logger, label: str) -> None:
 
 
 def _open_as_sequence(clip, logger, label: str) -> None:
-    open_fn = getattr(clip, "open_as_sequence", None)
-    if open_fn is None:
-        return
-    try:
-        open_fn()
-    except Exception as exc:  # noqa: BLE001
-        logger.warning(
-            "%s: open_as_sequence failed for %s: %s",
-            label,
-            dgpy_flame_types.item_label(clip),
-            exc,
-        )
+    """Deprecated no-op; use ``_as_timeline_sequence``."""
+    del clip, logger, label
 
 
 def _primary_version(clip):
-    primary = _primary_track(clip)
-    if primary is not None:
-        parent = getattr(primary, "parent", None)
-        if parent is not None and hasattr(parent, "get_value"):
-            try:
-                unwrapped = parent.get_value()
-                if unwrapped is not None:
-                    parent = unwrapped
-            except Exception:  # noqa: BLE001
-                pass
-        if parent is not None:
-            return parent
-    versions = _versions(clip)
-    if versions:
-        return versions[0]
-    return None
+    return dgpy_flame_attr.primary_version(clip)
 
 
 def _select_track_for_commit(track, logger, label: str) -> None:
@@ -459,20 +423,7 @@ def _hard_commit_sequence(clip, logger, label: str) -> bool:
 
 
 def _run_shortcut(name: str, logger, label: str) -> bool:
-    import flame
-
-    try:
-        flame.execute_shortcut(name)
-        return True
-    except Exception as exc:  # noqa: BLE001
-        logger.warning(
-            "%s: shortcut %r failed: %s "
-            "(check Keyboard Shortcut Editor description)",
-            label,
-            name,
-            exc,
-        )
-        return False
+    return dgpy_flame_util.execute_shortcut(name, logger=logger, label=label)
 
 
 def _delete_markers(clip, logger, label: str) -> int:
@@ -643,81 +594,88 @@ def create_cutdata_from_markers(selection, parent=None) -> None:
             continue
         processed += 1
 
-        # Timeline shortcuts need the sequence open; use the returned object.
-        seq = _as_timeline_sequence(clip, logger, label)
-
-        if _hard_commit_sequence(seq, logger, label):
-            hard_ok += 1
-        else:
-            hard_fail += 1
-            logger.warning(
-                "%s: skip remaining steps for %s (hard-commit failed)",
-                label,
-                dgpy_flame_types.item_label(seq),
-            )
-            continue
-
-        t_ok, t_fail = _keep_primary_only(seq, logger, label)
-        tracks_deleted += t_ok
-        tracks_failed += t_fail
-
-        a_ok, a_fail = _delete_all_audio(seq, logger, label)
-        audio_deleted += a_ok
-        audio_failed += a_fail
-
-        locations = _snapshot_marker_locations(seq)
-        if not locations:
-            logger.warning(
-                "%s: no marker locations after bake on %s",
-                label,
-                dgpy_flame_types.item_label(seq),
-            )
-            continue
-
-        frame_log = [_frame_number(loc) for loc in locations]
-        logger.info(
-            "%s: %s marker locations frames=%s",
-            label,
-            dgpy_flame_types.item_label(seq),
-            frame_log,
-        )
-
-        markers_cleared += _delete_markers(seq, logger, label)
-
-        for loc in locations:
-            frame = _frame_number(loc)
-            try:
-                _select_only(seq, logger, label)
-                try:
-                    seq.current_time = loc
-                except Exception:
-                    fps = _attr(seq, "frame_rate", None)
-                    if frame is None:
-                        raise
-                    if fps is not None:
-                        seq.current_time = flame.PyTime(frame, fps)
-                    else:
-                        seq.current_time = flame.PyTime(frame)
-                if not _run_shortcut(SHORTCUT_CREATE_SUBCLIP, logger, label):
-                    subclip_fail += 1
-                    continue
-                subclip_ok += 1
-            except Exception as exc:  # noqa: BLE001
-                subclip_fail += 1
-                logger.warning(
-                    "%s: subclip at frame %s failed: %s", label, frame, exc
-                )
-
+        seq, opened = _as_timeline_sequence(clip, logger, label)
         try:
-            flame.delete(seq)
-            deleted_src += 1
-        except Exception as exc:  # noqa: BLE001
-            logger.warning(
-                "%s: failed to delete original %s: %s",
+            if _hard_commit_sequence(seq, logger, label):
+                hard_ok += 1
+            else:
+                hard_fail += 1
+                logger.warning(
+                    "%s: skip remaining steps for %s (hard-commit failed)",
+                    label,
+                    dgpy_flame_types.item_label(seq),
+                )
+                continue
+
+            t_ok, t_fail = _keep_primary_only(seq, logger, label)
+            tracks_deleted += t_ok
+            tracks_failed += t_fail
+
+            a_ok, a_fail = _delete_all_audio(seq, logger, label)
+            audio_deleted += a_ok
+            audio_failed += a_fail
+
+            locations = _snapshot_marker_locations(seq)
+            if not locations:
+                logger.warning(
+                    "%s: no marker locations after bake on %s",
+                    label,
+                    dgpy_flame_types.item_label(seq),
+                )
+                continue
+
+            frame_log = [_frame_number(loc) for loc in locations]
+            logger.info(
+                "%s: %s marker locations frames=%s",
                 label,
                 dgpy_flame_types.item_label(seq),
-                exc,
+                frame_log,
             )
+
+            markers_cleared += _delete_markers(seq, logger, label)
+
+            for loc in locations:
+                frame = _frame_number(loc)
+                try:
+                    _select_only(seq, logger, label)
+                    try:
+                        seq.current_time = loc
+                    except Exception:
+                        fps = _attr(seq, "frame_rate", None)
+                        if frame is None:
+                            raise
+                        if fps is not None:
+                            seq.current_time = flame.PyTime(frame, fps)
+                        else:
+                            seq.current_time = flame.PyTime(frame)
+                    if not _run_shortcut(
+                        SHORTCUT_CREATE_SUBCLIP, logger, label
+                    ):
+                        subclip_fail += 1
+                        continue
+                    subclip_ok += 1
+                except Exception as exc:  # noqa: BLE001
+                    subclip_fail += 1
+                    logger.warning(
+                        "%s: subclip at frame %s failed: %s",
+                        label,
+                        frame,
+                        exc,
+                    )
+
+            try:
+                flame.delete(seq)
+                deleted_src += 1
+                opened = False
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(
+                    "%s: failed to delete original %s: %s",
+                    label,
+                    dgpy_flame_types.item_label(seq),
+                    exc,
+                )
+        finally:
+            _close_if_opened(opened, logger, label)
 
     logger.info(
         "%s: clips=%s hard=%s/%s tracks_del=%s/%s audio_del=%s/%s "
