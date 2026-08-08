@@ -61,6 +61,7 @@ Flame のメニュー構成に近い順です。一覧・版の正は **DG Scrip
 | ツール | Package | メニュー |
 |--------|---------|----------|
 | [Action Tidy](tools/action_tidy.md) | `action_tidy` | DG: Segment → Clean Up / Fit / Strip… |
+| [Consolidate Handles](tools/segment_handle_clips.md) | `segment_handle_clips` | DG: Segment → Consolidate Handles… |
 
 ### Media Panel — DG: Sequence / Render / Export
 

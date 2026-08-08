@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from typing import Any
 
-__version__ = "0.1.7"
+__version__ = "0.1.8"
 
 # Media Panel / Timeline group prefix (legacy coexistence "DG2:" retired).
 MENU_PREFIX = "DG:"
@@ -122,6 +122,11 @@ MEDIA_PANEL_ACTIONS: dict[str, dict[str, Any]] = {
     },
     "segment.toggle_fit": {"group": "segment", "order": 30},
     "segment.strip_expr": {"group": "segment", "order": 40},
+    "segment.consolidate_handles": {
+        "group": "segment",
+        "order": 50,
+        "separator": "above",
+    },
     # Sequence (legacy: cutdata → markers → cutout → keep tracks)
     "sequence.cutdata_add_markers": {"group": "sequence", "order": 10},
     "sequence.cutdata_from_markers": {
