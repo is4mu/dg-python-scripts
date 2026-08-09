@@ -1,4 +1,4 @@
-"""Replace Media: Sources clips → original sequence segments (Console pattern)."""
+"""Replace Media: DG Sources clips → original sequence segments (Console pattern)."""
 
 from __future__ import annotations
 
@@ -191,14 +191,14 @@ def resolve_sources_clip(
     clip_name: str | None,
     logger,
 ):
-    """Fresh Media Panel PyClip from Sources reel (Console: reel.clips[n])."""
+    """Fresh Media Panel PyClip from DG Sources reel (Console: reel.clips[n])."""
     import dgpy_flame_attr
 
     clips = list(getattr(reel, "clips", None) or [])
     if reel_index is not None and 0 <= int(reel_index) < len(clips):
         c = clips[int(reel_index)]
         logger.info(
-            "Consolidate Handles: Sources resolve index=%s → %s",
+            "Consolidate Handles: DG Sources resolve index=%s → %s",
             reel_index,
             dgpy_flame_types.item_label(c),
         )
@@ -213,27 +213,27 @@ def resolve_sources_clip(
                 matches.append(c)
         if len(matches) == 1:
             logger.info(
-                "Consolidate Handles: Sources resolve name=%r → %s",
+                "Consolidate Handles: DG Sources resolve name=%r → %s",
                 want,
                 dgpy_flame_types.item_label(matches[0]),
             )
             return matches[0]
         if len(matches) > 1:
             logger.warning(
-                "Consolidate Handles: Sources name=%r matches %s clips — "
+                "Consolidate Handles: DG Sources name=%r matches %s clips — "
                 "need reel_index",
                 want,
                 len(matches),
             )
         else:
             logger.warning(
-                "Consolidate Handles: Sources name=%r not on reel (%s clips)",
+                "Consolidate Handles: DG Sources name=%r not on reel (%s clips)",
                 want,
                 len(clips),
             )
     else:
         logger.warning(
-            "Consolidate Handles: Sources resolve missing index/name "
+            "Consolidate Handles: DG Sources resolve missing index/name "
             "(reel has %s clips)",
             len(clips),
         )
@@ -255,7 +255,7 @@ def replace_one_segment(
         return {
             "status": "skip",
             "label": seg_label,
-            "message": "missing segment or Sources clip",
+            "message": "missing segment or DG Sources clip",
         }
 
     logger.info(
@@ -275,7 +275,7 @@ def replace_one_segment(
         return {
             "status": "failed",
             "label": seg_label,
-            "message": "select failed (segment or Sources)",
+            "message": "select failed (segment or DG Sources)",
         }
 
     if not _run_shortcut(SHORTCUT_REPLACE_MEDIA, logger):
@@ -307,7 +307,7 @@ def replace_merged_results(
     """
     For each successful Create result, Replace Media onto each source segment.
 
-    Sources clip is re-resolved from ``reel`` (not the stale Create handle).
+    DG Sources clip is re-resolved from ``reel`` (not the stale Create handle).
     Segments reuse ``jobs[].segment``.
 
     Work is grouped by host sequence: open once → replace all → Close Current.
@@ -341,7 +341,7 @@ def replace_merged_results(
                 {
                     "status": "failed",
                     "label": r.get("label") or m.label,
-                    "message": "Sources clip not found on reel",
+                    "message": "DG Sources clip not found on reel",
                     "seg_indices": list(m.seg_indices),
                 }
             )

@@ -1,4 +1,4 @@
-"""Create Sources reel clips (match + Subclip + Hard Commit + strip audio)."""
+"""Create DG Sources reel clips (match + Subclip + Hard Commit + strip audio)."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ import dgpy_flame_types
 from segment_handle_clips_util import TITLE, __version__  # noqa: F401
 
 
-DEFAULT_REEL = "Sources"
+DEFAULT_REEL = "DG Sources"
 SHORTCUT_CREATE_SUBCLIP = "Create Subclip"
 SHORTCUT_DESELECT = "Deselect"
 SHORTCUT_HARD_COMMIT = "Hard Commit Selection in Timeline"
@@ -18,7 +18,7 @@ SHORTCUT_HARD_COMMIT_SEQ = "Hard Commit Sequence Under Cursor"
 
 
 def find_or_create_sources_reel(anchor, logger, *, reel_name: str = DEFAULT_REEL):
-    """Find or create Sources on the Desktop reel group near ``anchor``."""
+    """Find or create ``DG Sources`` on the Desktop reel group near ``anchor``."""
     try:
         reel = getattr(anchor, "parent", None)
         reel_group = getattr(reel, "parent", None) if reel is not None else None
@@ -477,7 +477,7 @@ def subclip_keep_range(clip, reel, start: int, end: int, name: str, logger):
             break
     if sub is None:
         logger.warning(
-            "Consolidate Handles: Create Subclip produced no new clip on Sources"
+            "Consolidate Handles: Create Subclip produced no new clip on DG Sources"
         )
         return clip, "ok", "failed", "skip", "skip"
 
@@ -596,7 +596,7 @@ def create_merged_clips(
     logger,
     rows: list[dict] | None = None,
 ) -> list[dict]:
-    """Create one Sources clip per MergedRange. ``merged`` from merge_keep_ranges."""
+    """Create one DG Sources clip per MergedRange. ``merged`` from merge_keep_ranges."""
     del rows  # 0.6.8 accepted rows; unused
     results = []
     for m in merged:

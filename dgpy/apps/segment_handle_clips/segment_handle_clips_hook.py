@@ -1,7 +1,7 @@
 """
 Flame: DG: Segment → Consolidate Handles…
 
-Media Panel + Timeline. Probe report, then optional Create on Sources.
+Media Panel + Timeline. Probe report, then optional Create on DG Sources.
 """
 
 from __future__ import annotations

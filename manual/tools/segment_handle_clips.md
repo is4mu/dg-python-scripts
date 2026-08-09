@@ -6,14 +6,14 @@
 
 ## What it does
 
-Probes Primary-track segments for keep ranges (including Handles and Timewarp where readable), merges by source path, creates consolidated clips on the **Sources** reel, then **Replace Media** back onto the sequence. One Results window drives Create and Replace.
+Probes Primary-track segments for keep ranges (including Handles and Timewarp where readable), merges by source path, creates consolidated clips on the **DG Sources** reel, then **Replace Media** back onto the sequence. One Results window drives Create and Replace.
 
 ## How to use
 
 1. Select a segment, clip/sequence, or reel
 2. **DG: Segment → Consolidate Handles…**
 3. Set Handles (default 5) and optional merge gap → OK
-4. Review the probe report → **Create** on Sources
+4. Review the probe report → **Create on DG Sources**
 5. When ready → **Replace Media** on the same Results window
 
 ## Notes

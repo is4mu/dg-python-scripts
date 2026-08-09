@@ -1,4 +1,4 @@
-"""Consolidate Handles — probe report + optional Create on Sources."""
+"""Consolidate Handles — probe report + optional Create on DG Sources."""
 
 from __future__ import annotations
 
@@ -138,7 +138,7 @@ def _format_report(
     lines.append("")
     lines.append(
         "Close = done.  "
-        "Create on Sources → then Replace Media on this same window."
+        "Create on DG Sources → then Replace Media on this same window."
     )
     return "\n".join(lines)
 
@@ -150,8 +150,8 @@ def _format_create_section(
 ) -> str:
     lines = [
         "",
-        "=== Create on Sources ===",
-        f"  Sources reel: {reel_status}",
+        "=== Create on DG Sources ===",
+        f"  DG Sources reel: {reel_status}",
         f"  {status_counts(results)}",
     ]
     for i, r in enumerate(results, start=1):
@@ -229,7 +229,7 @@ def run_probe(selection) -> None:
     def on_create(dlg: ProbeReportDialog) -> None:
         if not merged:
             msg = (
-                "\n=== Create on Sources ===\n"
+                "\n=== Create on DG Sources ===\n"
                 "  Nothing to create (no merged ranges)."
             )
             logger.info("%s:%s", TITLE, msg.replace("\n", " "))
@@ -241,10 +241,10 @@ def run_probe(selection) -> None:
         reel, reel_status = find_or_create_sources_reel(anchor, logger)
         if reel is None:
             msg = (
-                "\n=== Create on Sources ===\n"
-                "  Could not find or create Sources reel."
+                "\n=== Create on DG Sources ===\n"
+                "  Could not find or create DG Sources reel."
             )
-            logger.warning("%s: Sources reel failed", TITLE)
+            logger.warning("%s: DG Sources reel failed", TITLE)
             dlg.append_text(msg)
             dlg.set_phase_done()
             return

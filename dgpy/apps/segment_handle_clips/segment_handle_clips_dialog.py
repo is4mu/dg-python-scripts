@@ -92,7 +92,7 @@ class ProbeReportDialog(QtWidgets.QDialog):
         copy_btn.clicked.connect(self._copy)
 
         self._create_btn = buttons.addButton(
-            "Create on Sources",
+            "Create on DG Sources",
             QtWidgets.QDialogButtonBox.ButtonRole.ActionRole,
         )
         self._create_btn.clicked.connect(self._create_clicked)
