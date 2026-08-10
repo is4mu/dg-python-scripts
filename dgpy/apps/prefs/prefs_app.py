@@ -14,7 +14,7 @@ import dgpy_paths
 import dgpy_prefs
 import dgpy_tools
 
-__version__ = "0.1.11"
+__version__ = "0.1.12"
 
 _WINDOW: QtWidgets.QWidget | None = None
 
@@ -120,6 +120,7 @@ class PreferencesDialog(QtWidgets.QDialog):
 
         self._install_box = self._section("Install")
         self._runtimes_box = self._section("Runtimes")
+        self._prep_box = self._section("Prep")
         self._tools_box = self._section("Tools")
         self._log_box = self._section("Log")
         self._build_prefs_section()
@@ -151,6 +152,7 @@ class PreferencesDialog(QtWidgets.QDialog):
     def refresh(self) -> None:
         self._fill_install()
         self._fill_runtimes()
+        self._fill_prep()
         self._fill_tools()
         self._fill_log()
         self._fill_prefs_paths()
@@ -184,6 +186,11 @@ class PreferencesDialog(QtWidgets.QDialog):
         form.addRow("bin (ffmpeg…)", _row_open(dgpy_paths.runtimes_bin_dir()))
         exists = "exists" if rt.is_dir() else "not created yet"
         form.addRow("status", _mono(exists))
+
+    def _fill_prep(self) -> None:
+        form = self._prep_box
+        self._clear_form(form)
+        form.addRow("status", _mono("Reserved for Prep tools."))
 
     def _fill_tools(self) -> None:
         form = self._tools_box
