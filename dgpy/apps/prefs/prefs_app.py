@@ -14,7 +14,7 @@ import dgpy_paths
 import dgpy_prefs
 import dgpy_tools
 
-__version__ = "0.1.12"
+__version__ = "0.1.13"
 
 _WINDOW: QtWidgets.QWidget | None = None
 
@@ -190,7 +190,10 @@ class PreferencesDialog(QtWidgets.QDialog):
     def _fill_prep(self) -> None:
         form = self._prep_box
         self._clear_form(form)
-        form.addRow("status", _mono("Reserved for Prep tools."))
+        form.addRow(
+            "status",
+            _mono("Reserved for Prep tools (Matte / Depth / Remove)."),
+        )
 
     def _fill_tools(self) -> None:
         form = self._tools_box
