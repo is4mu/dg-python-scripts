@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 
 from PySide6 import QtCore, QtGui, QtWidgets
@@ -15,7 +14,7 @@ import dgpy_paths
 import dgpy_prefs
 import dgpy_tools
 
-__version__ = "0.1.8"
+__version__ = "0.1.11"
 
 _WINDOW: QtWidgets.QWidget | None = None
 
@@ -121,8 +120,6 @@ class PreferencesDialog(QtWidgets.QDialog):
 
         self._install_box = self._section("Install")
         self._runtimes_box = self._section("Runtimes")
-        self._matanyone_box = self._section("MatAnyone")
-        self._propainter_box = self._section("ProPainter")
         self._tools_box = self._section("Tools")
         self._log_box = self._section("Log")
         self._build_prefs_section()
@@ -154,8 +151,6 @@ class PreferencesDialog(QtWidgets.QDialog):
     def refresh(self) -> None:
         self._fill_install()
         self._fill_runtimes()
-        self._fill_matanyone()
-        self._fill_propainter()
         self._fill_tools()
         self._fill_log()
         self._fill_prefs_paths()
@@ -189,182 +184,6 @@ class PreferencesDialog(QtWidgets.QDialog):
         form.addRow("bin (ffmpeg…)", _row_open(dgpy_paths.runtimes_bin_dir()))
         exists = "exists" if rt.is_dir() else "not created yet"
         form.addRow("status", _mono(exists))
-
-    def _load_matanyone_paths(self):
-        apps = str(dgpy_paths.apps_dir() / "matanyone_runtime")
-        if apps not in sys.path:
-            sys.path.insert(0, apps)
-        try:
-            import matanyone_runtime_paths as rpaths
-
-            return rpaths
-        except Exception as exc:  # noqa: BLE001
-            self._logger.debug("matanyone_runtime_paths unavailable: %s", exc)
-            return None
-
-    def _fill_matanyone(self) -> None:
-        form = self._matanyone_box
-        self._clear_form(form)
-        rpaths = self._load_matanyone_paths()
-        if rpaths is None:
-            form.addRow(
-                "package",
-                _mono("matanyone_runtime not installed (Manager → channel=dev)"),
-            )
-            return
-
-        root = rpaths.runtime_root()
-        form.addRow("runtime root", _row_open(root))
-        ready = rpaths.is_ready()
-        form.addRow("Runtime READY", _mono("yes" if ready else "no"))
-        py = rpaths.resolve_python()
-        form.addRow("python", _mono(py or "(missing)"))
-        infer = rpaths.inference_script()
-        form.addRow(
-            "inference",
-            _mono(str(infer) if infer else "(missing)"),
-        )
-        sam2 = rpaths.is_sam2_ready()
-        form.addRow("SAM2 READY", _mono("yes" if sam2 else "no"))
-        tiny = rpaths.sam2_checkpoint_path(size="tiny")
-        form.addRow(
-            "SAM2 tiny ckpt",
-            _mono(
-                f"{tiny} ({'ok' if tiny.is_file() else 'missing'})"
-            ),
-        )
-
-        btn_row = QtWidgets.QHBoxLayout()
-        for label, slot in (
-            ("Runtime Setup…", self._on_runtime_setup),
-            ("SAM2 Setup…", self._on_sam2_setup),
-            ("Remove All…", self._on_runtime_remove),
-        ):
-            b = QtWidgets.QPushButton(label)
-            b.clicked.connect(slot)
-            btn_row.addWidget(b)
-        btn_row.addStretch(1)
-        wrap = QtWidgets.QWidget()
-        wrap.setLayout(btn_row)
-        form.addRow("actions", wrap)
-
-    def _call_runtime_hook(self, attr: str) -> None:
-        apps = str(dgpy_paths.apps_dir() / "matanyone_runtime")
-        if apps not in sys.path:
-            sys.path.insert(0, apps)
-        try:
-            import matanyone_runtime_hook as hook
-        except Exception as exc:  # noqa: BLE001
-            dgpy_gui.error(
-                self,
-                "DGpy Preferences",
-                f"matanyone_runtime hook unavailable:\n{exc}",
-            )
-            return
-        fn = getattr(hook, attr, None)
-        if not callable(fn):
-            dgpy_gui.error(self, "DGpy Preferences", f"Missing {attr}")
-            return
-        fn()
-
-    def _on_runtime_setup(self) -> None:
-        self._call_runtime_hook("open_runtime_setup")
-
-    def _on_sam2_setup(self) -> None:
-        self._call_runtime_hook("open_sam2_setup")
-
-    def _on_runtime_remove(self) -> None:
-        self._call_runtime_hook("open_runtime_remove")
-
-    def _load_propainter_paths(self):
-        apps = str(dgpy_paths.apps_dir() / "propainter_runtime")
-        if apps not in sys.path:
-            sys.path.insert(0, apps)
-        try:
-            import propainter_runtime_paths as rpaths
-
-            return rpaths
-        except Exception as exc:  # noqa: BLE001
-            self._logger.debug("propainter_runtime_paths unavailable: %s", exc)
-            return None
-
-    def _fill_propainter(self) -> None:
-        form = self._propainter_box
-        self._clear_form(form)
-        rpaths = self._load_propainter_paths()
-        if rpaths is None:
-            form.addRow(
-                "package",
-                _mono("propainter_runtime not installed (Manager → channel=dev)"),
-            )
-            return
-
-        root = rpaths.runtime_root()
-        form.addRow("runtime root", _row_open(root))
-        ready = rpaths.is_ready()
-        form.addRow("Runtime READY", _mono("yes" if ready else "no"))
-        py = rpaths.resolve_python()
-        form.addRow("python", _mono(py or "(missing)"))
-        infer = rpaths.inference_script()
-        form.addRow(
-            "inference",
-            _mono(str(infer) if infer else "(missing)"),
-        )
-        form.addRow(
-            "license",
-            _mono("NTU S-Lab 1.0 — non-commercial by default"),
-        )
-        # SAM2 via MatAnyone (ProPainter 0.2 video masks)
-        sam2_txt = "no (Preferences → MatAnyone → SAM2 Setup…)"
-        try:
-            ma = str(dgpy_paths.apps_dir() / "matanyone_runtime")
-            if ma not in sys.path:
-                sys.path.insert(0, ma)
-            import matanyone_runtime_paths as mar
-
-            if mar.is_sam2_ready():
-                sam2_txt = "yes (MatAnyone SAM2 — used for Propagate)"
-        except Exception:  # noqa: BLE001
-            pass
-        form.addRow("SAM2 (MatAnyone)", _mono(sam2_txt))
-
-        btn_row = QtWidgets.QHBoxLayout()
-        for label, slot in (
-            ("Runtime Setup…", self._on_propainter_setup),
-            ("Remove All…", self._on_propainter_remove),
-        ):
-            b = QtWidgets.QPushButton(label)
-            b.clicked.connect(slot)
-            btn_row.addWidget(b)
-        btn_row.addStretch(1)
-        wrap = QtWidgets.QWidget()
-        wrap.setLayout(btn_row)
-        form.addRow("actions", wrap)
-
-    def _call_propainter_hook(self, attr: str) -> None:
-        apps = str(dgpy_paths.apps_dir() / "propainter_runtime")
-        if apps not in sys.path:
-            sys.path.insert(0, apps)
-        try:
-            import propainter_runtime_hook as hook
-        except Exception as exc:  # noqa: BLE001
-            dgpy_gui.error(
-                self,
-                "DGpy Preferences",
-                f"propainter_runtime hook unavailable:\n{exc}",
-            )
-            return
-        fn = getattr(hook, attr, None)
-        if not callable(fn):
-            dgpy_gui.error(self, "DGpy Preferences", f"Missing {attr}")
-            return
-        fn()
-
-    def _on_propainter_setup(self) -> None:
-        self._call_propainter_hook("open_runtime_setup")
-
-    def _on_propainter_remove(self) -> None:
-        self._call_propainter_hook("open_runtime_remove")
 
     def _fill_tools(self) -> None:
         form = self._tools_box

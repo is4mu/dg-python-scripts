@@ -102,9 +102,7 @@ MEDIA_PANEL_ACTIONS: dict[str, dict[str, Any]] = {
     "audio.only_3_4": {"group": "audio", "order": 40, "separator": "below"},
     "audio.delete_mute": {"group": "audio", "order": 50, "separator": "above"},
     "audio.delete_all": {"group": "audio", "order": 60},
-    # Clip (MatAnyone / ProPainter first + separator; then batch tools → Go To)
-    "clip.matanyone": {"group": "clip", "order": 0},
-    "clip.propainter": {"group": "clip", "order": 5, "separator": "below"},
+    # Clip (batch tools → Go To)
     "clip.create_batch": {"group": "clip", "order": 10},
     "clip.resize_all": {"group": "clip", "order": 20, "separator": "below"},
     "clip.comp_cg": {"group": "clip", "order": 30, "separator": "below"},
