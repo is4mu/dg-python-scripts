@@ -12,10 +12,9 @@ View and configure paths, Runtime, ffmpeg / ffprobe, GitHub token, and more on o
 ## How to use
 
 1. Open **DGpy → Preferences…** and review status
-2. If MatAnyone is not ready, use **Runtime Setup…** / **SAM2 Setup…**
-3. If ffmpeg is missing, use **Install ffmpeg…** under Tools
-4. For Private `-dev`, save a GitHub token (Contents: Read)
-5. Open the manual via **Open Manual…**
+2. If ffmpeg is missing, use **Install ffmpeg…** under Tools
+3. For Private `-dev`, save a GitHub token (Contents: Read)
+4. Open the manual via **Open Manual…**
 
 ## Notes
 

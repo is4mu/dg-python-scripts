@@ -28,7 +28,7 @@
 
 ## Preferences and ffmpeg
 
-- **DGpy → Preferences…** — Check and configure paths, MatAnyone Runtime / SAM2, ffmpeg / ffprobe, and Install  
+- **DGpy → Preferences…** — Check and configure paths, ffmpeg / ffprobe, and Install  
 - If ffmpeg is not on the OS, you can install it into `dgpy_runtimes/bin` from Preferences (DGpy prefers that copy)
 
 ## Opening the manual
@@ -41,4 +41,3 @@
 |---------|-------|
 | Menus do not appear | `dgpy` placement, Rescan, Flame 2025+ |
 | Install / Update fails | Network, GitHub, write permissions. For Private `-dev`, set GitHub token in Preferences |
-| MatAnyone does not work | Runtime / SAM2 READY in Preferences, ffmpeg, log file `dgpy.log` |

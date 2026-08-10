@@ -48,8 +48,6 @@ Ordered roughly like the Flame menu structure. The authoritative list and versio
 
 | Tool | Package | Menu |
 |------|---------|------|
-| [MatAnyone](tools/matanyone.md) | `matanyone` | DG: Clip → MatAnyone… |
-| [MatAnyone Runtime](tools/matanyone_runtime.md) | `matanyone_runtime` | Preferences → Runtime / SAM2 Setup |
 | [Create Batch from Clip](tools/create_batch_from_clip.md) | `create_batch_from_clip` | DG: Clip → Create Batch Group |
 | [Resize All Clips](tools/batch_resize_clips.md) | `batch_resize_clips` | DG: Clip → Resize All Clips |
 | [Comp CG](tools/comp_cg.md) | `comp_cg` | DG: Clip → Comp CG Clips |

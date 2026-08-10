@@ -52,7 +52,6 @@ Startup warns if the install root is not writable, or if both user and shared `d
 
 - **DG:** Color / Rename / Batch / Audio / Clip / Segment / Sequence / Sequence Render / Export
 - **DGpy:** Script Manager / Preferences (manual, ffmpeg) / List Plugins / Clear Archive TOCs
-- MatAnyone (Clip menu; Runtime from Preferences; first install is manual)
 
 The Manager Refresh view is the source of truth for package versions. Details: [Manual](manual/README.md).
 
@@ -68,8 +67,6 @@ The Manager Refresh view is the source of truth for package versions. Details: [
 ## License (details)
 
 DGpy distribution code in this repository is under the **[MIT License](LICENSE)**.
-
-**MatAnyone** and related models/runtimes may use **separate licenses and terms**. Check those terms for commercial use (some items are still being confirmed).
 
 Report issues on the repository Issues page when available.
 
